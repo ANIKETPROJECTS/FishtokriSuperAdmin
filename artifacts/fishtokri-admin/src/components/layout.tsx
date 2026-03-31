@@ -1,10 +1,20 @@
 import { Link, useLocation } from "wouter";
-import { Warehouse, LogOut } from "lucide-react";
+import { LayoutDashboard, Warehouse, MapPin, Users, UserCheck, Tag, LogOut, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
+
+const navItems = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/hubs", label: "Hubs", icon: Warehouse },
+  { href: "/pincodes", label: "Pincodes", icon: MapPin },
+  { href: "/admin-users", label: "Admin Users", icon: Users },
+  { href: "/customers", label: "Customers", icon: UserCheck },
+  { href: "/coupons", label: "Coupons", icon: Tag },
+];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
-  
+
   const handleLogout = () => {
     localStorage.removeItem("fishtokri_token");
     localStorage.removeItem("fishtokri_admin");
@@ -15,43 +25,70 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const adminName = adminDataStr ? JSON.parse(adminDataStr).name : "Super Admin";
 
   return (
-    <div className="flex min-h-screen bg-[#F9FAFB]">
+    <div className="flex min-h-screen bg-[#F4F6FA]">
       {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 w-64 bg-[#1E3A5F] text-white flex flex-col z-20 shadow-xl">
-        <div className="flex items-center gap-3 p-6 border-b border-white/10">
-          <img 
-            src="https://image.pollinations.ai/prompt/3D%20glossy%20fish%20seafood%20crate%20icon%20blue%20white%20render" 
-            alt="FishTokri Logo" 
-            className="w-10 h-10 rounded-lg object-cover shadow-md"
-          />
-          <span className="font-bold text-xl tracking-tight">FishTokri</span>
+      <aside className="fixed inset-y-0 left-0 w-[165px] bg-[#162B4D] text-white flex flex-col z-20">
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
+          <div className="w-8 h-8 rounded-full bg-amber-400 flex items-center justify-center flex-shrink-0 shadow">
+            <span className="text-[#162B4D] font-black text-xs">FT</span>
+          </div>
+          <span className="font-bold text-base tracking-tight text-white">FishTokri</span>
         </div>
-        <nav className="flex-1 py-6">
-          <Link href="/" className="block">
-            <div className={`flex items-center gap-3 px-6 py-3 cursor-pointer transition-colors ${location === '/' ? 'bg-[#1A56DB] border-l-4 border-white' : 'hover:bg-white/5 border-l-4 border-transparent'}`} data-testid="nav-hubs">
-              <Warehouse className="w-5 h-5" />
-              <span className="font-medium">Hubs</span>
-            </div>
-          </Link>
+
+        {/* Super Admin Label */}
+        <div className="px-5 pt-5 pb-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">Super Admin</p>
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 pb-4">
+          {navItems.map(({ href, label, icon: Icon }) => {
+            const isActive = location === href || (href === "/hubs" && location.startsWith("/hubs"));
+            return (
+              <Link key={href} href={href}>
+                <div
+                  className={`flex items-center gap-3 px-5 py-2.5 cursor-pointer transition-all text-sm font-medium ${
+                    isActive
+                      ? "bg-white/10 text-white border-l-2 border-amber-400"
+                      : "text-white/60 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                  }`}
+                >
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span>{label}</span>
+                </div>
+              </Link>
+            );
+          })}
         </nav>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-white/10">
+          <p className="text-[10px] text-white/30 text-center">FishTokri Admin System</p>
+        </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64 flex flex-col min-h-screen">
-        <header className="bg-white h-16 shadow-[0_2px_10px_rgba(0,0,0,0.05)] flex items-center justify-between px-8 z-10 sticky top-0">
-          <h1 className="text-[#1E3A5F] font-semibold text-lg tracking-tight" data-testid="header-title">Hub Management</h1>
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col items-end">
-              <span className="text-sm font-semibold text-[#1E3A5F]" data-testid="text-admin-name">{adminName}</span>
-              <span className="text-xs font-medium text-gray-500">Super Admin</span>
-            </div>
-            <div className="w-px h-8 bg-gray-200 mx-2"></div>
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500 hover:text-[#E02424] hover:bg-red-50 font-medium" data-testid="button-logout">
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
-            </Button>
+      <main className="flex-1 ml-[165px] flex flex-col min-h-screen">
+        {/* Header */}
+        <header className="bg-white h-14 border-b border-gray-100 flex items-center justify-end px-8 z-10 sticky top-0 shadow-sm">
+          <div className="flex items-center gap-2 border border-gray-200 rounded-md px-3 py-1.5 cursor-pointer hover:bg-gray-50 transition-colors">
+            <span className="text-xs text-gray-500 font-medium">View as:</span>
+            <span className="text-sm font-semibold text-[#162B4D]">{adminName}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
           </div>
+          <div className="w-px h-6 bg-gray-200 mx-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            className="text-gray-400 hover:text-red-500 hover:bg-red-50 h-8 px-3"
+            data-testid="button-logout"
+          >
+            <LogOut className="w-4 h-4" />
+          </Button>
         </header>
+
         <div className="p-8 flex-1">
           {children}
         </div>

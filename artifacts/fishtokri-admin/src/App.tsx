@@ -52,10 +52,16 @@ function Router() {
       <Route path="/hubs">
         <ProtectedRoute component={Hubs} />
       </Route>
+      <Route path="/pincodes">
+        <ProtectedRoute component={ComingSoon} />
+      </Route>
       <Route path="/admin-users">
         <ProtectedRoute component={AdminUsers} />
       </Route>
-      <Route path="/coming-soon">
+      <Route path="/customers">
+        <ProtectedRoute component={ComingSoon} />
+      </Route>
+      <Route path="/coupons">
         <ProtectedRoute component={ComingSoon} />
       </Route>
       <Route component={NotFound} />
