@@ -4,6 +4,26 @@
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
 
+## FishTokri Admin
+
+A full-stack Super Admin dashboard for managing FishTokri distribution hubs.
+
+### Features
+- JWT authentication (hardcoded Super Admin: admin@fishtokri.com / FishTokri@Admin2024)
+- Full Hub CRUD (create, read, update, delete)
+- Toggle hub Active/Inactive status
+- Service areas tag-input management
+- Hub statistics summary
+- 3 seeded sample hubs (Thane, Airoli, Future Zone)
+
+### Artifacts
+- `artifacts/fishtokri-admin` — React + Vite frontend (port 26266, preview at /)
+- `artifacts/api-server` — Express API server (port 8080, preview at /api)
+
+### Database
+- PostgreSQL via Drizzle ORM
+- Table: `hubs` (id, name, location, service_areas jsonb, status, created_at)
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces
