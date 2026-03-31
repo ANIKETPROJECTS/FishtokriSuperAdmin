@@ -51,9 +51,9 @@ export default function Login() {
       <div className="z-10 w-full max-w-md p-8 md:p-10 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
         <div className="flex flex-col items-center mb-8">
           <img 
-            src="https://image.pollinations.ai/prompt/FishTokri%20fish%20logo%203D%20glossy%20blue%20orange%20seafood" 
+            src="/logo.png"
             alt="FishTokri Logo" 
-            className="w-20 h-20 mb-4 drop-shadow-xl rounded-xl"
+            className="w-24 h-24 mb-4 drop-shadow-xl object-contain"
           />
           <h1 className="text-2xl font-bold text-white tracking-tight relative pb-2 drop-shadow-md text-center" data-testid="login-heading">
             FishTokri Admin

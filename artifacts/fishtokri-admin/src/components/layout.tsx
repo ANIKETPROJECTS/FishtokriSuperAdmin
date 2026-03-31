@@ -29,10 +29,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className="fixed inset-y-0 left-0 w-[165px] bg-[#162B4D] text-white flex flex-col z-20">
         {/* Logo */}
-        <div className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
-          <div className="w-8 h-8 rounded-full bg-amber-400 flex items-center justify-center flex-shrink-0 shadow">
-            <span className="text-[#162B4D] font-black text-xs">FT</span>
-          </div>
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-white/10">
+          <img src="/logo.png" alt="FishTokri" className="w-7 h-7 object-contain flex-shrink-0" />
           <span className="font-bold text-base tracking-tight text-white">FishTokri</span>
         </div>
 
