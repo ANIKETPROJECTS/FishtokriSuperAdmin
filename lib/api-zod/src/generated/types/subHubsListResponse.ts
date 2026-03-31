@@ -3,11 +3,11 @@
  * Do not edit manually.
  * Api
  * FishTokri Admin API specification
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
-import type { Hub } from "./hub";
+import type { SubHub } from "./subHub";
 
-export interface HubsListResponse {
-  hubs: Hub[];
+export interface SubHubsListResponse {
+  subHubs: SubHub[];
   total: number;
 }

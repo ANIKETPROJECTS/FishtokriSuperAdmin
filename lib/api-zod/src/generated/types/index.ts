@@ -3,23 +3,43 @@
  * Do not edit manually.
  * Api
  * FishTokri Admin API specification
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 
 export * from "./adminUser";
-export * from "./createHubRequest";
-export * from "./createHubRequestStatus";
+export * from "./createSubHubRequest";
+export * from "./createSubHubRequestStatus";
+export * from "./createSuperHubRequest";
+export * from "./createSuperHubRequestStatus";
+export * from "./createUserRequest";
+export * from "./createUserRequestRole";
+export * from "./createUserRequestStatus";
 export * from "./deleteResponse";
 export * from "./errorResponse";
-export * from "./getHubsParams";
-export * from "./getHubsStatus";
+export * from "./getUsersParams";
+export * from "./getUsersRole";
 export * from "./healthStatus";
-export * from "./hub";
-export * from "./hubResponse";
-export * from "./hubsListResponse";
-export * from "./hubStatsResponse";
-export * from "./hubStatus";
+export * from "./hubUser";
+export * from "./hubUserRole";
+export * from "./hubUserStatus";
 export * from "./loginRequest";
 export * from "./loginResponse";
-export * from "./updateHubRequest";
-export * from "./updateHubRequestStatus";
+export * from "./statsSummaryResponse";
+export * from "./subHub";
+export * from "./subHubResponse";
+export * from "./subHubsListResponse";
+export * from "./subHubStatus";
+export * from "./superHub";
+export * from "./superHubDetailResponse";
+export * from "./superHubResponse";
+export * from "./superHubsListResponse";
+export * from "./superHubStatus";
+export * from "./updateSubHubRequest";
+export * from "./updateSubHubRequestStatus";
+export * from "./updateSuperHubRequest";
+export * from "./updateSuperHubRequestStatus";
+export * from "./updateUserRequest";
+export * from "./updateUserRequestRole";
+export * from "./updateUserRequestStatus";
+export * from "./userResponse";
+export * from "./usersListResponse";

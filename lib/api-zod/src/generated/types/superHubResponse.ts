@@ -5,7 +5,8 @@
  * FishTokri Admin API specification
  * OpenAPI spec version: 0.2.0
  */
+import type { SuperHub } from "./superHub";
 
-export interface DeleteResponse {
-  message: string;
+export interface SuperHubResponse {
+  superHub: SuperHub;
 }

@@ -1,14 +1,24 @@
-import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEffect } from "react";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
+import Dashboard from "@/pages/dashboard";
 import Hubs from "@/pages/hubs";
+import AdminUsers from "@/pages/admin-users";
+import ComingSoon from "@/pages/coming-soon";
 import { Layout } from "@/components/layout";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const [location, setLocation] = useLocation();
@@ -34,7 +44,19 @@ function Router() {
     <Switch>
       <Route path="/login" component={Login} />
       <Route path="/">
+        <Redirect to="/dashboard" />
+      </Route>
+      <Route path="/dashboard">
+        <ProtectedRoute component={Dashboard} />
+      </Route>
+      <Route path="/hubs">
         <ProtectedRoute component={Hubs} />
+      </Route>
+      <Route path="/admin-users">
+        <ProtectedRoute component={AdminUsers} />
+      </Route>
+      <Route path="/coming-soon">
+        <ProtectedRoute component={ComingSoon} />
       </Route>
       <Route component={NotFound} />
     </Switch>

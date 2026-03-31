@@ -3,12 +3,12 @@
  * Do not edit manually.
  * Api
  * FishTokri Admin API specification
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 
-export type HubStatus = (typeof HubStatus)[keyof typeof HubStatus];
+export type SubHubStatus = (typeof SubHubStatus)[keyof typeof SubHubStatus];
 
-export const HubStatus = {
+export const SubHubStatus = {
   Active: "Active",
   Inactive: "Inactive",
 } as const;

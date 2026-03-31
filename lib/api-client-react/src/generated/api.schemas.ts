@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Api
  * FishTokri Admin API specification
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 export interface HealthStatus {
   status: string;
@@ -25,70 +25,229 @@ export interface LoginResponse {
   admin: AdminUser;
 }
 
-export type HubStatus = (typeof HubStatus)[keyof typeof HubStatus];
+export type SuperHubStatus =
+  (typeof SuperHubStatus)[keyof typeof SuperHubStatus];
 
-export const HubStatus = {
+export const SuperHubStatus = {
   Active: "Active",
   Inactive: "Inactive",
 } as const;
 
-export interface Hub {
+export interface SuperHub {
   id: string;
   name: string;
   location: string;
-  serviceAreas: string[];
-  status: HubStatus;
+  imageUrl: string;
+  status: SuperHubStatus;
+  subHubCount: number;
   createdAt: string;
 }
 
-export interface HubResponse {
-  hub: Hub;
+export type SubHubStatus = (typeof SubHubStatus)[keyof typeof SubHubStatus];
+
+export const SubHubStatus = {
+  Active: "Active",
+  Inactive: "Inactive",
+} as const;
+
+export interface SubHub {
+  id: string;
+  superHubId: string;
+  superHubName: string;
+  name: string;
+  location: string;
+  pincodes: string[];
+  status: SubHubStatus;
+  createdAt: string;
 }
 
-export interface HubsListResponse {
-  hubs: Hub[];
+export type HubUserRole = (typeof HubUserRole)[keyof typeof HubUserRole];
+
+export const HubUserRole = {
+  super_admin: "super_admin",
+  super_hub: "super_hub",
+  sub_hub: "sub_hub",
+} as const;
+
+export type HubUserStatus = (typeof HubUserStatus)[keyof typeof HubUserStatus];
+
+export const HubUserStatus = {
+  Active: "Active",
+  Inactive: "Inactive",
+} as const;
+
+export interface HubUser {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: HubUserRole;
+  superHubId?: string | null;
+  superHubName?: string | null;
+  subHubId?: string | null;
+  subHubName?: string | null;
+  status: HubUserStatus;
+  createdAt: string;
+}
+
+export interface SuperHubResponse {
+  superHub: SuperHub;
+}
+
+export interface SuperHubDetailResponse {
+  superHub: SuperHub;
+  subHubs: SubHub[];
+}
+
+export interface SuperHubsListResponse {
+  superHubs: SuperHub[];
   total: number;
 }
 
-export type CreateHubRequestStatus =
-  (typeof CreateHubRequestStatus)[keyof typeof CreateHubRequestStatus];
-
-export const CreateHubRequestStatus = {
-  Active: "Active",
-  Inactive: "Inactive",
-} as const;
-
-export interface CreateHubRequest {
-  name: string;
-  location: string;
-  serviceAreas: string[];
-  status: CreateHubRequestStatus;
+export interface SubHubResponse {
+  subHub: SubHub;
 }
 
-export type UpdateHubRequestStatus =
-  (typeof UpdateHubRequestStatus)[keyof typeof UpdateHubRequestStatus];
+export interface SubHubsListResponse {
+  subHubs: SubHub[];
+  total: number;
+}
 
-export const UpdateHubRequestStatus = {
+export interface UserResponse {
+  user: HubUser;
+}
+
+export interface UsersListResponse {
+  users: HubUser[];
+  total: number;
+}
+
+export type CreateSuperHubRequestStatus =
+  (typeof CreateSuperHubRequestStatus)[keyof typeof CreateSuperHubRequestStatus];
+
+export const CreateSuperHubRequestStatus = {
   Active: "Active",
   Inactive: "Inactive",
 } as const;
 
-export interface UpdateHubRequest {
+export interface CreateSuperHubRequest {
+  name: string;
+  location: string;
+  imageUrl?: string;
+  status?: CreateSuperHubRequestStatus;
+}
+
+export type UpdateSuperHubRequestStatus =
+  (typeof UpdateSuperHubRequestStatus)[keyof typeof UpdateSuperHubRequestStatus];
+
+export const UpdateSuperHubRequestStatus = {
+  Active: "Active",
+  Inactive: "Inactive",
+} as const;
+
+export interface UpdateSuperHubRequest {
   name?: string;
   location?: string;
-  serviceAreas?: string[];
-  status?: UpdateHubRequestStatus;
+  imageUrl?: string;
+  status?: UpdateSuperHubRequestStatus;
+}
+
+export type CreateSubHubRequestStatus =
+  (typeof CreateSubHubRequestStatus)[keyof typeof CreateSubHubRequestStatus];
+
+export const CreateSubHubRequestStatus = {
+  Active: "Active",
+  Inactive: "Inactive",
+} as const;
+
+export interface CreateSubHubRequest {
+  name: string;
+  location: string;
+  pincodes?: string[];
+  status?: CreateSubHubRequestStatus;
+}
+
+export type UpdateSubHubRequestStatus =
+  (typeof UpdateSubHubRequestStatus)[keyof typeof UpdateSubHubRequestStatus];
+
+export const UpdateSubHubRequestStatus = {
+  Active: "Active",
+  Inactive: "Inactive",
+} as const;
+
+export interface UpdateSubHubRequest {
+  name?: string;
+  location?: string;
+  pincodes?: string[];
+  status?: UpdateSubHubRequestStatus;
+}
+
+export type CreateUserRequestRole =
+  (typeof CreateUserRequestRole)[keyof typeof CreateUserRequestRole];
+
+export const CreateUserRequestRole = {
+  super_admin: "super_admin",
+  super_hub: "super_hub",
+  sub_hub: "sub_hub",
+} as const;
+
+export type CreateUserRequestStatus =
+  (typeof CreateUserRequestStatus)[keyof typeof CreateUserRequestStatus];
+
+export const CreateUserRequestStatus = {
+  Active: "Active",
+  Inactive: "Inactive",
+} as const;
+
+export interface CreateUserRequest {
+  name: string;
+  email: string;
+  phone: string;
+  role: CreateUserRequestRole;
+  superHubId?: string | null;
+  subHubId?: string | null;
+  status?: CreateUserRequestStatus;
+}
+
+export type UpdateUserRequestRole =
+  (typeof UpdateUserRequestRole)[keyof typeof UpdateUserRequestRole];
+
+export const UpdateUserRequestRole = {
+  super_admin: "super_admin",
+  super_hub: "super_hub",
+  sub_hub: "sub_hub",
+} as const;
+
+export type UpdateUserRequestStatus =
+  (typeof UpdateUserRequestStatus)[keyof typeof UpdateUserRequestStatus];
+
+export const UpdateUserRequestStatus = {
+  Active: "Active",
+  Inactive: "Inactive",
+} as const;
+
+export interface UpdateUserRequest {
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: UpdateUserRequestRole;
+  superHubId?: string | null;
+  subHubId?: string | null;
+  status?: UpdateUserRequestStatus;
+}
+
+export interface StatsSummaryResponse {
+  totalSuperHubs: number;
+  activeSuperHubs: number;
+  totalSubHubs: number;
+  activeSubHubs: number;
+  totalUsers: number;
+  activeUsers: number;
+  totalPincodes: number;
 }
 
 export interface DeleteResponse {
   message: string;
-}
-
-export interface HubStatsResponse {
-  total: number;
-  active: number;
-  inactive: number;
-  totalServiceAreas: number;
 }
 
 export interface ErrorResponse {
@@ -96,13 +255,15 @@ export interface ErrorResponse {
   message: string;
 }
 
-export type GetHubsParams = {
-  status?: GetHubsStatus;
+export type GetUsersParams = {
+  role?: GetUsersRole;
+  superHubId?: string;
 };
 
-export type GetHubsStatus = (typeof GetHubsStatus)[keyof typeof GetHubsStatus];
+export type GetUsersRole = (typeof GetUsersRole)[keyof typeof GetUsersRole];
 
-export const GetHubsStatus = {
-  Active: "Active",
-  Inactive: "Inactive",
+export const GetUsersRole = {
+  super_admin: "super_admin",
+  super_hub: "super_hub",
+  sub_hub: "sub_hub",
 } as const;

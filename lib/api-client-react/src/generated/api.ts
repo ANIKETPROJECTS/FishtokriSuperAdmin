@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Api
  * FishTokri Admin API specification
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
@@ -17,17 +17,26 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
-  CreateHubRequest,
+  CreateSubHubRequest,
+  CreateSuperHubRequest,
+  CreateUserRequest,
   DeleteResponse,
   ErrorResponse,
-  GetHubsParams,
+  GetUsersParams,
   HealthStatus,
-  HubResponse,
-  HubStatsResponse,
-  HubsListResponse,
   LoginRequest,
   LoginResponse,
-  UpdateHubRequest,
+  StatsSummaryResponse,
+  SubHubResponse,
+  SubHubsListResponse,
+  SuperHubDetailResponse,
+  SuperHubResponse,
+  SuperHubsListResponse,
+  UpdateSubHubRequest,
+  UpdateSuperHubRequest,
+  UpdateUserRequest,
+  UserResponse,
+  UsersListResponse,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -40,7 +49,6 @@ type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const getHealthCheckUrl = () => {
@@ -202,9 +210,1017 @@ export const useLogin = <
 };
 
 /**
- * @summary Get all hubs
+ * @summary Overall dashboard statistics
  */
-export const getGetHubsUrl = (params?: GetHubsParams) => {
+export const getGetStatsSummaryUrl = () => {
+  return `/api/stats/summary`;
+};
+
+export const getStatsSummary = async (
+  options?: RequestInit,
+): Promise<StatsSummaryResponse> => {
+  return customFetch<StatsSummaryResponse>(getGetStatsSummaryUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetStatsSummaryQueryKey = () => {
+  return [`/api/stats/summary`] as const;
+};
+
+export const getGetStatsSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getStatsSummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getStatsSummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetStatsSummaryQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getStatsSummary>>> = ({
+    signal,
+  }) => getStatsSummary({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getStatsSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetStatsSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getStatsSummary>>
+>;
+export type GetStatsSummaryQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Overall dashboard statistics
+ */
+
+export function useGetStatsSummary<
+  TData = Awaited<ReturnType<typeof getStatsSummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getStatsSummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetStatsSummaryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get all super hubs
+ */
+export const getGetSuperHubsUrl = () => {
+  return `/api/super-hubs`;
+};
+
+export const getSuperHubs = async (
+  options?: RequestInit,
+): Promise<SuperHubsListResponse> => {
+  return customFetch<SuperHubsListResponse>(getGetSuperHubsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSuperHubsQueryKey = () => {
+  return [`/api/super-hubs`] as const;
+};
+
+export const getGetSuperHubsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSuperHubs>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSuperHubs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSuperHubsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSuperHubs>>> = ({
+    signal,
+  }) => getSuperHubs({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSuperHubs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSuperHubsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSuperHubs>>
+>;
+export type GetSuperHubsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get all super hubs
+ */
+
+export function useGetSuperHubs<
+  TData = Awaited<ReturnType<typeof getSuperHubs>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSuperHubs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSuperHubsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a new super hub
+ */
+export const getCreateSuperHubUrl = () => {
+  return `/api/super-hubs`;
+};
+
+export const createSuperHub = async (
+  createSuperHubRequest: CreateSuperHubRequest,
+  options?: RequestInit,
+): Promise<SuperHubResponse> => {
+  return customFetch<SuperHubResponse>(getCreateSuperHubUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createSuperHubRequest),
+  });
+};
+
+export const getCreateSuperHubMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSuperHub>>,
+    TError,
+    { data: BodyType<CreateSuperHubRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createSuperHub>>,
+  TError,
+  { data: BodyType<CreateSuperHubRequest> },
+  TContext
+> => {
+  const mutationKey = ["createSuperHub"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createSuperHub>>,
+    { data: BodyType<CreateSuperHubRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createSuperHub(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateSuperHubMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createSuperHub>>
+>;
+export type CreateSuperHubMutationBody = BodyType<CreateSuperHubRequest>;
+export type CreateSuperHubMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a new super hub
+ */
+export const useCreateSuperHub = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSuperHub>>,
+    TError,
+    { data: BodyType<CreateSuperHubRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createSuperHub>>,
+  TError,
+  { data: BodyType<CreateSuperHubRequest> },
+  TContext
+> => {
+  return useMutation(getCreateSuperHubMutationOptions(options));
+};
+
+/**
+ * @summary Get a super hub by ID (includes sub hubs)
+ */
+export const getGetSuperHubUrl = (id: string) => {
+  return `/api/super-hubs/${id}`;
+};
+
+export const getSuperHub = async (
+  id: string,
+  options?: RequestInit,
+): Promise<SuperHubDetailResponse> => {
+  return customFetch<SuperHubDetailResponse>(getGetSuperHubUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSuperHubQueryKey = (id: string) => {
+  return [`/api/super-hubs/${id}`] as const;
+};
+
+export const getGetSuperHubQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSuperHub>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSuperHub>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSuperHubQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSuperHub>>> = ({
+    signal,
+  }) => getSuperHub(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSuperHub>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSuperHubQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSuperHub>>
+>;
+export type GetSuperHubQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get a super hub by ID (includes sub hubs)
+ */
+
+export function useGetSuperHub<
+  TData = Awaited<ReturnType<typeof getSuperHub>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSuperHub>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSuperHubQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a super hub
+ */
+export const getUpdateSuperHubUrl = (id: string) => {
+  return `/api/super-hubs/${id}`;
+};
+
+export const updateSuperHub = async (
+  id: string,
+  updateSuperHubRequest: UpdateSuperHubRequest,
+  options?: RequestInit,
+): Promise<SuperHubResponse> => {
+  return customFetch<SuperHubResponse>(getUpdateSuperHubUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateSuperHubRequest),
+  });
+};
+
+export const getUpdateSuperHubMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateSuperHub>>,
+    TError,
+    { id: string; data: BodyType<UpdateSuperHubRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateSuperHub>>,
+  TError,
+  { id: string; data: BodyType<UpdateSuperHubRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateSuperHub"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateSuperHub>>,
+    { id: string; data: BodyType<UpdateSuperHubRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateSuperHub(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateSuperHubMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateSuperHub>>
+>;
+export type UpdateSuperHubMutationBody = BodyType<UpdateSuperHubRequest>;
+export type UpdateSuperHubMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a super hub
+ */
+export const useUpdateSuperHub = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateSuperHub>>,
+    TError,
+    { id: string; data: BodyType<UpdateSuperHubRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateSuperHub>>,
+  TError,
+  { id: string; data: BodyType<UpdateSuperHubRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateSuperHubMutationOptions(options));
+};
+
+/**
+ * @summary Delete a super hub
+ */
+export const getDeleteSuperHubUrl = (id: string) => {
+  return `/api/super-hubs/${id}`;
+};
+
+export const deleteSuperHub = async (
+  id: string,
+  options?: RequestInit,
+): Promise<DeleteResponse> => {
+  return customFetch<DeleteResponse>(getDeleteSuperHubUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteSuperHubMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSuperHub>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteSuperHub>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteSuperHub"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteSuperHub>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteSuperHub(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteSuperHubMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteSuperHub>>
+>;
+
+export type DeleteSuperHubMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete a super hub
+ */
+export const useDeleteSuperHub = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSuperHub>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteSuperHub>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteSuperHubMutationOptions(options));
+};
+
+/**
+ * @summary Toggle super hub active/inactive
+ */
+export const getToggleSuperHubStatusUrl = (id: string) => {
+  return `/api/super-hubs/${id}/toggle-status`;
+};
+
+export const toggleSuperHubStatus = async (
+  id: string,
+  options?: RequestInit,
+): Promise<SuperHubResponse> => {
+  return customFetch<SuperHubResponse>(getToggleSuperHubStatusUrl(id), {
+    ...options,
+    method: "PATCH",
+  });
+};
+
+export const getToggleSuperHubStatusMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof toggleSuperHubStatus>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof toggleSuperHubStatus>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["toggleSuperHubStatus"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof toggleSuperHubStatus>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return toggleSuperHubStatus(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ToggleSuperHubStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof toggleSuperHubStatus>>
+>;
+
+export type ToggleSuperHubStatusMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Toggle super hub active/inactive
+ */
+export const useToggleSuperHubStatus = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof toggleSuperHubStatus>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof toggleSuperHubStatus>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getToggleSuperHubStatusMutationOptions(options));
+};
+
+/**
+ * @summary Get all sub hubs of a super hub
+ */
+export const getGetSubHubsBySuperHubUrl = (id: string) => {
+  return `/api/super-hubs/${id}/sub-hubs`;
+};
+
+export const getSubHubsBySuperHub = async (
+  id: string,
+  options?: RequestInit,
+): Promise<SubHubsListResponse> => {
+  return customFetch<SubHubsListResponse>(getGetSubHubsBySuperHubUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSubHubsBySuperHubQueryKey = (id: string) => {
+  return [`/api/super-hubs/${id}/sub-hubs`] as const;
+};
+
+export const getGetSubHubsBySuperHubQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSubHubsBySuperHub>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSubHubsBySuperHub>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetSubHubsBySuperHubQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSubHubsBySuperHub>>
+  > = ({ signal }) => getSubHubsBySuperHub(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSubHubsBySuperHub>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSubHubsBySuperHubQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSubHubsBySuperHub>>
+>;
+export type GetSubHubsBySuperHubQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get all sub hubs of a super hub
+ */
+
+export function useGetSubHubsBySuperHub<
+  TData = Awaited<ReturnType<typeof getSubHubsBySuperHub>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSubHubsBySuperHub>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSubHubsBySuperHubQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a sub hub under a super hub
+ */
+export const getCreateSubHubUrl = (id: string) => {
+  return `/api/super-hubs/${id}/sub-hubs`;
+};
+
+export const createSubHub = async (
+  id: string,
+  createSubHubRequest: CreateSubHubRequest,
+  options?: RequestInit,
+): Promise<SubHubResponse> => {
+  return customFetch<SubHubResponse>(getCreateSubHubUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createSubHubRequest),
+  });
+};
+
+export const getCreateSubHubMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSubHub>>,
+    TError,
+    { id: string; data: BodyType<CreateSubHubRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createSubHub>>,
+  TError,
+  { id: string; data: BodyType<CreateSubHubRequest> },
+  TContext
+> => {
+  const mutationKey = ["createSubHub"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createSubHub>>,
+    { id: string; data: BodyType<CreateSubHubRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createSubHub(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateSubHubMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createSubHub>>
+>;
+export type CreateSubHubMutationBody = BodyType<CreateSubHubRequest>;
+export type CreateSubHubMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a sub hub under a super hub
+ */
+export const useCreateSubHub = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSubHub>>,
+    TError,
+    { id: string; data: BodyType<CreateSubHubRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createSubHub>>,
+  TError,
+  { id: string; data: BodyType<CreateSubHubRequest> },
+  TContext
+> => {
+  return useMutation(getCreateSubHubMutationOptions(options));
+};
+
+/**
+ * @summary Update a sub hub
+ */
+export const getUpdateSubHubUrl = (id: string) => {
+  return `/api/sub-hubs/${id}`;
+};
+
+export const updateSubHub = async (
+  id: string,
+  updateSubHubRequest: UpdateSubHubRequest,
+  options?: RequestInit,
+): Promise<SubHubResponse> => {
+  return customFetch<SubHubResponse>(getUpdateSubHubUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateSubHubRequest),
+  });
+};
+
+export const getUpdateSubHubMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateSubHub>>,
+    TError,
+    { id: string; data: BodyType<UpdateSubHubRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateSubHub>>,
+  TError,
+  { id: string; data: BodyType<UpdateSubHubRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateSubHub"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateSubHub>>,
+    { id: string; data: BodyType<UpdateSubHubRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateSubHub(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateSubHubMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateSubHub>>
+>;
+export type UpdateSubHubMutationBody = BodyType<UpdateSubHubRequest>;
+export type UpdateSubHubMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a sub hub
+ */
+export const useUpdateSubHub = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateSubHub>>,
+    TError,
+    { id: string; data: BodyType<UpdateSubHubRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateSubHub>>,
+  TError,
+  { id: string; data: BodyType<UpdateSubHubRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateSubHubMutationOptions(options));
+};
+
+/**
+ * @summary Delete a sub hub
+ */
+export const getDeleteSubHubUrl = (id: string) => {
+  return `/api/sub-hubs/${id}`;
+};
+
+export const deleteSubHub = async (
+  id: string,
+  options?: RequestInit,
+): Promise<DeleteResponse> => {
+  return customFetch<DeleteResponse>(getDeleteSubHubUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteSubHubMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSubHub>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteSubHub>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteSubHub"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteSubHub>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteSubHub(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteSubHubMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteSubHub>>
+>;
+
+export type DeleteSubHubMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete a sub hub
+ */
+export const useDeleteSubHub = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSubHub>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteSubHub>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteSubHubMutationOptions(options));
+};
+
+/**
+ * @summary Toggle sub hub active/inactive
+ */
+export const getToggleSubHubStatusUrl = (id: string) => {
+  return `/api/sub-hubs/${id}/toggle-status`;
+};
+
+export const toggleSubHubStatus = async (
+  id: string,
+  options?: RequestInit,
+): Promise<SubHubResponse> => {
+  return customFetch<SubHubResponse>(getToggleSubHubStatusUrl(id), {
+    ...options,
+    method: "PATCH",
+  });
+};
+
+export const getToggleSubHubStatusMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof toggleSubHubStatus>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof toggleSubHubStatus>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["toggleSubHubStatus"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof toggleSubHubStatus>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return toggleSubHubStatus(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ToggleSubHubStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof toggleSubHubStatus>>
+>;
+
+export type ToggleSubHubStatusMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Toggle sub hub active/inactive
+ */
+export const useToggleSubHubStatus = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof toggleSubHubStatus>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof toggleSubHubStatus>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getToggleSubHubStatusMutationOptions(options));
+};
+
+/**
+ * @summary Get all hub users
+ */
+export const getGetUsersUrl = (params?: GetUsersParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -216,69 +1232,77 @@ export const getGetHubsUrl = (params?: GetHubsParams) => {
   const stringifiedParams = normalizedParams.toString();
 
   return stringifiedParams.length > 0
-    ? `/api/hubs?${stringifiedParams}`
-    : `/api/hubs`;
+    ? `/api/users?${stringifiedParams}`
+    : `/api/users`;
 };
 
-export const getHubs = async (
-  params?: GetHubsParams,
+export const getUsers = async (
+  params?: GetUsersParams,
   options?: RequestInit,
-): Promise<HubsListResponse> => {
-  return customFetch<HubsListResponse>(getGetHubsUrl(params), {
+): Promise<UsersListResponse> => {
+  return customFetch<UsersListResponse>(getGetUsersUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getGetHubsQueryKey = (params?: GetHubsParams) => {
-  return [`/api/hubs`, ...(params ? [params] : [])] as const;
+export const getGetUsersQueryKey = (params?: GetUsersParams) => {
+  return [`/api/users`, ...(params ? [params] : [])] as const;
 };
 
-export const getGetHubsQueryOptions = <
-  TData = Awaited<ReturnType<typeof getHubs>>,
+export const getGetUsersQueryOptions = <
+  TData = Awaited<ReturnType<typeof getUsers>>,
   TError = ErrorType<ErrorResponse>,
 >(
-  params?: GetHubsParams,
+  params?: GetUsersParams,
   options?: {
-    query?: UseQueryOptions<Awaited<ReturnType<typeof getHubs>>, TError, TData>;
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getUsers>>,
+      TError,
+      TData
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetHubsQueryKey(params);
+  const queryKey = queryOptions?.queryKey ?? getGetUsersQueryKey(params);
 
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getHubs>>> = ({
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getUsers>>> = ({
     signal,
-  }) => getHubs(params, { signal, ...requestOptions });
+  }) => getUsers(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getHubs>>,
+    Awaited<ReturnType<typeof getUsers>>,
     TError,
     TData
   > & { queryKey: QueryKey };
 };
 
-export type GetHubsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getHubs>>
+export type GetUsersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getUsers>>
 >;
-export type GetHubsQueryError = ErrorType<ErrorResponse>;
+export type GetUsersQueryError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Get all hubs
+ * @summary Get all hub users
  */
 
-export function useGetHubs<
-  TData = Awaited<ReturnType<typeof getHubs>>,
+export function useGetUsers<
+  TData = Awaited<ReturnType<typeof getUsers>>,
   TError = ErrorType<ErrorResponse>,
 >(
-  params?: GetHubsParams,
+  params?: GetUsersParams,
   options?: {
-    query?: UseQueryOptions<Awaited<ReturnType<typeof getHubs>>, TError, TData>;
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getUsers>>,
+      TError,
+      TData
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetHubsQueryOptions(params, options);
+  const queryOptions = getGetUsersQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -288,42 +1312,42 @@ export function useGetHubs<
 }
 
 /**
- * @summary Create a new hub
+ * @summary Create a hub user
  */
-export const getCreateHubUrl = () => {
-  return `/api/hubs`;
+export const getCreateUserUrl = () => {
+  return `/api/users`;
 };
 
-export const createHub = async (
-  createHubRequest: CreateHubRequest,
+export const createUser = async (
+  createUserRequest: CreateUserRequest,
   options?: RequestInit,
-): Promise<HubResponse> => {
-  return customFetch<HubResponse>(getCreateHubUrl(), {
+): Promise<UserResponse> => {
+  return customFetch<UserResponse>(getCreateUserUrl(), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(createHubRequest),
+    body: JSON.stringify(createUserRequest),
   });
 };
 
-export const getCreateHubMutationOptions = <
+export const getCreateUserMutationOptions = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof createHub>>,
+    Awaited<ReturnType<typeof createUser>>,
     TError,
-    { data: BodyType<CreateHubRequest> },
+    { data: BodyType<CreateUserRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof createHub>>,
+  Awaited<ReturnType<typeof createUser>>,
   TError,
-  { data: BodyType<CreateHubRequest> },
+  { data: BodyType<CreateUserRequest> },
   TContext
 > => {
-  const mutationKey = ["createHub"];
+  const mutationKey = ["createUser"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation &&
       "mutationKey" in options.mutation &&
@@ -333,159 +1357,84 @@ export const getCreateHubMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof createHub>>,
-    { data: BodyType<CreateHubRequest> }
+    Awaited<ReturnType<typeof createUser>>,
+    { data: BodyType<CreateUserRequest> }
   > = (props) => {
     const { data } = props ?? {};
 
-    return createHub(data, requestOptions);
+    return createUser(data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type CreateHubMutationResult = NonNullable<
-  Awaited<ReturnType<typeof createHub>>
+export type CreateUserMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createUser>>
 >;
-export type CreateHubMutationBody = BodyType<CreateHubRequest>;
-export type CreateHubMutationError = ErrorType<ErrorResponse>;
+export type CreateUserMutationBody = BodyType<CreateUserRequest>;
+export type CreateUserMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Create a new hub
+ * @summary Create a hub user
  */
-export const useCreateHub = <
+export const useCreateUser = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof createHub>>,
+    Awaited<ReturnType<typeof createUser>>,
     TError,
-    { data: BodyType<CreateHubRequest> },
+    { data: BodyType<CreateUserRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
-  Awaited<ReturnType<typeof createHub>>,
+  Awaited<ReturnType<typeof createUser>>,
   TError,
-  { data: BodyType<CreateHubRequest> },
+  { data: BodyType<CreateUserRequest> },
   TContext
 > => {
-  return useMutation(getCreateHubMutationOptions(options));
+  return useMutation(getCreateUserMutationOptions(options));
 };
 
 /**
- * @summary Get a hub by ID
+ * @summary Update a hub user
  */
-export const getGetHubUrl = (id: string) => {
-  return `/api/hubs/${id}`;
+export const getUpdateUserUrl = (id: string) => {
+  return `/api/users/${id}`;
 };
 
-export const getHub = async (
+export const updateUser = async (
   id: string,
+  updateUserRequest: UpdateUserRequest,
   options?: RequestInit,
-): Promise<HubResponse> => {
-  return customFetch<HubResponse>(getGetHubUrl(id), {
-    ...options,
-    method: "GET",
-  });
-};
-
-export const getGetHubQueryKey = (id: string) => {
-  return [`/api/hubs/${id}`] as const;
-};
-
-export const getGetHubQueryOptions = <
-  TData = Awaited<ReturnType<typeof getHub>>,
-  TError = ErrorType<ErrorResponse>,
->(
-  id: string,
-  options?: {
-    query?: UseQueryOptions<Awaited<ReturnType<typeof getHub>>, TError, TData>;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey = queryOptions?.queryKey ?? getGetHubQueryKey(id);
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getHub>>> = ({
-    signal,
-  }) => getHub(id, { signal, ...requestOptions });
-
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!id,
-    ...queryOptions,
-  } as UseQueryOptions<Awaited<ReturnType<typeof getHub>>, TError, TData> & {
-    queryKey: QueryKey;
-  };
-};
-
-export type GetHubQueryResult = NonNullable<Awaited<ReturnType<typeof getHub>>>;
-export type GetHubQueryError = ErrorType<ErrorResponse>;
-
-/**
- * @summary Get a hub by ID
- */
-
-export function useGetHub<
-  TData = Awaited<ReturnType<typeof getHub>>,
-  TError = ErrorType<ErrorResponse>,
->(
-  id: string,
-  options?: {
-    query?: UseQueryOptions<Awaited<ReturnType<typeof getHub>>, TError, TData>;
-    request?: SecondParameter<typeof customFetch>;
-  },
-): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetHubQueryOptions(id, options);
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-/**
- * @summary Update a hub
- */
-export const getUpdateHubUrl = (id: string) => {
-  return `/api/hubs/${id}`;
-};
-
-export const updateHub = async (
-  id: string,
-  updateHubRequest: UpdateHubRequest,
-  options?: RequestInit,
-): Promise<HubResponse> => {
-  return customFetch<HubResponse>(getUpdateHubUrl(id), {
+): Promise<UserResponse> => {
+  return customFetch<UserResponse>(getUpdateUserUrl(id), {
     ...options,
     method: "PUT",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(updateHubRequest),
+    body: JSON.stringify(updateUserRequest),
   });
 };
 
-export const getUpdateHubMutationOptions = <
+export const getUpdateUserMutationOptions = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof updateHub>>,
+    Awaited<ReturnType<typeof updateUser>>,
     TError,
-    { id: string; data: BodyType<UpdateHubRequest> },
+    { id: string; data: BodyType<UpdateUserRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof updateHub>>,
+  Awaited<ReturnType<typeof updateUser>>,
   TError,
-  { id: string; data: BodyType<UpdateHubRequest> },
+  { id: string; data: BodyType<UpdateUserRequest> },
   TContext
 > => {
-  const mutationKey = ["updateHub"];
+  const mutationKey = ["updateUser"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation &&
       "mutationKey" in options.mutation &&
@@ -495,81 +1444,81 @@ export const getUpdateHubMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof updateHub>>,
-    { id: string; data: BodyType<UpdateHubRequest> }
+    Awaited<ReturnType<typeof updateUser>>,
+    { id: string; data: BodyType<UpdateUserRequest> }
   > = (props) => {
     const { id, data } = props ?? {};
 
-    return updateHub(id, data, requestOptions);
+    return updateUser(id, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type UpdateHubMutationResult = NonNullable<
-  Awaited<ReturnType<typeof updateHub>>
+export type UpdateUserMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateUser>>
 >;
-export type UpdateHubMutationBody = BodyType<UpdateHubRequest>;
-export type UpdateHubMutationError = ErrorType<ErrorResponse>;
+export type UpdateUserMutationBody = BodyType<UpdateUserRequest>;
+export type UpdateUserMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Update a hub
+ * @summary Update a hub user
  */
-export const useUpdateHub = <
+export const useUpdateUser = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof updateHub>>,
+    Awaited<ReturnType<typeof updateUser>>,
     TError,
-    { id: string; data: BodyType<UpdateHubRequest> },
+    { id: string; data: BodyType<UpdateUserRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
-  Awaited<ReturnType<typeof updateHub>>,
+  Awaited<ReturnType<typeof updateUser>>,
   TError,
-  { id: string; data: BodyType<UpdateHubRequest> },
+  { id: string; data: BodyType<UpdateUserRequest> },
   TContext
 > => {
-  return useMutation(getUpdateHubMutationOptions(options));
+  return useMutation(getUpdateUserMutationOptions(options));
 };
 
 /**
- * @summary Delete a hub
+ * @summary Delete a hub user
  */
-export const getDeleteHubUrl = (id: string) => {
-  return `/api/hubs/${id}`;
+export const getDeleteUserUrl = (id: string) => {
+  return `/api/users/${id}`;
 };
 
-export const deleteHub = async (
+export const deleteUser = async (
   id: string,
   options?: RequestInit,
 ): Promise<DeleteResponse> => {
-  return customFetch<DeleteResponse>(getDeleteHubUrl(id), {
+  return customFetch<DeleteResponse>(getDeleteUserUrl(id), {
     ...options,
     method: "DELETE",
   });
 };
 
-export const getDeleteHubMutationOptions = <
+export const getDeleteUserMutationOptions = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof deleteHub>>,
+    Awaited<ReturnType<typeof deleteUser>>,
     TError,
     { id: string },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof deleteHub>>,
+  Awaited<ReturnType<typeof deleteUser>>,
   TError,
   { id: string },
   TContext
 > => {
-  const mutationKey = ["deleteHub"];
+  const mutationKey = ["deleteUser"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation &&
       "mutationKey" in options.mutation &&
@@ -579,81 +1528,81 @@ export const getDeleteHubMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof deleteHub>>,
+    Awaited<ReturnType<typeof deleteUser>>,
     { id: string }
   > = (props) => {
     const { id } = props ?? {};
 
-    return deleteHub(id, requestOptions);
+    return deleteUser(id, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type DeleteHubMutationResult = NonNullable<
-  Awaited<ReturnType<typeof deleteHub>>
+export type DeleteUserMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteUser>>
 >;
 
-export type DeleteHubMutationError = ErrorType<ErrorResponse>;
+export type DeleteUserMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Delete a hub
+ * @summary Delete a hub user
  */
-export const useDeleteHub = <
+export const useDeleteUser = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof deleteHub>>,
+    Awaited<ReturnType<typeof deleteUser>>,
     TError,
     { id: string },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
-  Awaited<ReturnType<typeof deleteHub>>,
+  Awaited<ReturnType<typeof deleteUser>>,
   TError,
   { id: string },
   TContext
 > => {
-  return useMutation(getDeleteHubMutationOptions(options));
+  return useMutation(getDeleteUserMutationOptions(options));
 };
 
 /**
- * @summary Toggle hub active/inactive status
+ * @summary Toggle user active/inactive
  */
-export const getToggleHubStatusUrl = (id: string) => {
-  return `/api/hubs/${id}/toggle-status`;
+export const getToggleUserStatusUrl = (id: string) => {
+  return `/api/users/${id}/toggle-status`;
 };
 
-export const toggleHubStatus = async (
+export const toggleUserStatus = async (
   id: string,
   options?: RequestInit,
-): Promise<HubResponse> => {
-  return customFetch<HubResponse>(getToggleHubStatusUrl(id), {
+): Promise<UserResponse> => {
+  return customFetch<UserResponse>(getToggleUserStatusUrl(id), {
     ...options,
     method: "PATCH",
   });
 };
 
-export const getToggleHubStatusMutationOptions = <
+export const getToggleUserStatusMutationOptions = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof toggleHubStatus>>,
+    Awaited<ReturnType<typeof toggleUserStatus>>,
     TError,
     { id: string },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof toggleHubStatus>>,
+  Awaited<ReturnType<typeof toggleUserStatus>>,
   TError,
   { id: string },
   TContext
 > => {
-  const mutationKey = ["toggleHubStatus"];
+  const mutationKey = ["toggleUserStatus"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation &&
       "mutationKey" in options.mutation &&
@@ -663,117 +1612,42 @@ export const getToggleHubStatusMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof toggleHubStatus>>,
+    Awaited<ReturnType<typeof toggleUserStatus>>,
     { id: string }
   > = (props) => {
     const { id } = props ?? {};
 
-    return toggleHubStatus(id, requestOptions);
+    return toggleUserStatus(id, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type ToggleHubStatusMutationResult = NonNullable<
-  Awaited<ReturnType<typeof toggleHubStatus>>
+export type ToggleUserStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof toggleUserStatus>>
 >;
 
-export type ToggleHubStatusMutationError = ErrorType<ErrorResponse>;
+export type ToggleUserStatusMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Toggle hub active/inactive status
+ * @summary Toggle user active/inactive
  */
-export const useToggleHubStatus = <
+export const useToggleUserStatus = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof toggleHubStatus>>,
+    Awaited<ReturnType<typeof toggleUserStatus>>,
     TError,
     { id: string },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
-  Awaited<ReturnType<typeof toggleHubStatus>>,
+  Awaited<ReturnType<typeof toggleUserStatus>>,
   TError,
   { id: string },
   TContext
 > => {
-  return useMutation(getToggleHubStatusMutationOptions(options));
+  return useMutation(getToggleUserStatusMutationOptions(options));
 };
-
-/**
- * @summary Get hub statistics summary
- */
-export const getGetHubStatsUrl = () => {
-  return `/api/hubs/stats/summary`;
-};
-
-export const getHubStats = async (
-  options?: RequestInit,
-): Promise<HubStatsResponse> => {
-  return customFetch<HubStatsResponse>(getGetHubStatsUrl(), {
-    ...options,
-    method: "GET",
-  });
-};
-
-export const getGetHubStatsQueryKey = () => {
-  return [`/api/hubs/stats/summary`] as const;
-};
-
-export const getGetHubStatsQueryOptions = <
-  TData = Awaited<ReturnType<typeof getHubStats>>,
-  TError = ErrorType<ErrorResponse>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getHubStats>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey = queryOptions?.queryKey ?? getGetHubStatsQueryKey();
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getHubStats>>> = ({
-    signal,
-  }) => getHubStats({ signal, ...requestOptions });
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getHubStats>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
-};
-
-export type GetHubStatsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getHubStats>>
->;
-export type GetHubStatsQueryError = ErrorType<ErrorResponse>;
-
-/**
- * @summary Get hub statistics summary
- */
-
-export function useGetHubStats<
-  TData = Awaited<ReturnType<typeof getHubStats>>,
-  TError = ErrorType<ErrorResponse>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getHubStats>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetHubStatsQueryOptions(options);
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}

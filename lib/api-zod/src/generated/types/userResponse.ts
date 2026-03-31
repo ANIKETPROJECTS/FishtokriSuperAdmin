@@ -5,7 +5,8 @@
  * FishTokri Admin API specification
  * OpenAPI spec version: 0.2.0
  */
+import type { HubUser } from "./hubUser";
 
-export interface DeleteResponse {
-  message: string;
+export interface UserResponse {
+  user: HubUser;
 }

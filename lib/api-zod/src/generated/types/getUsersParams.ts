@@ -5,7 +5,9 @@
  * FishTokri Admin API specification
  * OpenAPI spec version: 0.2.0
  */
+import type { GetUsersRole } from "./getUsersRole";
 
-export interface DeleteResponse {
-  message: string;
-}
+export type GetUsersParams = {
+  role?: GetUsersRole;
+  superHubId?: string;
+};

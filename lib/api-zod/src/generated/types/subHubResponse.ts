@@ -5,7 +5,8 @@
  * FishTokri Admin API specification
  * OpenAPI spec version: 0.2.0
  */
+import type { SubHub } from "./subHub";
 
-export interface DeleteResponse {
-  message: string;
+export interface SubHubResponse {
+  subHub: SubHub;
 }
