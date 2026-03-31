@@ -1,15 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, MapPin, Users, UserCheck, Tag, LogOut, ChevronDown } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/hubs", label: "Hubs", icon: Warehouse },
-  { href: "/pincodes", label: "Pincodes", icon: MapPin },
   { href: "/admin-users", label: "Admin Users", icon: Users },
-  { href: "/customers", label: "Customers", icon: UserCheck },
-  { href: "/coupons", label: "Coupons", icon: Tag },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
