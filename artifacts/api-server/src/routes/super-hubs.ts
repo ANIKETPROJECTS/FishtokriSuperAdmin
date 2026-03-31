@@ -44,6 +44,7 @@ router.get("/:id/sub-hubs", async (req, res) => {
       superHubName: superHub.name,
       name: s.name,
       location: s.location,
+      imageUrl: s.imageUrl ?? "",
       pincodes: s.pincodes as string[],
       status: s.status,
       createdAt: s.createdAt,

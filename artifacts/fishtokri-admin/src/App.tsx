@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Hubs from "@/pages/hubs";
+import HubDetail from "@/pages/hub-detail";
 import AdminUsers from "@/pages/admin-users";
 import ComingSoon from "@/pages/coming-soon";
 import { Layout } from "@/components/layout";
@@ -51,6 +52,9 @@ function Router() {
       </Route>
       <Route path="/hubs">
         <ProtectedRoute component={Hubs} />
+      </Route>
+      <Route path="/hubs/:id">
+        <ProtectedRoute component={HubDetail} />
       </Route>
       <Route path="/pincodes">
         <ProtectedRoute component={ComingSoon} />

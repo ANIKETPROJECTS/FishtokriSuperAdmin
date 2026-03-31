@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Edit2, Trash2, MapPin, ChevronDown, ChevronUp, Building2, X, UserPlus } from "lucide-react";
+import { Plus, Edit2, Trash2, MapPin, ChevronDown, ChevronUp, Building2, X, UserPlus, Layers } from "lucide-react";
 import {
   useGetSuperHubs,
   getGetSuperHubsQueryKey,
@@ -122,6 +123,7 @@ export default function Hubs() {
 
 function SuperHubCard({ hub, onEdit, onDelete }: { hub: any; onEdit: () => void; onDelete: () => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const toggleStatus = useToggleSuperHubStatus();
@@ -170,27 +172,37 @@ function SuperHubCard({ hub, onEdit, onDelete }: { hub: any; onEdit: () => void;
           </span>
         </div>
 
-        <div className="mt-auto pt-3 border-t border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors">
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={hub.status === "Active"}
-              onCheckedChange={handleToggle}
-              className="data-[state=checked]:bg-[#1A56DB] scale-90"
-            />
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
-            >
-              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
+        <div className="mt-auto pt-3 border-t border-gray-100 space-y-2">
+          <Button
+            onClick={() => setLocation(`/hubs/${hub.id}`)}
+            className="w-full h-8 text-xs font-semibold bg-[#162B4D] hover:bg-[#1E3A5F] text-white gap-2"
+            size="sm"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            View Sub Hubs
+          </Button>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors">
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={hub.status === "Active"}
+                onCheckedChange={handleToggle}
+                className="data-[state=checked]:bg-[#1A56DB] scale-90"
+              />
+              <button
+                onClick={() => setExpanded(!expanded)}
+                className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+              >
+                {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
         </div>
       </div>
