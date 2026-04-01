@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import bcrypt from "bcryptjs";
 import { HubUser } from "../db/models/hub-user.js";
 import { SuperHub } from "../db/models/super-hub.js";
 import { SubHub } from "../db/models/sub-hub.js";
@@ -51,13 +52,16 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, email, phone, role, superHubId, subHubId, status } = req.body;
+    const { name, email, phone, role, superHubId, subHubId, status, password } = req.body;
     if (!name || !email) { res.status(400).json({ error: "ValidationError", message: "Name and email are required" }); return; }
+    if (!password) { res.status(400).json({ error: "ValidationError", message: "Password is required" }); return; }
+    const hashedPassword = await bcrypt.hash(password, 10);
     const user = await HubUser.create({
       name,
       email,
       phone: phone ?? "",
       role: role ?? "sub_hub",
+      password: hashedPassword,
       superHubId: superHubId || null,
       subHubId: subHubId || null,
       status: status ?? "Active",
@@ -78,7 +82,7 @@ router.put("/:id", async (req, res) => {
   try {
     const user = await HubUser.findById(req.params.id);
     if (!user) { res.status(404).json({ error: "NotFound", message: "User not found" }); return; }
-    const { name, email, phone, role, superHubId, subHubId, status } = req.body;
+    const { name, email, phone, role, superHubId, subHubId, status, password } = req.body;
     if (name !== undefined) user.name = name;
     if (email !== undefined) user.email = email;
     if (phone !== undefined) user.phone = phone;
@@ -86,6 +90,9 @@ router.put("/:id", async (req, res) => {
     if (superHubId !== undefined) user.superHubId = superHubId || null;
     if (subHubId !== undefined) user.subHubId = subHubId || null;
     if (status !== undefined) user.status = status;
+    if (password && password.trim() !== "") {
+      user.password = await bcrypt.hash(password, 10);
+    }
     await user.save();
     const enriched = await enrichUser(user);
     res.json({ user: enriched });

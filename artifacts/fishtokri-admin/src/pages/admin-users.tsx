@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Edit2, Trash2, Mail, Phone } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Mail, Phone, Eye, EyeOff } from "lucide-react";
 import {
   useGetUsers,
   getGetUsersQueryKey,
@@ -255,6 +255,8 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<"super_admin" | "super_hub" | "sub_hub">("super_hub");
   const [superHubId, setSuperHubId] = useState("");
   const [subHubId, setSubHubId] = useState("");
@@ -273,12 +275,13 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
         setName(user.name);
         setEmail(user.email);
         setPhone(user.phone || "");
+        setPassword("");
         setRole(user.role as any);
         setSuperHubId(user.superHubId || "");
         setSubHubId(user.subHubId || "");
         setIsActive(user.status === "Active");
       } else {
-        setName(""); setEmail(""); setPhone(""); setRole("super_hub");
+        setName(""); setEmail(""); setPhone(""); setPassword(""); setRole("super_hub");
         setSuperHubId(""); setSubHubId(""); setIsActive(true);
       }
     }
@@ -286,12 +289,14 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = {
+    const payload: any = {
       name, email, phone, role,
       superHubId: role !== "super_admin" ? superHubId || undefined : undefined,
       subHubId: role === "sub_hub" ? subHubId || undefined : undefined,
       status: isActive ? "Active" : ("Inactive" as const),
     };
+    if (!isEditing) payload.password = password;
+    else if (password.trim()) payload.password = password;
     if (isEditing) {
       updateMutation.mutate({ id: user.id, data: payload }, {
         onSuccess: () => {
@@ -331,6 +336,30 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-gray-600">Email *</Label>
             <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="h-9" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600">
+              {isEditing ? "New Password" : "Password *"}
+              {isEditing && <span className="text-gray-400 font-normal ml-1">(leave blank to keep current)</span>}
+            </Label>
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                required={!isEditing}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-9 pr-9"
+                placeholder={isEditing ? "Enter new password to change" : "Min. 6 characters"}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-gray-600">Role</Label>
