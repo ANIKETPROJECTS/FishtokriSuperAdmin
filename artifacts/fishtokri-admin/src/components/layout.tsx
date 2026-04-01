@@ -19,7 +19,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   };
 
   const adminDataStr = localStorage.getItem("fishtokri_admin");
-  const adminName = adminDataStr ? JSON.parse(adminDataStr).name : "Super Admin";
+  const adminName = adminDataStr ? JSON.parse(adminDataStr).name : "Master Admin";
 
   return (
     <div className="flex min-h-screen bg-[#F4F6FA]">
@@ -33,7 +33,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Super Admin Label */}
         <div className="px-5 pt-5 pb-2">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">Super Admin</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">Master Admin</p>
         </div>
 
         {/* Nav */}

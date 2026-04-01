@@ -66,7 +66,7 @@ function getInitials(name: string) {
 
 function RoleBadge({ role }: { role: string }) {
   if (role === "super_admin")
-    return <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold bg-[#162B4D] text-white">Super Admin</span>;
+    return <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold bg-[#162B4D] text-white">Master Admin</span>;
   if (role === "super_hub")
     return <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold bg-[#1A56DB] text-white">Super Hub</span>;
   return <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold bg-teal-600 text-white">Sub Hub</span>;
@@ -337,7 +337,7 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
             <Select value={role} onValueChange={(v: any) => { setRole(v); setSuperHubId(""); setSubHubId(""); }}>
               <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="super_admin">Super Admin</SelectItem>
+                <SelectItem value="super_admin">Master Admin</SelectItem>
                 <SelectItem value="super_hub">Super Hub Admin</SelectItem>
                 <SelectItem value="sub_hub">Sub Hub Admin</SelectItem>
               </SelectContent>

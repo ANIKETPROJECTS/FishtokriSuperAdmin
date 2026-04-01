@@ -1,9 +1,10 @@
-import { Switch, Route, Router as WouterRouter, useLocation, Redirect } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEffect } from "react";
 import NotFound from "@/pages/not-found";
+import RoleSelect from "@/pages/role-select";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Hubs from "@/pages/hubs";
@@ -27,7 +28,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   useEffect(() => {
     if (!token) {
-      setLocation("/login");
+      setLocation("/");
     }
   }, [token, setLocation]);
 
@@ -43,10 +44,8 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 function Router() {
   return (
     <Switch>
+      <Route path="/" component={RoleSelect} />
       <Route path="/login" component={Login} />
-      <Route path="/">
-        <Redirect to="/dashboard" />
-      </Route>
       <Route path="/dashboard">
         <ProtectedRoute component={Dashboard} />
       </Route>

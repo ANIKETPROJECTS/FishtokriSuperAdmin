@@ -30,7 +30,7 @@ router.post("/login", (req, res) => {
   const admin = {
     id: "super-admin-1",
     email: ADMIN_EMAIL,
-    name: "Super Admin",
+    name: "Master Admin",
   };
 
   const token = jwt.sign({ adminId: admin.id, email: admin.email }, JWT_SECRET, {
