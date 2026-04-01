@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Plus, Search, Edit2, Trash2, Mail, Phone, Eye, EyeOff } from "lucide-react";
 import {
   useGetUsers,
@@ -10,8 +10,6 @@ import {
   useToggleUserStatus,
   useGetSuperHubs,
   getGetSuperHubsQueryKey,
-  useGetSubHubsBySuperHub,
-  getGetSubHubsBySuperHubQueryKey,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -19,7 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +41,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+function getToken() {
+  return localStorage.getItem("fishtokri_token") || "";
+}
+
+function useAllSubHubs() {
+  return useQuery({
+    queryKey: ["all-sub-hubs"],
+    queryFn: async () => {
+      const base = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+      const res = await fetch(`${base}/api/sub-hubs`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch sub hubs");
+      return res.json() as Promise<{ subHubs: any[]; total: number }>;
+    },
+  });
+}
 
 const AVATAR_COLORS = [
   "bg-blue-100 text-blue-700",
@@ -120,7 +135,6 @@ export default function AdminUsers() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        {/* Search */}
         <div className="p-4 border-b border-gray-100">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -203,15 +217,19 @@ export default function AdminUsers() {
                           )}
                         </div>
                       ) : (
-                        <div className="text-sm">
-                          {user.superHubName && (
-                            <p className="font-medium text-[#162B4D]">{user.superHubName}</p>
-                          )}
-                          {user.subHubName && (
-                            <p className="text-xs text-gray-500">Sub Hub – {user.subHubName}</p>
-                          )}
-                          {!user.superHubName && !user.subHubName && (
-                            <span className="text-gray-400 italic">—</span>
+                        <div className="flex flex-wrap gap-1">
+                          {Array.isArray((user as any).subHubNames) && (user as any).subHubNames.length > 0 ? (
+                            (user as any).subHubNames.map((n: string) => (
+                              <span key={n} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-teal-50 text-teal-700">
+                                {n}
+                              </span>
+                            ))
+                          ) : (user as any).subHubName ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-teal-50 text-teal-700">
+                              {(user as any).subHubName}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 italic text-sm">—</span>
                           )}
                         </div>
                       )}
@@ -268,6 +286,8 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
     query: { queryKey: getGetSuperHubsQueryKey() },
   });
 
+  const { data: allSubHubsData } = useAllSubHubs();
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -275,16 +295,8 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<"super_admin" | "super_hub" | "sub_hub">("super_hub");
   const [superHubIds, setSuperHubIds] = useState<string[]>([]);
-  const [superHubId, setSuperHubId] = useState("");
-  const [subHubId, setSubHubId] = useState("");
+  const [subHubIds, setSubHubIds] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
-
-  const { data: subHubsData } = useGetSubHubsBySuperHub(superHubId, {
-    query: {
-      queryKey: getGetSubHubsBySuperHubQueryKey(superHubId),
-      enabled: !!superHubId && role === "sub_hub",
-    },
-  });
 
   useEffect(() => {
     if (isOpen) {
@@ -298,12 +310,14 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
           ? user.superHubIds
           : user.superHubId ? [user.superHubId] : [];
         setSuperHubIds(ids);
-        setSuperHubId(ids[0] || "");
-        setSubHubId(user.subHubId || "");
+        const subIds: string[] = Array.isArray(user.subHubIds) && user.subHubIds.length > 0
+          ? user.subHubIds
+          : user.subHubId ? [user.subHubId] : [];
+        setSubHubIds(subIds);
         setIsActive(user.status === "Active");
       } else {
         setName(""); setEmail(""); setPhone(""); setPassword(""); setRole("super_hub");
-        setSuperHubIds([]); setSuperHubId(""); setSubHubId(""); setIsActive(true);
+        setSuperHubIds([]); setSubHubIds([]); setIsActive(true);
       }
     }
   }, [isOpen, user]);
@@ -313,8 +327,7 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
     const payload: any = {
       name, email, phone, role,
       superHubIds: role === "super_hub" ? superHubIds : undefined,
-      superHubId: role === "sub_hub" ? superHubId || undefined : undefined,
-      subHubId: role === "sub_hub" ? subHubId || undefined : undefined,
+      subHubIds: role === "sub_hub" ? subHubIds : undefined,
       status: isActive ? "Active" : ("Inactive" as const),
     };
     if (!isEditing) payload.password = password;
@@ -324,6 +337,7 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
         onSuccess: () => {
           toast({ title: "User updated" });
           queryClient.invalidateQueries({ queryKey: getGetUsersQueryKey() });
+          queryClient.invalidateQueries({ queryKey: ["all-sub-hubs"] });
           onClose();
         },
       });
@@ -338,9 +352,11 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
     }
   };
 
+  const allSubHubs = allSubHubsData?.subHubs || [];
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-[#162B4D]">{isEditing ? "Edit User" : "Add New User"}</DialogTitle>
         </DialogHeader>
@@ -385,7 +401,7 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-gray-600">Role</Label>
-            <Select value={role} onValueChange={(v: any) => { setRole(v); setSuperHubId(""); setSubHubId(""); }}>
+            <Select value={role} onValueChange={(v: any) => { setRole(v); setSuperHubIds([]); setSubHubIds([]); }}>
               <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="super_admin">Master Admin</SelectItem>
@@ -394,6 +410,7 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
               </SelectContent>
             </Select>
           </div>
+
           {role === "super_hub" && (
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-gray-600">Assigned Super Hubs</Label>
@@ -430,32 +447,47 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
               )}
             </div>
           )}
+
           {role === "sub_hub" && (
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Assigned Super Hub</Label>
-              <Select value={superHubId} onValueChange={(v) => { setSuperHubId(v); setSubHubId(""); }}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Select super hub" /></SelectTrigger>
-                <SelectContent>
-                  {superHubsData?.superHubs.map((hub) => (
-                    <SelectItem key={hub.id} value={hub.id}>{hub.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label className="text-xs font-semibold text-gray-600">Assigned Sub Hubs</Label>
+              <div className="border border-gray-200 rounded-lg p-2 max-h-48 overflow-y-auto bg-white space-y-1">
+                {!allSubHubs.length ? (
+                  <p className="text-xs text-gray-400 px-2 py-1">No sub hubs available</p>
+                ) : (
+                  allSubHubs.map((hub: any) => {
+                    const checked = subHubIds.includes(hub.id);
+                    return (
+                      <label key={hub.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setSubHubIds(checked
+                              ? subHubIds.filter((id) => id !== hub.id)
+                              : [...subHubIds, hub.id]
+                            );
+                          }}
+                          className="w-3.5 h-3.5 accent-teal-600"
+                        />
+                        <span className="text-sm text-gray-700">{hub.name}</span>
+                        {hub.superHubName && (
+                          <span className="text-[10px] text-gray-400 ml-1">· {hub.superHubName}</span>
+                        )}
+                        {hub.status !== "Active" && (
+                          <span className="text-[10px] text-red-500 ml-auto">Inactive</span>
+                        )}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+              {subHubIds.length > 0 && (
+                <p className="text-[11px] text-teal-600">{subHubIds.length} sub hub{subHubIds.length > 1 ? "s" : ""} selected</p>
+              )}
             </div>
           )}
-          {role === "sub_hub" && superHubId && (
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Assigned Sub Hub</Label>
-              <Select value={subHubId} onValueChange={setSubHubId}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Select sub hub" /></SelectTrigger>
-                <SelectContent>
-                  {subHubsData?.subHubs.map((hub) => (
-                    <SelectItem key={hub.id} value={hub.id}>{hub.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+
           <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
             <Label className="text-sm text-gray-700">Active</Label>
             <Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" />

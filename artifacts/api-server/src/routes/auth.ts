@@ -13,7 +13,7 @@ const JWT_SECRET = process.env.SESSION_SECRET || "fishtokri-secret-key-change-in
 const loginSchema = z.object({
   email: z.string().min(1),
   password: z.string().min(1),
-  loginRole: z.enum(["master_admin", "super_hub"]).optional(),
+  loginRole: z.enum(["master_admin", "super_hub", "sub_hub"]).optional(),
 });
 
 router.post("/login", async (req, res) => {
@@ -37,7 +37,7 @@ router.post("/login", async (req, res) => {
     return;
   }
 
-  // Super Hub portal: always look up DB
+  // Super Hub or Sub Hub portal: look up DB
   try {
     const user = await HubUser.findOne({ email });
     if (!user) {
@@ -48,20 +48,29 @@ router.post("/login", async (req, res) => {
       res.status(403).json({ error: "Forbidden", message: "Your account has been deactivated. Contact your administrator." });
       return;
     }
-    // Super Hub portal only accepts super_hub role users
-    if (user.role !== "super_hub") {
-      res.status(403).json({ error: "Forbidden", message: "Your account does not have Super Hub portal access." });
+
+    const expectedRole = loginRole === "sub_hub" ? "sub_hub" : "super_hub";
+    const portalLabel = loginRole === "sub_hub" ? "Sub Hub" : "Super Hub";
+    if (user.role !== expectedRole) {
+      res.status(403).json({ error: "Forbidden", message: `Your account does not have ${portalLabel} portal access.` });
       return;
     }
+
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
       res.status(401).json({ error: "Unauthorized", message: "Invalid credentials. Please check your email and password." });
       return;
     }
+
     const resolvedSuperHubIds: string[] =
       Array.isArray((user as any).superHubIds) && (user as any).superHubIds.length > 0
         ? (user as any).superHubIds.map((id: any) => String(id))
         : user.superHubId ? [String(user.superHubId)] : [];
+
+    const resolvedSubHubIds: string[] =
+      Array.isArray((user as any).subHubIds) && (user as any).subHubIds.length > 0
+        ? (user as any).subHubIds.map((id: any) => String(id))
+        : user.subHubId ? [String(user.subHubId)] : [];
 
     const admin = {
       id: String(user._id),
@@ -70,7 +79,8 @@ router.post("/login", async (req, res) => {
       role: user.role,
       superHubId: resolvedSuperHubIds[0] ?? null,
       superHubIds: resolvedSuperHubIds,
-      subHubId: user.subHubId ? String(user.subHubId) : null,
+      subHubId: resolvedSubHubIds[0] ?? null,
+      subHubIds: resolvedSubHubIds,
     };
     const token = jwt.sign({ adminId: admin.id, email: admin.email, role: admin.role }, JWT_SECRET, { expiresIn: "7d" });
     res.json({ token, admin });

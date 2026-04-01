@@ -4,7 +4,7 @@ import { useLogin } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, ShieldCheck, Warehouse } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Warehouse, Store } from "lucide-react";
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -20,26 +20,35 @@ export default function Login() {
   useEffect(() => {
     const token = localStorage.getItem("fishtokri_token");
     if (token) {
-      setLocation("/dashboard");
+      const admin = (() => {
+        try { return JSON.parse(localStorage.getItem("fishtokri_admin") || "{}"); } catch { return {}; }
+      })();
+      if (admin?.role === "super_hub") setLocation("/super-hub-dashboard");
+      else if (admin?.role === "sub_hub") setLocation("/sub-hub-dashboard");
+      else setLocation("/dashboard");
     }
   }, [setLocation]);
 
   const isMasterAdmin = role === "master_admin" || !role;
-  const roleLabel = isMasterAdmin ? "Master Admin" : "Super Hub";
-  const RoleIcon = isMasterAdmin ? ShieldCheck : Warehouse;
-  const iconColor = isMasterAdmin ? "text-amber-400" : "text-[#4B9EFF]";
+  const isSubHub = role === "sub_hub";
+
+  const roleLabel = isMasterAdmin ? "Master Admin" : isSubHub ? "Sub Hub" : "Super Hub";
+  const RoleIcon = isMasterAdmin ? ShieldCheck : isSubHub ? Store : Warehouse;
+  const iconColor = isMasterAdmin ? "text-amber-400" : isSubHub ? "text-teal-400" : "text-[#4B9EFF]";
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     loginMutation.mutate(
-      { data: { email, password, loginRole: role || "master_admin" } as any },
+      { data: { email, password, loginRole: (role || "master_admin") as any } },
       {
         onSuccess: (data) => {
           localStorage.setItem("fishtokri_token", data.token);
           localStorage.setItem("fishtokri_admin", JSON.stringify(data.admin));
           if ((data.admin as any).role === "super_hub") {
             setLocation("/super-hub-dashboard");
+          } else if ((data.admin as any).role === "sub_hub") {
+            setLocation("/sub-hub-dashboard");
           } else {
             setLocation("/dashboard");
           }

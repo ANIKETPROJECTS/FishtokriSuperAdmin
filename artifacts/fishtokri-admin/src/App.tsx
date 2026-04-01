@@ -8,6 +8,7 @@ import RoleSelect from "@/pages/role-select";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import SuperHubDashboard from "@/pages/super-hub-dashboard";
+import SubHubDashboard from "@/pages/sub-hub-dashboard";
 import Hubs from "@/pages/hubs";
 import HubDetail from "@/pages/hub-detail";
 import AdminUsers from "@/pages/admin-users";
@@ -46,6 +47,8 @@ function ProtectedRoute({ component: Component, requiredRole }: { component: Rea
     if (requiredRole && admin?.role !== requiredRole) {
       if (admin?.role === "super_hub") {
         setLocation("/super-hub-dashboard");
+      } else if (admin?.role === "sub_hub") {
+        setLocation("/sub-hub-dashboard");
       } else {
         setLocation("/dashboard");
       }
@@ -117,6 +120,11 @@ function App() {
             </Route>
             <Route path="/my-hub/:id">
               <ProtectedRoute component={HubDetail} requiredRole="super_hub" />
+            </Route>
+
+            {/* Sub Hub routes */}
+            <Route path="/sub-hub-dashboard">
+              <ProtectedRoute component={SubHubDashboard} requiredRole="sub_hub" />
             </Route>
 
             <Route component={NotFound} />

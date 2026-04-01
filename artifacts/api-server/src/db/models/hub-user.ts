@@ -10,6 +10,7 @@ const hubUserSchema = new mongoose.Schema(
     superHubId: { type: mongoose.Schema.Types.ObjectId, ref: "SuperHub", default: null },
     superHubIds: { type: [mongoose.Schema.Types.ObjectId], ref: "SuperHub", default: [] },
     subHubId: { type: mongoose.Schema.Types.ObjectId, ref: "SubHub", default: null },
+    subHubIds: { type: [mongoose.Schema.Types.ObjectId], ref: "SubHub", default: [] },
     status: { type: String, default: "Active" },
   },
   { timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } }

@@ -6,6 +6,31 @@ import { requireAuth } from "../middlewares/auth.js";
 const router: IRouter = Router();
 router.use(requireAuth as any);
 
+router.get("/", async (req, res) => {
+  try {
+    const subs = await SubHub.find({}).sort({ createdAt: 1 });
+    const superHubIds = [...new Set(subs.map((s) => String(s.superHubId)))];
+    const superHubs = await SuperHub.find({ _id: { $in: superHubIds } });
+    const superHubMap: Record<string, string> = {};
+    for (const sh of superHubs) superHubMap[String(sh._id)] = sh.name;
+    const result = subs.map((sub) => ({
+      id: String(sub._id),
+      superHubId: String(sub.superHubId),
+      superHubName: superHubMap[String(sub.superHubId)] ?? "",
+      name: sub.name,
+      location: sub.location,
+      imageUrl: sub.imageUrl ?? "",
+      pincodes: sub.pincodes,
+      status: sub.status,
+      createdAt: sub.createdAt,
+    }));
+    res.json({ subHubs: result, total: result.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get all sub hubs");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch sub hubs" });
+  }
+});
+
 router.put("/:id", async (req, res) => {
   try {
     const sub = await SubHub.findById(req.params.id);

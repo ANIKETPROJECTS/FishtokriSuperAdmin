@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, ChevronDown, Building2 } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, ChevronDown, Building2, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const masterAdminNavItems = [
@@ -30,6 +30,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   };
 
   const isSuperHub = role === "super_hub";
+  const isSubHub = role === "sub_hub";
+
   const superHubIds: string[] = admin?.superHubIds?.length > 0
     ? admin.superHubIds
     : admin?.superHubId ? [admin.superHubId] : [];
@@ -46,8 +48,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
       matchPrefix: "/my-hub",
     },
   ];
-  const navItems = isSuperHub ? superHubNavItems : masterAdminNavItems;
-  const roleLabel = isSuperHub ? "Super Hub" : "Master Admin";
+
+  const subHubNavItems = [
+    { href: "/sub-hub-dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/sub-hub-dashboard", label: "My Sub Hubs", icon: Store },
+  ];
+
+  const navItems = isSuperHub ? superHubNavItems : isSubHub ? subHubNavItems : masterAdminNavItems;
+  const roleLabel = isSuperHub ? "Super Hub" : isSubHub ? "Sub Hub" : "Master Admin";
 
   return (
     <div className="flex min-h-screen bg-[#F4F6FA]">

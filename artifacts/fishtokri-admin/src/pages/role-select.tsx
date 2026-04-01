@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { ShieldCheck, Warehouse } from "lucide-react";
+import { ShieldCheck, Warehouse, Store } from "lucide-react";
 import { useEffect } from "react";
 
 export default function RoleSelect() {
@@ -8,7 +8,12 @@ export default function RoleSelect() {
   useEffect(() => {
     const token = localStorage.getItem("fishtokri_token");
     if (token) {
-      setLocation("/dashboard");
+      const admin = (() => {
+        try { return JSON.parse(localStorage.getItem("fishtokri_admin") || "{}"); } catch { return {}; }
+      })();
+      if (admin?.role === "super_hub") setLocation("/super-hub-dashboard");
+      else if (admin?.role === "sub_hub") setLocation("/sub-hub-dashboard");
+      else setLocation("/dashboard");
     }
   }, [setLocation]);
 
@@ -22,7 +27,7 @@ export default function RoleSelect() {
         />
       </div>
 
-      <div className="z-10 w-full max-w-lg mx-4">
+      <div className="z-10 w-full max-w-2xl mx-4">
         <div className="rounded-3xl bg-sky-200/90 border border-sky-300/60 shadow-2xl px-8 py-10">
           <div className="flex flex-col items-center mb-8">
             <img
@@ -38,10 +43,10 @@ export default function RoleSelect() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-3 gap-4">
             <button
               onClick={() => setLocation("/login?role=master_admin")}
-              className="group flex flex-col items-center gap-4 p-8 rounded-2xl bg-white/60 border border-sky-300/50 hover:bg-white/80 hover:border-amber-400 transition-all duration-200 cursor-pointer"
+              className="group flex flex-col items-center gap-4 p-6 rounded-2xl bg-white/60 border border-sky-300/50 hover:bg-white/80 hover:border-amber-400 transition-all duration-200 cursor-pointer"
             >
               <div className="w-14 h-14 rounded-xl bg-[#162B4D] flex items-center justify-center shadow-lg group-hover:bg-amber-400/20 transition-colors duration-200">
                 <ShieldCheck className="w-7 h-7 text-amber-400" />
@@ -54,7 +59,7 @@ export default function RoleSelect() {
 
             <button
               onClick={() => setLocation("/login?role=super_hub")}
-              className="group flex flex-col items-center gap-4 p-8 rounded-2xl bg-white/60 border border-sky-300/50 hover:bg-white/80 hover:border-[#1A56DB] transition-all duration-200 cursor-pointer"
+              className="group flex flex-col items-center gap-4 p-6 rounded-2xl bg-white/60 border border-sky-300/50 hover:bg-white/80 hover:border-[#1A56DB] transition-all duration-200 cursor-pointer"
             >
               <div className="w-14 h-14 rounded-xl bg-[#162B4D] flex items-center justify-center shadow-lg group-hover:bg-[#1A56DB]/20 transition-colors duration-200">
                 <Warehouse className="w-7 h-7 text-[#4B9EFF]" />
@@ -62,6 +67,19 @@ export default function RoleSelect() {
               <div className="text-center">
                 <p className="text-[#162B4D] font-bold text-base leading-tight">Super Hub</p>
                 <p className="text-slate-500 text-xs mt-1">Hub management access</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setLocation("/login?role=sub_hub")}
+              className="group flex flex-col items-center gap-4 p-6 rounded-2xl bg-white/60 border border-sky-300/50 hover:bg-white/80 hover:border-teal-500 transition-all duration-200 cursor-pointer"
+            >
+              <div className="w-14 h-14 rounded-xl bg-[#162B4D] flex items-center justify-center shadow-lg group-hover:bg-teal-500/20 transition-colors duration-200">
+                <Store className="w-7 h-7 text-teal-400" />
+              </div>
+              <div className="text-center">
+                <p className="text-[#162B4D] font-bold text-base leading-tight">Sub Hub</p>
+                <p className="text-slate-500 text-xs mt-1">Local hub access</p>
               </div>
             </button>
           </div>
