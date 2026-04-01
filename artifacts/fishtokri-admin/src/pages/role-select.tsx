@@ -16,11 +16,11 @@ export default function RoleSelect() {
     <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden bg-[#1E3A5F]">
       <div className="absolute inset-0 z-0">
         <img
-          src="https://image.pollinations.ai/prompt/cinematic%20deep%20blue%20ocean%20underwater%20light%20rays%20realistic"
-          alt="Ocean Background"
-          className="w-full h-full object-cover opacity-60"
+          src="/bg.jpg"
+          alt="FishTokri Background"
+          className="w-full h-full object-cover opacity-80"
         />
-        <div className="absolute inset-0 bg-[#1E3A5F]/40 mix-blend-multiply" />
+        <div className="absolute inset-0 bg-[#0a1628]/60" />
       </div>
 
       <div className="z-10 w-full max-w-lg px-6 py-10">
