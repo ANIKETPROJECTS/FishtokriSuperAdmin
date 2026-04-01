@@ -23,7 +23,7 @@ export default function RoleSelect() {
       </div>
 
       <div className="z-10 w-full max-w-lg mx-4">
-        <div className="rounded-3xl bg-black/50 backdrop-blur-xl border border-white/15 shadow-2xl px-8 py-10">
+        <div className="rounded-3xl bg-sky-300/30 backdrop-blur-xl border border-sky-200/40 shadow-2xl px-8 py-10">
           <div className="flex flex-col items-center mb-8">
             <img
               src="/logo.png"
