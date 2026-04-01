@@ -51,7 +51,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const subHubNavItems = [
     { href: "/sub-hub-dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/sub-hub-dashboard", label: "My Sub Hubs", icon: Store },
+    { href: "/my-sub-hubs", label: "My Sub Hubs", icon: Store },
   ];
 
   const navItems = isSuperHub ? superHubNavItems : isSubHub ? subHubNavItems : masterAdminNavItems;

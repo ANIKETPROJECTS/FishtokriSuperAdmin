@@ -9,6 +9,7 @@ import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import SuperHubDashboard from "@/pages/super-hub-dashboard";
 import SubHubDashboard from "@/pages/sub-hub-dashboard";
+import MySubHubs from "@/pages/my-sub-hubs";
 import Hubs from "@/pages/hubs";
 import HubDetail from "@/pages/hub-detail";
 import AdminUsers from "@/pages/admin-users";
@@ -125,6 +126,9 @@ function App() {
             {/* Sub Hub routes */}
             <Route path="/sub-hub-dashboard">
               <ProtectedRoute component={SubHubDashboard} requiredRole="sub_hub" />
+            </Route>
+            <Route path="/my-sub-hubs">
+              <ProtectedRoute component={MySubHubs} requiredRole="sub_hub" />
             </Route>
 
             <Route component={NotFound} />
