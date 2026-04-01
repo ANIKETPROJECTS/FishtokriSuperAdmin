@@ -28,7 +28,7 @@ export default function RoleSelect() {
             <img
               src="/logo.png"
               alt="FishTokri Logo"
-              className="w-32 h-32 mb-4 drop-shadow-xl object-contain"
+              className="w-40 h-40 mb-4 drop-shadow-xl object-contain"
             />
             <h1 className="text-3xl font-bold text-[#162B4D] tracking-tight text-center">
               FishTokri Admin

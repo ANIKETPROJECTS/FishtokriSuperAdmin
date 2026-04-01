@@ -57,10 +57,10 @@ export default function Login() {
         />
       </div>
 
-      <div className="z-10 w-full max-w-md p-8 md:p-10 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
+      <div className="z-10 w-full max-w-md p-8 md:p-10 rounded-3xl bg-sky-200/90 border border-sky-300/60 shadow-2xl">
         <button
           onClick={() => setLocation("/")}
-          className="flex items-center gap-1.5 text-white/50 hover:text-white text-xs mb-6 transition-colors"
+          className="flex items-center gap-1.5 text-slate-500 hover:text-[#162B4D] text-xs mb-6 transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           Back to role selection
@@ -71,16 +71,16 @@ export default function Login() {
             <img
               src="/logo.png"
               alt="FishTokri Logo"
-              className="w-28 h-28 drop-shadow-xl object-contain"
+              className="w-36 h-36 drop-shadow-xl object-contain"
             />
           </div>
 
-          <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 mb-3">
+          <div className="flex items-center gap-2 bg-white/60 border border-sky-300/50 rounded-full px-4 py-1.5 mb-3">
             <RoleIcon className={`w-4 h-4 ${iconColor}`} />
-            <span className="text-white text-xs font-semibold">{roleLabel}</span>
+            <span className="text-[#162B4D] text-xs font-semibold">{roleLabel}</span>
           </div>
 
-          <h1 className="text-2xl font-bold text-white tracking-tight relative pb-2 drop-shadow-md text-center" data-testid="login-heading">
+          <h1 className="text-2xl font-bold text-[#162B4D] tracking-tight relative pb-2 text-center" data-testid="login-heading">
             Sign in to FishTokri
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-[#1A56DB] rounded-full shadow-sm" />
           </h1>
@@ -88,7 +88,7 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
-            <Label className="text-white font-medium text-sm drop-shadow-sm">Email Address</Label>
+            <Label className="text-[#162B4D] font-medium text-sm">Email Address</Label>
             <Input
               type="email"
               required
@@ -100,7 +100,7 @@ export default function Login() {
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-white font-medium text-sm drop-shadow-sm">Password</Label>
+            <Label className="text-[#162B4D] font-medium text-sm">Password</Label>
             <Input
               type="password"
               required
