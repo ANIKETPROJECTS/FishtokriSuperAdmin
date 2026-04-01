@@ -25,13 +25,9 @@ router.post("/login", async (req, res) => {
 
   const { email, password, loginRole } = parsed.data;
 
-  if (email === ADMIN_EMAIL) {
-    // Master admin hardcoded credentials — only accessible via the master_admin portal
-    if (loginRole === "super_hub") {
-      res.status(403).json({ error: "Forbidden", message: "This account does not have Super Hub access. Use the Master Admin portal." });
-      return;
-    }
-    if (password !== ADMIN_PASSWORD) {
+  // Master Admin portal: only accepts hardcoded credentials, never DB users
+  if (loginRole === "master_admin") {
+    if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
       res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
       return;
     }
@@ -41,29 +37,25 @@ router.post("/login", async (req, res) => {
     return;
   }
 
+  // Super Hub portal: always look up DB
   try {
     const user = await HubUser.findOne({ email });
     if (!user) {
-      res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
+      res.status(401).json({ error: "Unauthorized", message: "Invalid credentials. Please check your email and password." });
       return;
     }
     if (user.status !== "Active") {
       res.status(403).json({ error: "Forbidden", message: "Your account has been deactivated. Contact your administrator." });
       return;
     }
-    // Role-portal validation: super_hub portal only accepts super_hub role users
-    if (loginRole === "super_hub" && user.role !== "super_hub") {
+    // Super Hub portal only accepts super_hub role users
+    if (user.role !== "super_hub") {
       res.status(403).json({ error: "Forbidden", message: "Your account does not have Super Hub portal access." });
-      return;
-    }
-    // Master admin portal should not accept DB users (they should use their own portal)
-    if (loginRole === "master_admin") {
-      res.status(403).json({ error: "Forbidden", message: "This account does not have Master Admin access." });
       return;
     }
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
-      res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
+      res.status(401).json({ error: "Unauthorized", message: "Invalid credentials. Please check your email and password." });
       return;
     }
     const admin = {
