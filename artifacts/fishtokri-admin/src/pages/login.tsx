@@ -53,9 +53,8 @@ export default function Login() {
         <img
           src="/bg.jpg"
           alt="FishTokri Background"
-          className="w-full h-full object-cover opacity-80"
+          className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-[#0a1628]/60" />
       </div>
 
       <div className="z-10 w-full max-w-md p-8 md:p-10 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
@@ -72,7 +71,7 @@ export default function Login() {
             <img
               src="/logo.png"
               alt="FishTokri Logo"
-              className="w-16 h-16 drop-shadow-xl object-contain"
+              className="w-28 h-28 drop-shadow-xl object-contain"
             />
           </div>
 

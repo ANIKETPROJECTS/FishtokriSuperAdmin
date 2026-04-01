@@ -18,9 +18,8 @@ export default function RoleSelect() {
         <img
           src="/bg.jpg"
           alt="FishTokri Background"
-          className="w-full h-full object-cover opacity-80"
+          className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-[#0a1628]/60" />
       </div>
 
       <div className="z-10 w-full max-w-lg px-6 py-10">
@@ -28,7 +27,7 @@ export default function RoleSelect() {
           <img
             src="/logo.png"
             alt="FishTokri Logo"
-            className="w-20 h-20 mb-4 drop-shadow-xl object-contain"
+            className="w-32 h-32 mb-4 drop-shadow-xl object-contain"
           />
           <h1 className="text-3xl font-bold text-white tracking-tight drop-shadow-md text-center">
             FishTokri Admin
