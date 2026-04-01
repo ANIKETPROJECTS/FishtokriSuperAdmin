@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, ChevronDown, Building2, Store } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, ChevronDown, Building2, Store, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const masterAdminNavItems = [
@@ -31,6 +31,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const isSuperHub = role === "super_hub";
   const isSubHub = role === "sub_hub";
+  const isDelivery = role === "delivery_person";
 
   const superHubIds: string[] = admin?.superHubIds?.length > 0
     ? admin.superHubIds
@@ -54,8 +55,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/my-sub-hubs", label: "My Sub Hubs", icon: Store },
   ];
 
-  const navItems = isSuperHub ? superHubNavItems : isSubHub ? subHubNavItems : masterAdminNavItems;
-  const roleLabel = isSuperHub ? "Super Hub" : isSubHub ? "Sub Hub" : "Master Admin";
+  const deliveryNavItems = [
+    { href: "/delivery-dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/my-deliveries", label: "My Hubs", icon: Truck },
+  ];
+
+  const navItems = isSuperHub ? superHubNavItems : isSubHub ? subHubNavItems : isDelivery ? deliveryNavItems : masterAdminNavItems;
+  const roleLabel = isSuperHub ? "Super Hub" : isSubHub ? "Sub Hub" : isDelivery ? "Delivery" : "Master Admin";
 
   return (
     <div className="flex min-h-screen bg-[#F4F6FA]">

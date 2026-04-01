@@ -84,6 +84,8 @@ function RoleBadge({ role }: { role: string }) {
     return <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold bg-[#162B4D] text-white">Master Admin</span>;
   if (role === "super_hub")
     return <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold bg-[#1A56DB] text-white">Super Hub</span>;
+  if (role === "delivery_person")
+    return <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold bg-orange-500 text-white">Delivery Person</span>;
   return <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold bg-teal-600 text-white">Sub Hub</span>;
 }
 
@@ -216,6 +218,26 @@ export default function AdminUsers() {
                             <span className="text-gray-400 italic text-sm">—</span>
                           )}
                         </div>
+                      ) : user.role === "delivery_person" ? (
+                        <div className="flex flex-wrap gap-1">
+                          {Array.isArray((user as any).superHubNames) && (user as any).superHubNames.length > 0 && (
+                            (user as any).superHubNames.map((n: string) => (
+                              <span key={n} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                                {n}
+                              </span>
+                            ))
+                          )}
+                          {Array.isArray((user as any).subHubNames) && (user as any).subHubNames.length > 0 && (
+                            (user as any).subHubNames.map((n: string) => (
+                              <span key={n} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-teal-50 text-teal-700">
+                                {n}
+                              </span>
+                            ))
+                          )}
+                          {!((user as any).superHubNames?.length) && !((user as any).subHubNames?.length) && (
+                            <span className="text-gray-400 italic text-sm">—</span>
+                          )}
+                        </div>
                       ) : (
                         <div className="flex flex-wrap gap-1">
                           {Array.isArray((user as any).subHubNames) && (user as any).subHubNames.length > 0 ? (
@@ -293,7 +315,7 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<"super_admin" | "super_hub" | "sub_hub">("super_hub");
+  const [role, setRole] = useState<"super_admin" | "super_hub" | "sub_hub" | "delivery_person">("super_hub");
   const [superHubIds, setSuperHubIds] = useState<string[]>([]);
   const [subHubIds, setSubHubIds] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
@@ -326,8 +348,8 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
     e.preventDefault();
     const payload: any = {
       name, email, phone, role,
-      superHubIds: role === "super_hub" ? superHubIds : undefined,
-      subHubIds: role === "sub_hub" ? subHubIds : undefined,
+      superHubIds: (role === "super_hub" || role === "delivery_person") ? superHubIds : undefined,
+      subHubIds: (role === "sub_hub" || role === "delivery_person") ? subHubIds : undefined,
       status: isActive ? "Active" : ("Inactive" as const),
     };
     if (!isEditing) payload.password = password;
@@ -407,6 +429,7 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
                 <SelectItem value="super_admin">Master Admin</SelectItem>
                 <SelectItem value="super_hub">Super Hub Admin</SelectItem>
                 <SelectItem value="sub_hub">Sub Hub Admin</SelectItem>
+                <SelectItem value="delivery_person">Delivery Person</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -445,6 +468,62 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
               {superHubIds.length > 0 && (
                 <p className="text-[11px] text-[#1A56DB]">{superHubIds.length} hub{superHubIds.length > 1 ? "s" : ""} selected</p>
               )}
+            </div>
+          )}
+
+          {role === "delivery_person" && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-600">Assigned Super Hubs</Label>
+                <div className="border border-gray-200 rounded-lg p-2 max-h-36 overflow-y-auto bg-white space-y-1">
+                  {!superHubsData?.superHubs?.length ? (
+                    <p className="text-xs text-gray-400 px-2 py-1">No super hubs available</p>
+                  ) : (
+                    superHubsData.superHubs.map((hub) => {
+                      const checked = superHubIds.includes(hub.id);
+                      return (
+                        <label key={hub.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setSuperHubIds(checked ? superHubIds.filter((id) => id !== hub.id) : [...superHubIds, hub.id])}
+                            className="w-3.5 h-3.5 accent-[#1A56DB]"
+                          />
+                          <span className="text-sm text-gray-700">{hub.name}</span>
+                          {hub.status !== "Active" && <span className="text-[10px] text-red-500 ml-auto">Inactive</span>}
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+                {superHubIds.length > 0 && <p className="text-[11px] text-[#1A56DB]">{superHubIds.length} super hub{superHubIds.length > 1 ? "s" : ""} selected</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-600">Assigned Sub Hubs</Label>
+                <div className="border border-gray-200 rounded-lg p-2 max-h-36 overflow-y-auto bg-white space-y-1">
+                  {!allSubHubs.length ? (
+                    <p className="text-xs text-gray-400 px-2 py-1">No sub hubs available</p>
+                  ) : (
+                    allSubHubs.map((hub: any) => {
+                      const checked = subHubIds.includes(hub.id);
+                      return (
+                        <label key={hub.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setSubHubIds(checked ? subHubIds.filter((id) => id !== hub.id) : [...subHubIds, hub.id])}
+                            className="w-3.5 h-3.5 accent-orange-500"
+                          />
+                          <span className="text-sm text-gray-700">{hub.name}</span>
+                          {hub.superHubName && <span className="text-[10px] text-gray-400 ml-1">· {hub.superHubName}</span>}
+                          {hub.status !== "Active" && <span className="text-[10px] text-red-500 ml-auto">Inactive</span>}
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+                {subHubIds.length > 0 && <p className="text-[11px] text-orange-500">{subHubIds.length} sub hub{subHubIds.length > 1 ? "s" : ""} selected</p>}
+              </div>
             </div>
           )}
 

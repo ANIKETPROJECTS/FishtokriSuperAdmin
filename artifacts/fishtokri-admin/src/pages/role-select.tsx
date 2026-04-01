@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { ShieldCheck, Warehouse, Store } from "lucide-react";
+import { ShieldCheck, Warehouse, Store, Truck } from "lucide-react";
 import { useEffect } from "react";
 
 export default function RoleSelect() {
@@ -13,6 +13,7 @@ export default function RoleSelect() {
       })();
       if (admin?.role === "super_hub") setLocation("/super-hub-dashboard");
       else if (admin?.role === "sub_hub") setLocation("/sub-hub-dashboard");
+      else if (admin?.role === "delivery_person") setLocation("/delivery-dashboard");
       else setLocation("/dashboard");
     }
   }, [setLocation]);
@@ -43,7 +44,7 @@ export default function RoleSelect() {
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <button
               onClick={() => setLocation("/login?role=master_admin")}
               className="group flex flex-col items-center gap-4 p-6 rounded-2xl bg-white/60 border border-sky-300/50 hover:bg-white/80 hover:border-amber-400 transition-all duration-200 cursor-pointer"
@@ -80,6 +81,19 @@ export default function RoleSelect() {
               <div className="text-center">
                 <p className="text-[#162B4D] font-bold text-base leading-tight">Sub Hub</p>
                 <p className="text-slate-500 text-xs mt-1">Local hub access</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setLocation("/login?role=delivery_person")}
+              className="group flex flex-col items-center gap-4 p-6 rounded-2xl bg-white/60 border border-sky-300/50 hover:bg-white/80 hover:border-orange-400 transition-all duration-200 cursor-pointer"
+            >
+              <div className="w-14 h-14 rounded-xl bg-[#162B4D] flex items-center justify-center shadow-lg group-hover:bg-orange-400/20 transition-colors duration-200">
+                <Truck className="w-7 h-7 text-orange-400" />
+              </div>
+              <div className="text-center">
+                <p className="text-[#162B4D] font-bold text-base leading-tight">Delivery</p>
+                <p className="text-slate-500 text-xs mt-1">Delivery access</p>
               </div>
             </button>
           </div>

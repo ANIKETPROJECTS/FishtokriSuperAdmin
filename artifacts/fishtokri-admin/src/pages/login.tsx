@@ -4,7 +4,7 @@ import { useLogin } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, ShieldCheck, Warehouse, Store } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Warehouse, Store, Truck } from "lucide-react";
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -25,16 +25,18 @@ export default function Login() {
       })();
       if (admin?.role === "super_hub") setLocation("/super-hub-dashboard");
       else if (admin?.role === "sub_hub") setLocation("/sub-hub-dashboard");
+      else if (admin?.role === "delivery_person") setLocation("/delivery-dashboard");
       else setLocation("/dashboard");
     }
   }, [setLocation]);
 
   const isMasterAdmin = role === "master_admin" || !role;
   const isSubHub = role === "sub_hub";
+  const isDelivery = role === "delivery_person";
 
-  const roleLabel = isMasterAdmin ? "Master Admin" : isSubHub ? "Sub Hub" : "Super Hub";
-  const RoleIcon = isMasterAdmin ? ShieldCheck : isSubHub ? Store : Warehouse;
-  const iconColor = isMasterAdmin ? "text-amber-400" : isSubHub ? "text-teal-400" : "text-[#4B9EFF]";
+  const roleLabel = isMasterAdmin ? "Master Admin" : isSubHub ? "Sub Hub" : isDelivery ? "Delivery Person" : "Super Hub";
+  const RoleIcon = isMasterAdmin ? ShieldCheck : isSubHub ? Store : isDelivery ? Truck : Warehouse;
+  const iconColor = isMasterAdmin ? "text-amber-400" : isSubHub ? "text-teal-400" : isDelivery ? "text-orange-400" : "text-[#4B9EFF]";
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,6 +51,8 @@ export default function Login() {
             setLocation("/super-hub-dashboard");
           } else if ((data.admin as any).role === "sub_hub") {
             setLocation("/sub-hub-dashboard");
+          } else if ((data.admin as any).role === "delivery_person") {
+            setLocation("/delivery-dashboard");
           } else {
             setLocation("/dashboard");
           }

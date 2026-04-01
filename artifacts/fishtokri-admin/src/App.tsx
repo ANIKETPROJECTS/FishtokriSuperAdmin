@@ -10,6 +10,8 @@ import Dashboard from "@/pages/dashboard";
 import SuperHubDashboard from "@/pages/super-hub-dashboard";
 import SubHubDashboard from "@/pages/sub-hub-dashboard";
 import MySubHubs from "@/pages/my-sub-hubs";
+import DeliveryDashboard from "@/pages/delivery-dashboard";
+import MyDeliveries from "@/pages/my-deliveries";
 import Hubs from "@/pages/hubs";
 import HubDetail from "@/pages/hub-detail";
 import AdminUsers from "@/pages/admin-users";
@@ -50,6 +52,8 @@ function ProtectedRoute({ component: Component, requiredRole }: { component: Rea
         setLocation("/super-hub-dashboard");
       } else if (admin?.role === "sub_hub") {
         setLocation("/sub-hub-dashboard");
+      } else if (admin?.role === "delivery_person") {
+        setLocation("/delivery-dashboard");
       } else {
         setLocation("/dashboard");
       }
@@ -129,6 +133,14 @@ function App() {
             </Route>
             <Route path="/my-sub-hubs">
               <ProtectedRoute component={MySubHubs} requiredRole="sub_hub" />
+            </Route>
+
+            {/* Delivery Person routes */}
+            <Route path="/delivery-dashboard">
+              <ProtectedRoute component={DeliveryDashboard} requiredRole="delivery_person" />
+            </Route>
+            <Route path="/my-deliveries">
+              <ProtectedRoute component={MyDeliveries} requiredRole="delivery_person" />
             </Route>
 
             <Route component={NotFound} />

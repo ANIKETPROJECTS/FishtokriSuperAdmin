@@ -13,7 +13,7 @@ const JWT_SECRET = process.env.SESSION_SECRET || "fishtokri-secret-key-change-in
 const loginSchema = z.object({
   email: z.string().min(1),
   password: z.string().min(1),
-  loginRole: z.enum(["master_admin", "super_hub", "sub_hub"]).optional(),
+  loginRole: z.enum(["master_admin", "super_hub", "sub_hub", "delivery_person"]).optional(),
 });
 
 router.post("/login", async (req, res) => {
@@ -49,8 +49,8 @@ router.post("/login", async (req, res) => {
       return;
     }
 
-    const expectedRole = loginRole === "sub_hub" ? "sub_hub" : "super_hub";
-    const portalLabel = loginRole === "sub_hub" ? "Sub Hub" : "Super Hub";
+    const expectedRole = loginRole === "sub_hub" ? "sub_hub" : loginRole === "delivery_person" ? "delivery_person" : "super_hub";
+    const portalLabel = loginRole === "sub_hub" ? "Sub Hub" : loginRole === "delivery_person" ? "Delivery Person" : "Super Hub";
     if (user.role !== expectedRole) {
       res.status(403).json({ error: "Forbidden", message: `Your account does not have ${portalLabel} portal access.` });
       return;
