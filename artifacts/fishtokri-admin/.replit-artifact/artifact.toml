@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "Start application"
+title = "FishTokri Admin"
 version = "1.0.0"
 id = "artifacts/fishtokri-admin"
 router = "path"
