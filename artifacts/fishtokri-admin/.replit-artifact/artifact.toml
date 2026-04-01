@@ -15,7 +15,7 @@ paths = [ "/" ]
 localPort = 26266
 
 [services.development]
-run = "pnpm --filter @workspace/fishtokri-admin run dev"
+run = "sleep infinity"
 
 [services.production]
 build = [ "pnpm", "--filter", "@workspace/fishtokri-admin", "run", "build" ]

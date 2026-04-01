@@ -23,9 +23,14 @@ A full-stack Super Admin dashboard for managing FishTokri's seafood delivery dis
 - Coming Soon pages for Pincodes, Customers, Coupons sections
 - Real seed data: Mumbai (5 sub hubs), Pune (4 sub hubs), Navi Mumbai (3 sub hubs), 25 pincodes, 6 users
 
+### Startup
+- **Single workflow**: "Start application" runs `bash scripts/dev.sh`
+- `scripts/dev.sh` starts the API server (port 8080) first, waits for it to be healthy, then starts the frontend (port 5173)
+- The artifact-linked workflows (`artifacts/api-server: API Server`, `artifacts/fishtokri-admin: web`) are set to idle (`sleep infinity`) so they don't conflict
+
 ### Artifacts
-- `artifacts/fishtokri-admin` — React + Vite frontend (preview at /)
-- `artifacts/api-server` — Express API server (port 8080, preview at /api)
+- `artifacts/fishtokri-admin` — React + Vite frontend (served on port 5173)
+- `artifacts/api-server` — Express API server (port 8080)
 
 ### Database
 - MongoDB via Mongoose
