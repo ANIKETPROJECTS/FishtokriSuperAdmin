@@ -1,0 +1,16 @@
+import { mongoose } from "../index.js";
+
+const hubUserSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    phone: { type: String, default: "" },
+    role: { type: String, default: "sub_hub" },
+    superHubId: { type: mongoose.Schema.Types.ObjectId, ref: "SuperHub", default: null },
+    subHubId: { type: mongoose.Schema.Types.ObjectId, ref: "SubHub", default: null },
+    status: { type: String, default: "Active" },
+  },
+  { timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } }
+);
+
+export const HubUser = mongoose.models.HubUser || mongoose.model("HubUser", hubUserSchema, "hub_users");
