@@ -12,7 +12,7 @@ done
 echo "API server ready."
 
 # Start frontend (webview)
-cd artifacts/fishtokri-admin && PORT=5173 BASE_PATH=/ pnpm run dev
+cd artifacts/fishtokri-admin && PORT=5000 BASE_PATH=/ pnpm run dev
 
 # Cleanup on exit
 kill $API_PID 2>/dev/null || true
