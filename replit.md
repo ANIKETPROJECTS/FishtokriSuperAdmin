@@ -28,9 +28,10 @@ A full-stack Super Admin dashboard for managing FishTokri's seafood delivery dis
 - `artifacts/api-server` — Express API server (port 8080, preview at /api)
 
 ### Database
-- PostgreSQL via Drizzle ORM
-- Tables: `super_hubs`, `sub_hubs` (FK → super_hubs, pincodes as JSONB), `hub_users`
-- Note: Tables were created directly via SQL (drizzle-kit push has interactive prompt issue). Use executeSql for future schema changes.
+- MongoDB via Mongoose
+- Database name: `fishtokri_admin` (on the fishtokricluster Atlas instance)
+- Collections: `super_hubs`, `sub_hubs` (ref → super_hubs, pincodes as string array), `hub_users`
+- Connection: Uses MONGODB_URI secret with db overridden to fishtokri_admin
 
 ### Login
 - Email: admin@fishtokri.com

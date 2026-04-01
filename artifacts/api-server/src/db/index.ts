@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import logger from "../lib/logger.js";
+import { logger } from "../lib/logger.js";
 
 if (!process.env.MONGODB_URI) {
   throw new Error("MONGODB_URI must be set.");
@@ -7,9 +7,13 @@ if (!process.env.MONGODB_URI) {
 
 const BASE_URI = process.env.MONGODB_URI;
 
-const uri = BASE_URI.includes("?")
-  ? BASE_URI.replace(/\/([^/?]+)(\?)/, "/fishtokri_admin$2")
-  : BASE_URI.replace(/\/([^/?]+)$/, "/fishtokri_admin");
+function buildUri(base: string, dbName: string): string {
+  const url = new URL(base);
+  url.pathname = `/${dbName}`;
+  return url.toString();
+}
+
+const uri = buildUri(BASE_URI, "fishtokri_admin");
 
 let connected = false;
 

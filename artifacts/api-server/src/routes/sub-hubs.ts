@@ -1,28 +1,24 @@
 import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
-import { subHubsTable, superHubsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { SubHub } from "../db/models/sub-hub.js";
+import { SuperHub } from "../db/models/super-hub.js";
+import { requireAuth } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
 
 router.put("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: "BadRequest", message: "Invalid ID" }); return; }
-    const [existing] = await db.select().from(subHubsTable).where(eq(subHubsTable.id, id));
-    if (!existing) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
+    const sub = await SubHub.findById(req.params.id);
+    if (!sub) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
     const { name, location, pincodes, status, imageUrl } = req.body;
-    const update: Record<string, unknown> = {};
-    if (name !== undefined) update.name = name;
-    if (location !== undefined) update.location = location;
-    if (pincodes !== undefined) update.pincodes = pincodes;
-    if (status !== undefined) update.status = status;
-    if (imageUrl !== undefined) update.imageUrl = imageUrl;
-    const [sub] = await db.update(subHubsTable).set(update).where(eq(subHubsTable.id, id)).returning();
-    const [superHub] = await db.select().from(superHubsTable).where(eq(superHubsTable.id, sub.superHubId));
-    const result = { id: String(sub.id), superHubId: String(sub.superHubId), superHubName: superHub?.name ?? "", name: sub.name, location: sub.location, imageUrl: sub.imageUrl ?? "", pincodes: sub.pincodes as string[], status: sub.status, createdAt: sub.createdAt };
+    if (name !== undefined) sub.name = name;
+    if (location !== undefined) sub.location = location;
+    if (pincodes !== undefined) sub.pincodes = pincodes;
+    if (status !== undefined) sub.status = status;
+    if (imageUrl !== undefined) sub.imageUrl = imageUrl;
+    await sub.save();
+    const superHub = await SuperHub.findById(sub.superHubId);
+    const result = { id: String(sub._id), superHubId: String(sub.superHubId), superHubName: superHub?.name ?? "", name: sub.name, location: sub.location, imageUrl: sub.imageUrl ?? "", pincodes: sub.pincodes, status: sub.status, createdAt: sub.createdAt };
     res.json({ subHub: result });
   } catch (err) {
     req.log.error({ err }, "Failed to update sub hub");
@@ -32,11 +28,9 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: "BadRequest", message: "Invalid ID" }); return; }
-    const [existing] = await db.select().from(subHubsTable).where(eq(subHubsTable.id, id));
-    if (!existing) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
-    await db.delete(subHubsTable).where(eq(subHubsTable.id, id));
+    const sub = await SubHub.findById(req.params.id);
+    if (!sub) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
+    await SubHub.findByIdAndDelete(req.params.id);
     res.json({ message: "Sub hub deleted successfully" });
   } catch (err) {
     req.log.error({ err }, "Failed to delete sub hub");
@@ -46,14 +40,12 @@ router.delete("/:id", async (req, res) => {
 
 router.patch("/:id/toggle-status", async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: "BadRequest", message: "Invalid ID" }); return; }
-    const [existing] = await db.select().from(subHubsTable).where(eq(subHubsTable.id, id));
-    if (!existing) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
-    const newStatus = existing.status === "Active" ? "Inactive" : "Active";
-    const [sub] = await db.update(subHubsTable).set({ status: newStatus }).where(eq(subHubsTable.id, id)).returning();
-    const [superHub] = await db.select().from(superHubsTable).where(eq(superHubsTable.id, sub.superHubId));
-    const result = { id: String(sub.id), superHubId: String(sub.superHubId), superHubName: superHub?.name ?? "", name: sub.name, location: sub.location, imageUrl: sub.imageUrl ?? "", pincodes: sub.pincodes as string[], status: sub.status, createdAt: sub.createdAt };
+    const sub = await SubHub.findById(req.params.id);
+    if (!sub) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
+    sub.status = sub.status === "Active" ? "Inactive" : "Active";
+    await sub.save();
+    const superHub = await SuperHub.findById(sub.superHubId);
+    const result = { id: String(sub._id), superHubId: String(sub.superHubId), superHubName: superHub?.name ?? "", name: sub.name, location: sub.location, imageUrl: sub.imageUrl ?? "", pincodes: sub.pincodes, status: sub.status, createdAt: sub.createdAt };
     res.json({ subHub: result });
   } catch (err) {
     req.log.error({ err }, "Failed to toggle sub hub status");
