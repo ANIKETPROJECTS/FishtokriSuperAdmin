@@ -1,115 +1,146 @@
-# Workspace
+# FishTokri Admin — Workspace
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+pnpm monorepo. Express 5 + MongoDB backend, React 19 + Vite 7 + TailwindCSS 4 frontend. Single-command startup via `scripts/dev.sh`.
 
-## FishTokri Admin
+---
 
-A full-stack Super Admin dashboard for managing FishTokri's seafood delivery distribution network.
+## Startup
+
+**Workflow:** `artifacts/fishtokri-admin: web`
+**Command:** `cd /home/runner/workspace && bash scripts/dev.sh`
+
+`dev.sh` sequence:
+1. Starts API server in background: `PORT=8080 pnpm run dev` (from `artifacts/api-server`)
+2. Polls `GET localhost:8080/api/healthz` until healthy
+3. Starts Vite frontend: `PORT=5000 BASE_PATH=/ pnpm run dev` (from `artifacts/fishtokri-admin`)
+
+Preview served at port **5000**. Vite proxies `/api/*` → `localhost:8080`.
+
+---
+
+## Required Secret
+
+| Name | Description |
+|------|-------------|
+| `MONGODB_URI` | MongoDB Atlas connection string. DB name overridden to `fishtokri_admin`. |
+
+---
+
+## Login
+
+| Field | Value |
+|-------|-------|
+| Email | `admin@fishtokri.com` |
+| Password | `FishTokri@Admin2024` |
+| Role | Master Admin |
+
+---
+
+## Project Structure
+
+```
+artifacts/
+  api-server/           Express 5 API server (port 8080)
+    src/
+      app.ts            Express setup (cors, pino, json)
+      index.ts          Server entry — connectDB() then listen()
+      db/
+        index.ts        Mongoose connectDB()
+        models/         Mongoose models (SuperHub, SubHub, HubUser)
+      routes/
+        index.ts        Mounts all routers
+        health.ts       GET /api/healthz
+        auth.ts         POST /api/auth/login (JWT)
+        super-hubs.ts   CRUD + toggle-status
+        sub-hubs.ts     CRUD + toggle-status (nested under super-hubs)
+        users.ts        CRUD + toggle-status
+        stats.ts        GET /api/stats/summary
+
+  fishtokri-admin/      React + Vite frontend (port 5000)
+    src/
+      main.tsx          React entry
+      App.tsx           Wouter router + protected routes + role auth
+      index.css         TailwindCSS v4 config + CSS custom properties
+      pages/
+        role-select.tsx     Role selection landing page
+        login.tsx           Login form
+        dashboard.tsx       Stats overview
+        super-hubs/         Super Hub list + detail pages
+        sub-hubs/           Sub Hub pages
+        admin-users/        Admin Users table
+        coming-soon.tsx     Placeholder for future sections
+
+lib/
+  api-client-react/     React Query hooks + fetch client (used by frontend)
+  api-zod/              Zod schemas from OpenAPI spec (used by API server health route)
+  db/                   Drizzle/PostgreSQL template package — NOT used, safe to ignore
+  api-spec/             OpenAPI spec used to generate api-client-react + api-zod
+
+scripts/
+  dev.sh                Unified startup script (API → Vite)
+  post-merge.sh         Post-merge hook: runs pnpm install
+```
+
+---
+
+## Database
+
+- **Type**: MongoDB (Mongoose)
+- **Database name**: `fishtokri_admin`
+- **Collections**: `super_hubs`, `sub_hubs`, `hub_users`
 
 ### Hub Hierarchy
-- **Super Hubs** — city-level hubs (e.g., Mumbai, Pune, Navi Mumbai)
-- **Sub Hubs** — locality-level hubs under a super hub (e.g., Thane, Airoli, Vashi)
-- **Service areas** — pincodes stored as JSONB arrays on each sub hub
+- **Super Hubs** — city level (e.g. Mumbai, Pune, Navi Mumbai)
+- **Sub Hubs** — locality level under a super hub (e.g. Thane, Airoli, Vashi)
+- Sub hubs store pincodes as a string array field
 
-### Features
-- JWT authentication (Super Admin: admin@fishtokri.com / FishTokri@Admin2024)
-- Super Hub CRUD with image support (pollinations.ai URLs)
-- Sub Hub CRUD nested under super hubs (with pincode tag management)
-- Admin Users table with role-based assignment (super_admin / super_hub / sub_hub)
-- Dashboard with live stats (total/active hubs, pincodes, users)
-- Toggle Active/Inactive for hubs and users
-- Coming Soon pages for Pincodes, Customers, Coupons sections
-- Real seed data: Mumbai (5 sub hubs), Pune (4 sub hubs), Navi Mumbai (3 sub hubs), 25 pincodes, 6 users
-
-### Startup
-- **Single workflow**: "Start application" runs `bash scripts/dev.sh`
-- `scripts/dev.sh` starts the API server (port 8080) first, waits for it to be healthy, then starts the frontend (port 5173)
-- The artifact-linked workflows (`artifacts/api-server: API Server`, `artifacts/fishtokri-admin: web`) are set to idle (`sleep infinity`) so they don't conflict
-
-### Artifacts
-- `artifacts/fishtokri-admin` — React + Vite frontend (served on port 5173)
-- `artifacts/api-server` — Express API server (port 8080)
-
-### Database
-- MongoDB via Mongoose
-- Database name: `fishtokri_admin` (on the fishtokricluster Atlas instance)
-- Collections: `super_hubs`, `sub_hubs` (ref → super_hubs, pincodes as string array), `hub_users`
-- Connection: Uses MONGODB_URI secret with db overridden to fishtokri_admin
-
-### Login
-- Email: admin@fishtokri.com
-- Password: FishTokri@Admin2024
-
-## Stack
-
-- **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
-- **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod, `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec at `lib/api-spec/openapi.yaml`)
-- **Build**: esbuild
-- **Frontend**: React + Vite + TailwindCSS + React Query
-
-## Structure
-
-```text
-artifacts-monorepo/
-├── artifacts/
-│   ├── api-server/          # Express API server
-│   └── fishtokri-admin/     # React + Vite admin dashboard
-├── lib/
-│   ├── api-spec/            # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/    # Generated React Query hooks
-│   ├── api-zod/             # Generated Zod schemas from OpenAPI
-│   └── db/                  # Drizzle ORM schema + DB connection
-├── scripts/                 # Utility scripts
-├── pnpm-workspace.yaml
-├── tsconfig.base.json
-├── tsconfig.json
-└── package.json
-```
+---
 
 ## API Routes
 
-- `GET /api/healthz` — health check
-- `POST /api/auth/login` — JWT login
-- `GET/POST /api/super-hubs` — list / create super hubs
-- `GET/PUT/DELETE /api/super-hubs/:id` — get / update / delete super hub
-- `PATCH /api/super-hubs/:id/toggle-status` — toggle active/inactive
-- `GET /api/super-hubs/:id/sub-hubs` — list sub hubs for a super hub
-- `POST /api/super-hubs/:id/sub-hubs` — create sub hub under super hub
-- `PUT/DELETE /api/sub-hubs/:id` — update / delete sub hub
-- `PATCH /api/sub-hubs/:id/toggle-status` — toggle active/inactive
-- `GET/POST /api/users` — list / create hub users
-- `PUT/DELETE /api/users/:id` — update / delete user
-- `PATCH /api/users/:id/toggle-status` — toggle active/inactive
-- `GET /api/stats/summary` — dashboard statistics
+```
+GET  /api/healthz
+POST /api/auth/login
 
-## TypeScript & Composite Projects
+GET    /api/super-hubs
+POST   /api/super-hubs
+GET    /api/super-hubs/:id
+PUT    /api/super-hubs/:id
+DELETE /api/super-hubs/:id
+PATCH  /api/super-hubs/:id/toggle-status
+GET    /api/super-hubs/:id/sub-hubs
+POST   /api/super-hubs/:id/sub-hubs
 
-Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. Always typecheck from root: `pnpm run typecheck`.
+PUT    /api/sub-hubs/:id
+DELETE /api/sub-hubs/:id
+PATCH  /api/sub-hubs/:id/toggle-status
 
-## Packages
+GET    /api/users
+POST   /api/users
+PUT    /api/users/:id
+DELETE /api/users/:id
+PATCH  /api/users/:id/toggle-status
 
-### `artifacts/api-server` (`@workspace/api-server`)
-Express 5 API server. Routes in `src/routes/`. Uses `@workspace/db` for persistence.
+GET    /api/stats/summary
+```
 
-### `artifacts/fishtokri-admin` (`@workspace/fishtokri-admin`)
-React + Vite frontend. Pages: dashboard, hubs, admin-users, coming-soon, login. Uses `@workspace/api-client-react` hooks.
+---
 
-### `lib/db` (`@workspace/db`)
-Drizzle ORM with PostgreSQL. Schema: `super_hubs`, `sub_hubs`, `hub_users`.
+## Stack
 
-### `lib/api-spec` (`@workspace/api-spec`)
-OpenAPI 3.1 spec + Orval config. Run codegen: `pnpm --filter @workspace/api-spec run codegen`
-
-### `lib/api-client-react` (`@workspace/api-client-react`)
-Generated React Query hooks from OpenAPI spec.
-
-### `lib/api-zod` (`@workspace/api-zod`)
-Generated Zod schemas from OpenAPI spec.
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Node.js 24 |
+| Package manager | pnpm workspaces |
+| Language | TypeScript 5.9 |
+| API framework | Express 5 |
+| Database | MongoDB via Mongoose |
+| Frontend | React 19 |
+| Bundler | Vite 7 |
+| Styling | TailwindCSS 4 |
+| State / data | TanStack React Query 5 |
+| Routing | Wouter |
+| Auth | JWT (jsonwebtoken) |
+| Validation | Zod |
