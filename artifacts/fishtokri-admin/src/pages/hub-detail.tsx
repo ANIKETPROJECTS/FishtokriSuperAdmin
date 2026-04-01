@@ -24,10 +24,21 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 
+function getAdminRole() {
+  try {
+    const raw = localStorage.getItem("fishtokri_admin");
+    return raw ? JSON.parse(raw)?.role : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function HubDetail() {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const superHubId = params.id;
+  const role = getAdminRole();
+  const isSuperHub = role === "super_hub";
 
   const { data: superHubsData } = useGetSuperHubs(undefined, {
     query: { queryKey: getGetSuperHubsQueryKey() },
@@ -54,12 +65,14 @@ export default function HubDetail() {
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button
-          onClick={() => setLocation("/hubs")}
-          className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-[#162B4D] transition-colors flex-shrink-0"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
+        {!isSuperHub && (
+          <button
+            onClick={() => setLocation("/hubs")}
+            className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-[#162B4D] transition-colors flex-shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+        )}
         <div className="flex-1 min-w-0">
           {superHub ? (
             <>

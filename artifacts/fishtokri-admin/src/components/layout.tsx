@@ -1,25 +1,46 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, ChevronDown } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, ChevronDown, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
 
-const navItems = [
+const masterAdminNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/hubs", label: "Hubs", icon: Warehouse },
   { href: "/admin-users", label: "Admin Users", icon: Users },
 ];
 
+function getAdminData() {
+  try {
+    const raw = localStorage.getItem("fishtokri_admin");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
+  const admin = getAdminData();
+  const role = admin?.role || "master_admin";
+  const adminName = admin?.name || (role === "master_admin" ? "Master Admin" : "Super Hub");
 
   const handleLogout = () => {
     localStorage.removeItem("fishtokri_token");
     localStorage.removeItem("fishtokri_admin");
-    setLocation("/login");
+    setLocation("/");
   };
 
-  const adminDataStr = localStorage.getItem("fishtokri_admin");
-  const adminName = adminDataStr ? JSON.parse(adminDataStr).name : "Master Admin";
+  const isSuperHub = role === "super_hub";
+  const superHubNavItems = [
+    { href: "/super-hub-dashboard", label: "Dashboard", icon: LayoutDashboard },
+    {
+      href: admin?.superHubId ? `/my-hub/${admin.superHubId}` : "/my-hub",
+      label: "Super Hub",
+      icon: Building2,
+      matchPrefix: "/my-hub",
+    },
+  ];
+  const navItems = isSuperHub ? superHubNavItems : masterAdminNavItems;
+  const roleLabel = isSuperHub ? "Super Hub" : "Master Admin";
 
   return (
     <div className="flex min-h-screen bg-[#F4F6FA]">
@@ -31,15 +52,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <span className="font-bold text-base tracking-tight text-white">FishTokri</span>
         </div>
 
-        {/* Super Admin Label */}
+        {/* Role Label */}
         <div className="px-5 pt-5 pb-2">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">Master Admin</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">{roleLabel}</p>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 pb-4">
-          {navItems.map(({ href, label, icon: Icon }) => {
-            const isActive = location === href || (href === "/hubs" && location.startsWith("/hubs"));
+          {navItems.map(({ href, label, icon: Icon, matchPrefix }: any) => {
+            const isActive =
+              location === href ||
+              (matchPrefix && location.startsWith(matchPrefix)) ||
+              (!matchPrefix && href === "/hubs" && location.startsWith("/hubs"));
             return (
               <Link key={href} href={href}>
                 <div
