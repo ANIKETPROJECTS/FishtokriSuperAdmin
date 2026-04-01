@@ -34,63 +34,84 @@ function getAdminData() {
   }
 }
 
+function HubSubData({ superHubId }: { superHubId: string }) {
+  const { data } = useGetSubHubsBySuperHub(superHubId, {
+    query: { queryKey: getGetSubHubsBySuperHubQueryKey(superHubId), enabled: !!superHubId },
+  });
+  return data?.subHubs || null;
+}
+
 export default function SuperHubDashboard() {
   const admin = getAdminData();
-  const superHubId = admin?.superHubId || "";
+  const superHubIds: string[] = admin?.superHubIds?.length > 0
+    ? admin.superHubIds
+    : admin?.superHubId ? [admin.superHubId] : [];
 
   const { data: superHubsData, isLoading: hubsLoading } = useGetSuperHubs(undefined, {
     query: { queryKey: getGetSuperHubsQueryKey() },
   });
 
-  const { data: subHubsData, isLoading: subHubsLoading } = useGetSubHubsBySuperHub(superHubId, {
-    query: { queryKey: getGetSubHubsBySuperHubQueryKey(superHubId), enabled: !!superHubId },
-  });
+  const hub0 = superHubIds[0] || "";
+  const hub1 = superHubIds[1] || "";
+  const hub2 = superHubIds[2] || "";
+  const hub3 = superHubIds[3] || "";
 
-  const isLoading = hubsLoading || subHubsLoading;
-  const superHub = superHubsData?.superHubs.find((h) => h.id === superHubId);
-  const subHubs = subHubsData?.subHubs || [];
+  const { data: subData0, isLoading: loading0 } = useGetSubHubsBySuperHub(hub0, { query: { queryKey: getGetSubHubsBySuperHubQueryKey(hub0), enabled: !!hub0 } });
+  const { data: subData1, isLoading: loading1 } = useGetSubHubsBySuperHub(hub1, { query: { queryKey: getGetSubHubsBySuperHubQueryKey(hub1), enabled: !!hub1 } });
+  const { data: subData2, isLoading: loading2 } = useGetSubHubsBySuperHub(hub2, { query: { queryKey: getGetSubHubsBySuperHubQueryKey(hub2), enabled: !!hub2 } });
+  const { data: subData3, isLoading: loading3 } = useGetSubHubsBySuperHub(hub3, { query: { queryKey: getGetSubHubsBySuperHubQueryKey(hub3), enabled: !!hub3 } });
 
-  const activeSubHubs = subHubs.filter((s) => s.status === "Active").length;
-  const inactiveSubHubs = subHubs.length - activeSubHubs;
-  const totalPincodes = subHubs.reduce((acc, s) => acc + (s.pincodes?.length || 0), 0);
+  const isLoading = hubsLoading || loading0 || loading1 || loading2 || loading3;
+
+  const allSubHubs = [
+    ...(subData0?.subHubs || []),
+    ...(subData1?.subHubs || []),
+    ...(subData2?.subHubs || []),
+    ...(subData3?.subHubs || []),
+  ];
+
+  const myHubs = (superHubsData?.superHubs || []).filter((h) => superHubIds.includes(h.id));
+  const activeSubHubs = allSubHubs.filter((s) => s.status === "Active").length;
+  const inactiveSubHubs = allSubHubs.length - activeSubHubs;
+  const totalPincodes = allSubHubs.reduce((acc, s) => acc + ((s as any).pincodes?.length || 0), 0);
 
   const subHubStatusData = [
     { name: "Active", value: activeSubHubs },
     { name: "Inactive", value: inactiveSubHubs },
   ].filter((d) => d.value > 0);
 
-  const pincodeBarData = subHubs.map((s) => ({
+  const pincodeBarData = allSubHubs.map((s) => ({
     name: s.name,
-    Pincodes: s.pincodes?.length || 0,
+    Pincodes: (s as any).pincodes?.length || 0,
   }));
 
   const statCards = [
     {
-      title: "Total Sub Hubs",
-      value: subHubs.length,
-      sub: `${activeSubHubs} active`,
-      icon: Layers,
+      title: "Assigned Super Hubs",
+      value: superHubIds.length,
+      sub: `${myHubs.filter((h) => h.status === "Active").length} active`,
+      icon: Warehouse,
       iconColor: "text-[#1A56DB]",
       iconBg: "bg-blue-50",
       border: "border-blue-100",
     },
     {
+      title: "Total Sub Hubs",
+      value: allSubHubs.length,
+      sub: `${activeSubHubs} active`,
+      icon: Layers,
+      iconColor: "text-indigo-600",
+      iconBg: "bg-indigo-50",
+      border: "border-indigo-100",
+    },
+    {
       title: "Active Sub Hubs",
       value: activeSubHubs,
-      sub: `of ${subHubs.length} total`,
+      sub: `of ${allSubHubs.length} total`,
       icon: CheckCircle2,
       iconColor: "text-green-600",
       iconBg: "bg-green-50",
       border: "border-green-100",
-    },
-    {
-      title: "Inactive Sub Hubs",
-      value: inactiveSubHubs,
-      sub: "need attention",
-      icon: AlertCircle,
-      iconColor: "text-amber-600",
-      iconBg: "bg-amber-50",
-      border: "border-amber-100",
     },
     {
       title: "Total Pincodes",
@@ -106,30 +127,41 @@ export default function SuperHubDashboard() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-start gap-4">
-        {superHub?.imageUrl && (
-          <img
-            src={superHub.imageUrl}
-            alt={superHub.name}
-            className="w-16 h-16 rounded-xl object-cover shadow-md flex-shrink-0"
-          />
-        )}
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-bold text-[#162B4D]">
-              {hubsLoading ? "Loading..." : superHub?.name || "Your Hub"}
-            </h2>
-            {superHub && (
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${superHub.status === "Active" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
-                {superHub.status}
-              </span>
+      <div>
+        {isLoading ? (
+          <Skeleton className="h-8 w-48" />
+        ) : myHubs.length === 1 ? (
+          <div className="flex items-start gap-4">
+            {(myHubs[0] as any).imageUrl && (
+              <img src={(myHubs[0] as any).imageUrl} alt={myHubs[0].name} className="w-16 h-16 rounded-xl object-cover shadow-md flex-shrink-0" />
             )}
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-2xl font-bold text-[#162B4D]">{myHubs[0].name}</h2>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${myHubs[0].status === "Active" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
+                  {myHubs[0].status}
+                </span>
+              </div>
+              {(myHubs[0] as any).location && (
+                <p className="text-gray-500 text-sm mt-0.5 flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5" />
+                  {(myHubs[0] as any).location}
+                </p>
+              )}
+            </div>
           </div>
-          <p className="text-gray-500 text-sm mt-0.5 flex items-center gap-1">
-            <MapPin className="w-3.5 h-3.5" />
-            {superHub?.location || "—"}
-          </p>
-        </div>
+        ) : (
+          <div>
+            <h2 className="text-2xl font-bold text-[#162B4D]">My Hubs Dashboard</h2>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {myHubs.map((h) => (
+                <span key={h.id} className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700">
+                  <MapPin className="w-3 h-3" /> {h.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stat Cards */}
@@ -156,13 +188,12 @@ export default function SuperHubDashboard() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Pincodes per Sub Hub */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-5">
             <MapPin className="w-4 h-4 text-[#1A56DB]" />
             <h3 className="text-sm font-bold text-[#162B4D]">Pincodes per Sub Hub</h3>
           </div>
-          {subHubsLoading ? (
+          {isLoading ? (
             <Skeleton className="h-48 rounded-lg" />
           ) : pincodeBarData.length === 0 ? (
             <div className="h-48 flex items-center justify-center text-gray-400 text-sm">No sub hubs yet</div>
@@ -179,13 +210,12 @@ export default function SuperHubDashboard() {
           )}
         </div>
 
-        {/* Sub Hub Status */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-5">
             <CheckCircle2 className="w-4 h-4 text-green-500" />
             <h3 className="text-sm font-bold text-[#162B4D]">Sub Hub Status</h3>
           </div>
-          {subHubsLoading ? (
+          {isLoading ? (
             <Skeleton className="h-48 rounded-lg" />
           ) : subHubStatusData.length === 0 ? (
             <div className="h-48 flex items-center justify-center text-gray-400 text-sm">No data</div>
@@ -220,37 +250,46 @@ export default function SuperHubDashboard() {
           <Warehouse className="w-4 h-4 text-[#1A56DB]" />
           <h3 className="text-sm font-bold text-[#162B4D]">Sub Hubs Overview</h3>
         </div>
-        {subHubsLoading ? (
+        {isLoading ? (
           <Skeleton className="h-32 rounded-lg" />
-        ) : subHubs.length === 0 ? (
-          <div className="text-gray-400 text-sm text-center py-8">No sub hubs assigned to this hub yet.</div>
+        ) : allSubHubs.length === 0 ? (
+          <div className="text-gray-400 text-sm text-center py-8">No sub hubs assigned to your hubs yet.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
                   <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-3 pr-4">Sub Hub</th>
+                  {superHubIds.length > 1 && (
+                    <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-3 pr-4">Super Hub</th>
+                  )}
                   <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-3 pr-4">Pincodes</th>
                   <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide pb-3">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {subHubs.map((sub) => (
-                  <tr key={sub.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="py-3 pr-4 font-semibold text-[#162B4D]">{sub.name}</td>
-                    <td className="py-3 pr-4">
-                      <span className="bg-purple-50 text-purple-600 text-xs font-semibold px-2 py-0.5 rounded-full">
-                        {sub.pincodes?.length || 0} pincodes
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${sub.status === "Active" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${sub.status === "Active" ? "bg-green-500" : "bg-red-400"}`} />
-                        {sub.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {allSubHubs.map((sub) => {
+                  const parentHub = myHubs.find((h) => h.id === (sub as any).superHubId);
+                  return (
+                    <tr key={sub.id} className="hover:bg-gray-50/60 transition-colors">
+                      <td className="py-3 pr-4 font-semibold text-[#162B4D]">{sub.name}</td>
+                      {superHubIds.length > 1 && (
+                        <td className="py-3 pr-4 text-xs text-gray-500">{parentHub?.name || "—"}</td>
+                      )}
+                      <td className="py-3 pr-4">
+                        <span className="bg-purple-50 text-purple-600 text-xs font-semibold px-2 py-0.5 rounded-full">
+                          {(sub as any).pincodes?.length || 0} pincodes
+                        </span>
+                      </td>
+                      <td className="py-3">
+                        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${sub.status === "Active" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${sub.status === "Active" ? "bg-green-500" : "bg-red-400"}`} />
+                          {sub.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -30,10 +30,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
   };
 
   const isSuperHub = role === "super_hub";
+  const superHubIds: string[] = admin?.superHubIds?.length > 0
+    ? admin.superHubIds
+    : admin?.superHubId ? [admin.superHubId] : [];
+  const myHubHref = superHubIds.length === 1
+    ? `/my-hub/${superHubIds[0]}`
+    : "/my-hubs";
+
   const superHubNavItems = [
     { href: "/super-hub-dashboard", label: "Dashboard", icon: LayoutDashboard },
     {
-      href: admin?.superHubId ? `/my-hub/${admin.superHubId}` : "/my-hub",
+      href: myHubHref,
       label: "Super Hub",
       icon: Building2,
       matchPrefix: "/my-hub",

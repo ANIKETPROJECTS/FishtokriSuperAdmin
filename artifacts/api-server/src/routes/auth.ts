@@ -58,12 +58,18 @@ router.post("/login", async (req, res) => {
       res.status(401).json({ error: "Unauthorized", message: "Invalid credentials. Please check your email and password." });
       return;
     }
+    const resolvedSuperHubIds: string[] =
+      Array.isArray((user as any).superHubIds) && (user as any).superHubIds.length > 0
+        ? (user as any).superHubIds.map((id: any) => String(id))
+        : user.superHubId ? [String(user.superHubId)] : [];
+
     const admin = {
       id: String(user._id),
       email: user.email,
       name: user.name,
       role: user.role,
-      superHubId: user.superHubId ? String(user.superHubId) : null,
+      superHubId: resolvedSuperHubIds[0] ?? null,
+      superHubIds: resolvedSuperHubIds,
       subHubId: user.subHubId ? String(user.subHubId) : null,
     };
     const token = jwt.sign({ adminId: admin.id, email: admin.email, role: admin.role }, JWT_SECRET, { expiresIn: "7d" });

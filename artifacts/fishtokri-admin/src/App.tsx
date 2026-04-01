@@ -12,6 +12,7 @@ import Hubs from "@/pages/hubs";
 import HubDetail from "@/pages/hub-detail";
 import AdminUsers from "@/pages/admin-users";
 import ComingSoon from "@/pages/coming-soon";
+import MyHubs from "@/pages/my-hubs";
 import { Layout } from "@/components/layout";
 
 const queryClient = new QueryClient({
@@ -107,6 +108,9 @@ function App() {
             {/* Super Hub routes */}
             <Route path="/super-hub-dashboard">
               <ProtectedRoute component={SuperHubDashboard} requiredRole="super_hub" />
+            </Route>
+            <Route path="/my-hubs">
+              <ProtectedRoute component={MyHubs} requiredRole="super_hub" />
             </Route>
             <Route path="/my-hub">
               <ProtectedRoute component={MyHubRedirect} requiredRole="super_hub" />

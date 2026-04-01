@@ -8,6 +8,7 @@ const hubUserSchema = new mongoose.Schema(
     role: { type: String, default: "sub_hub" },
     password: { type: String, required: true },
     superHubId: { type: mongoose.Schema.Types.ObjectId, ref: "SuperHub", default: null },
+    superHubIds: { type: [mongoose.Schema.Types.ObjectId], ref: "SuperHub", default: [] },
     subHubId: { type: mongoose.Schema.Types.ObjectId, ref: "SubHub", default: null },
     status: { type: String, default: "Active" },
   },

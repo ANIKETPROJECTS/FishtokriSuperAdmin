@@ -9,24 +9,34 @@ const router: IRouter = Router();
 router.use(requireAuth as any);
 
 async function enrichUser(user: any) {
-  let superHubName: string | null = null;
+  // superHubIds — used for super_hub role (multiple hubs allowed)
+  const ids: string[] = Array.isArray(user.superHubIds) && user.superHubIds.length > 0
+    ? user.superHubIds.map((id: any) => String(id))
+    : user.superHubId ? [String(user.superHubId)] : [];
+
+  const superHubs = ids.length > 0
+    ? await SuperHub.find({ _id: { $in: ids } })
+    : [];
+
+  const superHubNames = superHubs.map((s) => s.name);
+
+  // subHubId — only for sub_hub role (single sub hub)
   let subHubName: string | null = null;
-  if (user.superHubId) {
-    const sh = await SuperHub.findById(user.superHubId);
-    superHubName = sh?.name ?? null;
-  }
   if (user.subHubId) {
     const sub = await SubHub.findById(user.subHubId);
     subHubName = sub?.name ?? null;
   }
+
   return {
     id: String(user._id),
     name: user.name,
     email: user.email,
     phone: user.phone,
     role: user.role,
-    superHubId: user.superHubId ? String(user.superHubId) : null,
-    superHubName,
+    superHubId: ids[0] ?? null,
+    superHubIds: ids,
+    superHubName: superHubNames[0] ?? null,
+    superHubNames,
     subHubId: user.subHubId ? String(user.subHubId) : null,
     subHubName,
     status: user.status,
@@ -40,7 +50,7 @@ router.get("/", async (req, res) => {
     const superHubIdFilter = req.query.superHubId as string | undefined;
     const filter: Record<string, any> = {};
     if (roleFilter) filter.role = roleFilter;
-    if (superHubIdFilter) filter.superHubId = superHubIdFilter;
+    if (superHubIdFilter) filter.$or = [{ superHubId: superHubIdFilter }, { superHubIds: superHubIdFilter }];
     const users = await HubUser.find(filter).sort({ createdAt: 1 });
     const enriched = await Promise.all(users.map(enrichUser));
     res.json({ users: enriched, total: enriched.length });
@@ -52,17 +62,23 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, email, phone, role, superHubId, subHubId, status, password } = req.body;
+    const { name, email, phone, role, superHubId, superHubIds, subHubId, status, password } = req.body;
     if (!name || !email) { res.status(400).json({ error: "ValidationError", message: "Name and email are required" }); return; }
     if (!password) { res.status(400).json({ error: "ValidationError", message: "Password is required" }); return; }
     const hashedPassword = await bcrypt.hash(password, 10);
+
+    const resolvedSuperHubIds: string[] = Array.isArray(superHubIds) && superHubIds.length > 0
+      ? superHubIds
+      : superHubId ? [superHubId] : [];
+
     const user = await HubUser.create({
       name,
       email,
       phone: phone ?? "",
       role: role ?? "sub_hub",
       password: hashedPassword,
-      superHubId: superHubId || null,
+      superHubId: resolvedSuperHubIds[0] || null,
+      superHubIds: resolvedSuperHubIds,
       subHubId: subHubId || null,
       status: status ?? "Active",
     });
@@ -82,14 +98,22 @@ router.put("/:id", async (req, res) => {
   try {
     const user = await HubUser.findById(req.params.id);
     if (!user) { res.status(404).json({ error: "NotFound", message: "User not found" }); return; }
-    const { name, email, phone, role, superHubId, subHubId, status, password } = req.body;
+    const { name, email, phone, role, superHubId, superHubIds, subHubId, status, password } = req.body;
     if (name !== undefined) user.name = name;
     if (email !== undefined) user.email = email;
     if (phone !== undefined) user.phone = phone;
     if (role !== undefined) user.role = role;
-    if (superHubId !== undefined) user.superHubId = superHubId || null;
     if (subHubId !== undefined) user.subHubId = subHubId || null;
     if (status !== undefined) user.status = status;
+
+    if (superHubIds !== undefined || superHubId !== undefined) {
+      const resolvedIds: string[] = Array.isArray(superHubIds) && superHubIds.length > 0
+        ? superHubIds
+        : superHubId ? [superHubId] : [];
+      (user as any).superHubIds = resolvedIds;
+      user.superHubId = resolvedIds[0] || null;
+    }
+
     if (password && password.trim() !== "") {
       user.password = await bcrypt.hash(password, 10);
     }
