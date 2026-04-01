@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import RoleSelect from "@/pages/role-select";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
+import SuperHubDashboard from "@/pages/super-hub-dashboard";
 import Hubs from "@/pages/hubs";
 import HubDetail from "@/pages/hub-detail";
 import AdminUsers from "@/pages/admin-users";
@@ -22,17 +23,36 @@ const queryClient = new QueryClient({
   },
 });
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const [location, setLocation] = useLocation();
+function getStoredAdmin() {
+  try {
+    const raw = localStorage.getItem("fishtokri_admin");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function ProtectedRoute({ component: Component, requiredRole }: { component: React.ComponentType; requiredRole?: string }) {
+  const [, setLocation] = useLocation();
   const token = localStorage.getItem("fishtokri_token");
+  const admin = getStoredAdmin();
 
   useEffect(() => {
     if (!token) {
       setLocation("/");
+      return;
     }
-  }, [token, setLocation]);
+    if (requiredRole && admin?.role !== requiredRole) {
+      if (admin?.role === "super_hub") {
+        setLocation("/super-hub-dashboard");
+      } else {
+        setLocation("/dashboard");
+      }
+    }
+  }, [token, admin?.role, requiredRole, setLocation]);
 
   if (!token) return null;
+  if (requiredRole && admin?.role !== requiredRole) return null;
 
   return (
     <Layout>
@@ -41,35 +61,15 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   );
 }
 
-function Router() {
-  return (
-    <Switch>
-      <Route path="/" component={RoleSelect} />
-      <Route path="/login" component={Login} />
-      <Route path="/dashboard">
-        <ProtectedRoute component={Dashboard} />
-      </Route>
-      <Route path="/hubs">
-        <ProtectedRoute component={Hubs} />
-      </Route>
-      <Route path="/hubs/:id">
-        <ProtectedRoute component={HubDetail} />
-      </Route>
-      <Route path="/pincodes">
-        <ProtectedRoute component={ComingSoon} />
-      </Route>
-      <Route path="/admin-users">
-        <ProtectedRoute component={AdminUsers} />
-      </Route>
-      <Route path="/customers">
-        <ProtectedRoute component={ComingSoon} />
-      </Route>
-      <Route path="/coupons">
-        <ProtectedRoute component={ComingSoon} />
-      </Route>
-      <Route component={NotFound} />
-    </Switch>
-  );
+function MyHubRedirect() {
+  const [, setLocation] = useLocation();
+  const admin = getStoredAdmin();
+  useEffect(() => {
+    if (admin?.superHubId) {
+      setLocation(`/my-hub/${admin.superHubId}`);
+    }
+  }, [admin?.superHubId, setLocation]);
+  return null;
 }
 
 function App() {
@@ -77,7 +77,46 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
+          <Switch>
+            <Route path="/" component={RoleSelect} />
+            <Route path="/login" component={Login} />
+
+            {/* Master Admin routes */}
+            <Route path="/dashboard">
+              <ProtectedRoute component={Dashboard} requiredRole="master_admin" />
+            </Route>
+            <Route path="/hubs">
+              <ProtectedRoute component={Hubs} requiredRole="master_admin" />
+            </Route>
+            <Route path="/hubs/:id">
+              <ProtectedRoute component={HubDetail} requiredRole="master_admin" />
+            </Route>
+            <Route path="/admin-users">
+              <ProtectedRoute component={AdminUsers} requiredRole="master_admin" />
+            </Route>
+            <Route path="/pincodes">
+              <ProtectedRoute component={ComingSoon} requiredRole="master_admin" />
+            </Route>
+            <Route path="/customers">
+              <ProtectedRoute component={ComingSoon} requiredRole="master_admin" />
+            </Route>
+            <Route path="/coupons">
+              <ProtectedRoute component={ComingSoon} requiredRole="master_admin" />
+            </Route>
+
+            {/* Super Hub routes */}
+            <Route path="/super-hub-dashboard">
+              <ProtectedRoute component={SuperHubDashboard} requiredRole="super_hub" />
+            </Route>
+            <Route path="/my-hub">
+              <ProtectedRoute component={MyHubRedirect} requiredRole="super_hub" />
+            </Route>
+            <Route path="/my-hub/:id">
+              <ProtectedRoute component={HubDetail} requiredRole="super_hub" />
+            </Route>
+
+            <Route component={NotFound} />
+          </Switch>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

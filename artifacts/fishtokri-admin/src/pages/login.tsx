@@ -33,12 +33,16 @@ export default function Login() {
     e.preventDefault();
     setError(null);
     loginMutation.mutate(
-      { data: { email, password } },
+      { data: { email, password, loginRole: role || "master_admin" } as any },
       {
         onSuccess: (data) => {
           localStorage.setItem("fishtokri_token", data.token);
           localStorage.setItem("fishtokri_admin", JSON.stringify(data.admin));
-          setLocation("/dashboard");
+          if ((data.admin as any).role === "super_hub") {
+            setLocation("/super-hub-dashboard");
+          } else {
+            setLocation("/dashboard");
+          }
         },
         onError: (err: any) => {
           setError(err?.response?.data?.message || "Invalid credentials. Please check your email and password.");

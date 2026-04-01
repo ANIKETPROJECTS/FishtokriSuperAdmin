@@ -13,6 +13,7 @@ const JWT_SECRET = process.env.SESSION_SECRET || "fishtokri-secret-key-change-in
 const loginSchema = z.object({
   email: z.string().min(1),
   password: z.string().min(1),
+  loginRole: z.enum(["master_admin", "super_hub"]).optional(),
 });
 
 router.post("/login", async (req, res) => {
@@ -22,9 +23,14 @@ router.post("/login", async (req, res) => {
     return;
   }
 
-  const { email, password } = parsed.data;
+  const { email, password, loginRole } = parsed.data;
 
   if (email === ADMIN_EMAIL) {
+    // Master admin hardcoded credentials — only accessible via the master_admin portal
+    if (loginRole === "super_hub") {
+      res.status(403).json({ error: "Forbidden", message: "This account does not have Super Hub access. Use the Master Admin portal." });
+      return;
+    }
     if (password !== ADMIN_PASSWORD) {
       res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
       return;
@@ -43,6 +49,16 @@ router.post("/login", async (req, res) => {
     }
     if (user.status !== "Active") {
       res.status(403).json({ error: "Forbidden", message: "Your account has been deactivated. Contact your administrator." });
+      return;
+    }
+    // Role-portal validation: super_hub portal only accepts super_hub role users
+    if (loginRole === "super_hub" && user.role !== "super_hub") {
+      res.status(403).json({ error: "Forbidden", message: "Your account does not have Super Hub portal access." });
+      return;
+    }
+    // Master admin portal should not accept DB users (they should use their own portal)
+    if (loginRole === "master_admin") {
+      res.status(403).json({ error: "Forbidden", message: "This account does not have Master Admin access." });
       return;
     }
     const passwordMatch = await bcrypt.compare(password, user.password);
