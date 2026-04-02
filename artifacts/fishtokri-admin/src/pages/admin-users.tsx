@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { Plus, Search, Edit2, Trash2, Mail, Phone, Eye, EyeOff, ArrowUpDown, SlidersHorizontal, X } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Mail, Phone, Eye, EyeOff, ArrowUpDown, SlidersHorizontal, X, LayoutGrid, LayoutList } from "lucide-react";
 import { ImageUpload } from "@/components/image-upload";
 import {
   useGetUsers,
@@ -103,6 +103,7 @@ export default function AdminUsers() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -220,11 +221,52 @@ export default function AdminUsers() {
           </button>
         )}
 
-        <span className="ml-auto text-xs text-gray-400 font-medium">
-          {filteredUsers.length} of {users.length} user{users.length !== 1 ? "s" : ""}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-gray-400 font-medium">
+            {filteredUsers.length} of {users.length} user{users.length !== 1 ? "s" : ""}
+          </span>
+          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+            <button
+              onClick={() => setViewMode("list")}
+              className={`w-8 h-8 flex items-center justify-center transition-colors ${viewMode === "list" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+              title="List view"
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`w-8 h-8 flex items-center justify-center transition-colors ${viewMode === "grid" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+              title="Grid view"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
 
+      {viewMode === "grid" ? (
+        isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="bg-white rounded-xl border border-dashed border-gray-200 py-20 text-center">
+            <p className="text-gray-500 font-medium">No users found.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredUsers.map((user) => (
+              <UserCard
+                key={user.id}
+                user={user}
+                onEdit={() => { setEditingUser(user); setIsModalOpen(true); }}
+                onDelete={() => setDeleteUserId(user.id)}
+                onToggle={() => handleToggleStatus(user.id)}
+              />
+            ))}
+          </div>
+        )
+      ) : (
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
 
         {isLoading ? (
@@ -371,9 +413,56 @@ export default function AdminUsers() {
           </Table>
         )}
       </div>
+      )}
 
       <UserModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} user={editingUser} />
       <DeleteUserDialog userId={deleteUserId} onClose={() => setDeleteUserId(null)} />
+    </div>
+  );
+}
+
+function UserCard({ user, onEdit, onDelete, onToggle }: { user: any; onEdit: () => void; onDelete: () => void; onToggle: () => void }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar className="h-10 w-10 flex-shrink-0">
+            {(user as any).profileImageUrl && (
+              <AvatarImage src={(user as any).profileImageUrl} alt={user.name} className="object-cover" />
+            )}
+            <AvatarFallback className={`text-sm font-bold ${getAvatarColor(user.name)}`}>
+              {getInitials(user.name)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="font-semibold text-[#162B4D] text-sm truncate">{user.name}</p>
+            <RoleBadge role={user.role} />
+          </div>
+        </div>
+        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border flex-shrink-0 ${user.status === "Active" ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}>
+          {user.status}
+        </span>
+      </div>
+      <div className="space-y-1">
+        <div className="flex items-center gap-1.5 text-gray-500 text-xs">
+          <Mail className="w-3 h-3 flex-shrink-0" />
+          <span className="truncate">{user.email}</span>
+        </div>
+        {user.phone && (
+          <div className="flex items-center gap-1.5 text-gray-400 text-xs">
+            <Phone className="w-3 h-3 flex-shrink-0" />
+            <span>{user.phone}</span>
+          </div>
+        )}
+      </div>
+      <div className="pt-2 border-t border-gray-100 flex items-center justify-end gap-1.5">
+        <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors">
+          <Edit2 className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 }

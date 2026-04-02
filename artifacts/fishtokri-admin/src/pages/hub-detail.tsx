@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, MapPin, Plus, Edit2, Trash2, LayoutDashboard, X, Layers, Search, ArrowUpDown, SlidersHorizontal,
+  ArrowLeft, MapPin, Plus, Edit2, Trash2, LayoutDashboard, X, Layers, Search, ArrowUpDown, SlidersHorizontal, LayoutGrid, LayoutList,
 } from "lucide-react";
 import { ImageUpload } from "@/components/image-upload";
 import {
@@ -68,6 +68,7 @@ export default function HubDetail() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "Active" | "Inactive">("all");
   const [sort, setSort] = useState<SortOption>("name_asc");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const stats = {
     total: subHubs.length,
@@ -204,12 +205,30 @@ export default function HubDetail() {
           </button>
         )}
 
-        <span className="ml-auto text-xs text-gray-400 font-medium">
-          {filtered.length} of {subHubs.length} sub hub{subHubs.length !== 1 ? "s" : ""}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-gray-400 font-medium">
+            {filtered.length} of {subHubs.length} sub hub{subHubs.length !== 1 ? "s" : ""}
+          </span>
+          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`w-8 h-8 flex items-center justify-center transition-colors ${viewMode === "grid" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+              title="Grid view"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`w-8 h-8 flex items-center justify-center transition-colors ${viewMode === "list" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+              title="List view"
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Sub Hub Grid */}
+      {/* Sub Hub Grid / List */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-72 rounded-xl" />)}
@@ -224,12 +243,24 @@ export default function HubDetail() {
             {search || statusFilter !== "all" ? "Try adjusting your search or filters" : 'Click "Add Sub Hub" to create one'}
           </p>
         </div>
-      ) : (
+      ) : viewMode === "grid" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filtered.map((sub) => (
             <SubHubCard
               key={sub.id}
               sub={sub as any}
+              onEdit={() => { setEditingSubHub(sub); setIsModalOpen(true); }}
+              onDelete={() => setDeleteId(sub.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          {filtered.map((sub, i) => (
+            <SubHubRow
+              key={sub.id}
+              sub={sub as any}
+              isLast={i === filtered.length - 1}
               onEdit={() => { setEditingSubHub(sub); setIsModalOpen(true); }}
               onDelete={() => setDeleteId(sub.id)}
             />
@@ -328,6 +359,63 @@ function SubHubCard({ sub, onEdit, onDelete }: { sub: any; onEdit: () => void; o
             />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SubHubRow({ sub, isLast, onEdit, onDelete }: { sub: any; isLast: boolean; onEdit: () => void; onDelete: () => void }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const toggleStatus = useToggleSubHubStatus();
+
+  const handleToggle = () => {
+    toggleStatus.mutate({ id: sub.id }, {
+      onSuccess: () => {
+        toast({ title: "Status updated" });
+        queryClient.invalidateQueries({ queryKey: getGetSubHubsBySuperHubQueryKey(sub.superHubId) });
+      },
+    });
+  };
+
+  return (
+    <div className={`flex items-center gap-4 px-4 py-3 hover:bg-gray-50/50 transition-colors ${!isLast ? "border-b border-gray-100" : ""}`}>
+      <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-gradient-to-br from-blue-50 to-indigo-100">
+        {sub.imageUrl ? (
+          <img src={sub.imageUrl} alt={sub.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Layers className="w-5 h-5 text-blue-300" />
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-[#162B4D] text-sm truncate">{sub.name}</p>
+        <div className="flex items-center gap-1 text-gray-400 text-xs mt-0.5">
+          <MapPin className="w-3 h-3 flex-shrink-0" />
+          <span className="truncate">{sub.location || "Location not set"}</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1 max-w-[180px]">
+        {(sub.pincodes || []).slice(0, 3).map((p: string) => (
+          <span key={p} className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">{p}</span>
+        ))}
+        {(sub.pincodes || []).length > 3 && (
+          <span className="text-[10px] text-gray-400">+{sub.pincodes.length - 3}</span>
+        )}
+      </div>
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${sub.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${sub.status === "Active" ? "bg-green-500" : "bg-gray-400"}`} />
+        {sub.status}
+      </span>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <Switch checked={sub.status === "Active"} onCheckedChange={handleToggle} className="data-[state=checked]:bg-[#1A56DB] scale-75" />
+        <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors">
+          <Edit2 className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
   );

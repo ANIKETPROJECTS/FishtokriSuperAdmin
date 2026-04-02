@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Edit2, Trash2, MapPin, ChevronDown, ChevronUp, Building2, X, UserPlus, Layers, Search, ArrowUpDown, SlidersHorizontal } from "lucide-react";
+import { Plus, Edit2, Trash2, MapPin, ChevronDown, ChevronUp, Building2, X, UserPlus, Layers, Search, ArrowUpDown, SlidersHorizontal, LayoutGrid, LayoutList } from "lucide-react";
 import { ImageUpload } from "@/components/image-upload";
 import {
   useGetSuperHubs,
@@ -57,6 +57,7 @@ export default function Hubs() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "Active" | "Inactive">("all");
   const [sort, setSort] = useState<SortOption>("name_asc");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const stats = {
     total: superHubs.length,
@@ -166,12 +167,30 @@ export default function Hubs() {
           </button>
         )}
 
-        <span className="ml-auto text-xs text-gray-400 font-medium">
-          {filtered.length} of {superHubs.length} hub{superHubs.length !== 1 ? "s" : ""}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-gray-400 font-medium">
+            {filtered.length} of {superHubs.length} hub{superHubs.length !== 1 ? "s" : ""}
+          </span>
+          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`w-8 h-8 flex items-center justify-center transition-colors ${viewMode === "grid" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+              title="Grid view"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`w-8 h-8 flex items-center justify-center transition-colors ${viewMode === "list" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+              title="List view"
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Hub Cards Grid */}
+      {/* Hub Cards Grid / List */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-80 rounded-xl" />)}
@@ -182,12 +201,24 @@ export default function Hubs() {
           <p className="text-gray-500 font-medium">{search || statusFilter !== "all" ? "No hubs match your filters" : "No super hubs yet"}</p>
           <p className="text-gray-400 text-sm mt-1">{search || statusFilter !== "all" ? "Try adjusting your search or filters" : 'Click "Add Super Hub" to get started'}</p>
         </div>
-      ) : (
+      ) : viewMode === "grid" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filtered.map((hub) => (
             <SuperHubCard
               key={hub.id}
               hub={hub}
+              onEdit={() => { setEditingSuperHub(hub); setIsSuperModalOpen(true); }}
+              onDelete={() => setDeleteSuperHubId(hub.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          {filtered.map((hub, i) => (
+            <SuperHubRow
+              key={hub.id}
+              hub={hub}
+              isLast={i === filtered.length - 1}
               onEdit={() => { setEditingSuperHub(hub); setIsSuperModalOpen(true); }}
               onDelete={() => setDeleteSuperHubId(hub.id)}
             />
@@ -294,6 +325,62 @@ function SuperHubCard({ hub, onEdit, onDelete }: { hub: any; onEdit: () => void;
           <SubHubsList superHubId={hub.id} superHubName={hub.name} />
         </div>
       )}
+    </div>
+  );
+}
+
+function SuperHubRow({ hub, isLast, onEdit, onDelete }: { hub: any; isLast: boolean; onEdit: () => void; onDelete: () => void }) {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const toggleStatus = useToggleSuperHubStatus();
+
+  const handleToggle = () => {
+    toggleStatus.mutate({ id: hub.id }, {
+      onSuccess: () => {
+        toast({ title: "Status updated" });
+        queryClient.invalidateQueries({ queryKey: getGetSuperHubsQueryKey() });
+      },
+    });
+  };
+
+  return (
+    <div className={`flex items-center gap-4 px-4 py-3 hover:bg-gray-50/50 transition-colors ${!isLast ? "border-b border-gray-100" : ""}`}>
+      <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-gradient-to-br from-blue-50 to-indigo-100">
+        {hub.imageUrl ? (
+          <img src={hub.imageUrl} alt={hub.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Building2 className="w-5 h-5 text-blue-300" />
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-[#162B4D] text-sm truncate">{hub.name}</p>
+        <div className="flex items-center gap-1 text-gray-400 text-xs mt-0.5">
+          <MapPin className="w-3 h-3 flex-shrink-0" />
+          <span className="truncate">{hub.location || "Location not set"}</span>
+        </div>
+      </div>
+      <span className="text-xs bg-blue-50 text-[#1A56DB] font-semibold px-2 py-0.5 rounded-full flex-shrink-0">
+        {hub.subHubCount} Sub Hubs
+      </span>
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${hub.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${hub.status === "Active" ? "bg-green-500" : "bg-gray-400"}`} />
+        {hub.status}
+      </span>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <Switch checked={hub.status === "Active"} onCheckedChange={handleToggle} className="data-[state=checked]:bg-[#1A56DB] scale-75" />
+        <button onClick={() => setLocation(`/hubs/${hub.id}`)} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-[#162B4D] hover:bg-gray-50 transition-colors" title="View Sub Hubs">
+          <Layers className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors">
+          <Edit2 className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 }
