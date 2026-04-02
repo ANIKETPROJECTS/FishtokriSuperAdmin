@@ -4,9 +4,9 @@ import { v2 as cloudinary } from "cloudinary";
 import { requireAuth } from "../middlewares/auth.js";
 
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "dbkmmxnzd",
-  api_key: process.env.CLOUDINARY_API_KEY || "935594792745712",
-  api_secret: process.env.CLOUDINARY_API_SECRET || "ouFPGE7SlNoQAG_OR7IT5sdFiiU",
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
 const router: IRouter = Router();

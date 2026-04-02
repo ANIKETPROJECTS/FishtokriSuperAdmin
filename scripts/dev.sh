@@ -1,5 +1,18 @@
 #!/bin/bash
 
+# Load all credentials from ecosystem.config.cjs automatically
+eval $(node -e "
+const config = require('./ecosystem.config.cjs');
+const env = config.apps[0].env;
+const skip = new Set(['NODE_ENV', 'PORT']);
+Object.entries(env).forEach(([k, v]) => {
+  if (!skip.has(k) && v !== undefined && v !== null) {
+    const val = String(v).replace(/'/g, \"'\\\\''\");
+    process.stdout.write('export ' + k + \"='\" + val + \"'\\n\");
+  }
+});
+")
+
 # Start API server in background
 (cd artifacts/api-server && PORT=8080 pnpm run dev) &
 API_PID=$!
