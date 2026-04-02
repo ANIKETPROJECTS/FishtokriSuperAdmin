@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Edit2, Trash2, MapPin, ChevronDown, ChevronUp, Building2, X, UserPlus, Layers, Search, ArrowUpDown, SlidersHorizontal } from "lucide-react";
+import { ImageUpload } from "@/components/image-upload";
 import {
   useGetSuperHubs,
   getGetSuperHubsQueryKey,
@@ -481,11 +482,12 @@ function SuperHubModal({ isOpen, onClose, hub }: { isOpen: boolean; onClose: () 
                 <Label className="text-xs font-semibold text-gray-600">Location</Label>
                 <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Mumbai, Maharashtra" className="h-9" />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-gray-600">Image URL</Label>
-                <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://image.pollinations.ai/prompt/..." className="h-9" />
-                <p className="text-xs text-gray-400">Tip: Use pollinations.ai or any direct image URL</p>
-              </div>
+              <ImageUpload
+                value={imageUrl}
+                onChange={setImageUrl}
+                folder="fishtokri/super-hubs"
+                label="Hub Image"
+              />
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <Label className="text-sm">Active</Label>
                 <Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" />
@@ -560,6 +562,7 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
 
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [pincodes, setPincodes] = useState<string[]>([]);
   const [pinInput, setPinInput] = useState("");
   const [isActive, setIsActive] = useState(true);
@@ -568,9 +571,10 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
     if (isOpen) {
       if (subHub) {
         setName(subHub.name); setLocation(subHub.location || "");
+        setImageUrl((subHub as any).imageUrl || "");
         setPincodes(subHub.pincodes || []); setIsActive(subHub.status === "Active");
       } else {
-        setName(""); setLocation(""); setPincodes([]); setIsActive(true);
+        setName(""); setLocation(""); setImageUrl(""); setPincodes([]); setIsActive(true);
       }
       setPinInput("");
     }
@@ -583,7 +587,7 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { name, location, pincodes, status: isActive ? "Active" : ("Inactive" as const) };
+    const payload = { name, location, imageUrl, pincodes, status: isActive ? "Active" : ("Inactive" as const) };
     if (isEditing) {
       updateMutation.mutate({ id: subHub.id, data: payload }, {
         onSuccess: () => {
@@ -619,6 +623,12 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
             <Label className="text-xs font-semibold text-gray-600">Location</Label>
             <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Thane, Mumbai" className="h-9" />
           </div>
+          <ImageUpload
+            value={imageUrl}
+            onChange={setImageUrl}
+            folder="fishtokri/sub-hubs"
+            label="Sub Hub Image"
+          />
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-gray-600">Service Areas (Pincodes)</Label>
             <div className="flex gap-2">

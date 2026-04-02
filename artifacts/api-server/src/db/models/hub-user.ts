@@ -5,6 +5,7 @@ const hubUserSchema = new mongoose.Schema(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     phone: { type: String, default: "" },
+    profileImageUrl: { type: String, default: "" },
     role: { type: String, default: "sub_hub" },
     password: { type: String, required: true },
     superHubId: { type: mongoose.Schema.Types.ObjectId, ref: "SuperHub", default: null },

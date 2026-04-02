@@ -5,6 +5,7 @@ import superHubsRouter from "./super-hubs";
 import subHubsRouter from "./sub-hubs";
 import usersRouter from "./users";
 import statsRouter from "./stats";
+import uploadRouter from "./upload";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use("/super-hubs", superHubsRouter);
 router.use("/sub-hubs", subHubsRouter);
 router.use("/users", usersRouter);
 router.use("/stats", statsRouter);
+router.use("/upload", uploadRouter);
 
 export default router;

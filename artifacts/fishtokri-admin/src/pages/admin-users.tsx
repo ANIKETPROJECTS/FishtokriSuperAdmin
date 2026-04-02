@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Plus, Search, Edit2, Trash2, Mail, Phone, Eye, EyeOff, ArrowUpDown, SlidersHorizontal, X } from "lucide-react";
+import { ImageUpload } from "@/components/image-upload";
 import {
   useGetUsers,
   getGetUsersQueryKey,
@@ -16,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -254,6 +255,9 @@ export default function AdminUsers() {
                     <TableCell className="py-4">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-9 w-9 flex-shrink-0">
+                          {(user as any).profileImageUrl && (
+                            <AvatarImage src={(user as any).profileImageUrl} alt={user.name} className="object-cover" />
+                          )}
                           <AvatarFallback className={`text-sm font-bold ${getAvatarColor(user.name)}`}>
                             {getInitials(user.name)}
                           </AvatarFallback>
@@ -374,6 +378,9 @@ export default function AdminUsers() {
   );
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\d{10}$/;
+
 function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: any }) {
   const isEditing = !!user;
   const { toast } = useToast();
@@ -390,19 +397,23 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [profileImageUrl, setProfileImageUrl] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<"super_admin" | "super_hub" | "sub_hub" | "delivery_person">("super_hub");
   const [superHubIds, setSuperHubIds] = useState<string[]>([]);
   const [subHubIds, setSubHubIds] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (isOpen) {
+      setFieldErrors({});
       if (user) {
         setName(user.name);
         setEmail(user.email);
         setPhone(user.phone || "");
+        setProfileImageUrl((user as any).profileImageUrl || "");
         setPassword("");
         setRole(user.role as any);
         const ids: string[] = Array.isArray(user.superHubIds) && user.superHubIds.length > 0
@@ -415,16 +426,26 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
         setSubHubIds(subIds);
         setIsActive(user.status === "Active");
       } else {
-        setName(""); setEmail(""); setPhone(""); setPassword(""); setRole("super_hub");
+        setName(""); setEmail(""); setPhone(""); setProfileImageUrl(""); setPassword(""); setRole("super_hub");
         setSuperHubIds([]); setSubHubIds([]); setIsActive(true);
       }
     }
   }, [isOpen, user]);
 
+  const validate = () => {
+    const errors: Record<string, string> = {};
+    if (!EMAIL_REGEX.test(email)) errors.email = "Enter a valid email address";
+    if (phone.trim() && !PHONE_REGEX.test(phone.trim())) errors.phone = "Phone must be exactly 10 digits (numbers only)";
+    if (!isEditing && !password.trim()) errors.password = "Password is required";
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validate()) return;
     const payload: any = {
-      name, email, phone, role,
+      name, email, phone, profileImageUrl, role,
       superHubIds: (role === "super_hub" || role === "delivery_person") ? superHubIds : undefined,
       subHubIds: (role === "sub_hub" || role === "delivery_person") ? subHubIds : undefined,
       status: isActive ? "Active" : ("Inactive" as const),
@@ -439,6 +460,12 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
           queryClient.invalidateQueries({ queryKey: ["all-sub-hubs"] });
           onClose();
         },
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message || err?.message || "Failed to update user";
+          if (msg.toLowerCase().includes("email")) setFieldErrors((p) => ({ ...p, email: msg }));
+          else if (msg.toLowerCase().includes("phone")) setFieldErrors((p) => ({ ...p, phone: msg }));
+          else toast({ title: "Error", description: msg, variant: "destructive" });
+        },
       });
     } else {
       createMutation.mutate({ data: payload as any }, {
@@ -446,6 +473,12 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
           toast({ title: "User created" });
           queryClient.invalidateQueries({ queryKey: getGetUsersQueryKey() });
           onClose();
+        },
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message || err?.message || "Failed to create user";
+          if (msg.toLowerCase().includes("email")) setFieldErrors((p) => ({ ...p, email: msg }));
+          else if (msg.toLowerCase().includes("phone")) setFieldErrors((p) => ({ ...p, phone: msg }));
+          else toast({ title: "Error", description: msg, variant: "destructive" });
         },
       });
     }
@@ -460,6 +493,13 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
           <DialogTitle className="text-[#162B4D]">{isEditing ? "Edit User" : "Add New User"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+          <ImageUpload
+            value={profileImageUrl}
+            onChange={setProfileImageUrl}
+            folder="fishtokri/users"
+            label="Profile Image"
+            previewClassName="w-12 h-12 rounded-full"
+          />
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-gray-600">Name *</Label>
@@ -467,12 +507,33 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-gray-600">Phone</Label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="h-9" placeholder="9876543210" />
+              <Input
+                value={phone}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "").slice(0, 10);
+                  setPhone(v);
+                  if (fieldErrors.phone) setFieldErrors((p) => ({ ...p, phone: "" }));
+                }}
+                className={`h-9 ${fieldErrors.phone ? "border-red-400" : ""}`}
+                placeholder="10 digits only"
+                maxLength={10}
+              />
+              {fieldErrors.phone && <p className="text-xs text-red-500">{fieldErrors.phone}</p>}
             </div>
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-gray-600">Email *</Label>
-            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="h-9" />
+            <Input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (fieldErrors.email) setFieldErrors((p) => ({ ...p, email: "" }));
+              }}
+              className={`h-9 ${fieldErrors.email ? "border-red-400" : ""}`}
+            />
+            {fieldErrors.email && <p className="text-xs text-red-500">{fieldErrors.email}</p>}
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-gray-600">
@@ -484,8 +545,11 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
                 type={showPassword ? "text" : "password"}
                 required={!isEditing}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="h-9 pr-9"
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (fieldErrors.password) setFieldErrors((p) => ({ ...p, password: "" }));
+                }}
+                className={`h-9 pr-9 ${fieldErrors.password ? "border-red-400" : ""}`}
                 placeholder={isEditing ? "Enter new password to change" : "Min. 6 characters"}
               />
               <button
@@ -497,6 +561,7 @@ function UserModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => 
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            {fieldErrors.password && <p className="text-xs text-red-500">{fieldErrors.password}</p>}
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-gray-600">Role</Label>

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, MapPin, Plus, Edit2, Trash2, LayoutDashboard, X, Layers, Search, ArrowUpDown, SlidersHorizontal,
 } from "lucide-react";
+import { ImageUpload } from "@/components/image-upload";
 import {
   useGetSuperHubs,
   getGetSuperHubsQueryKey,
