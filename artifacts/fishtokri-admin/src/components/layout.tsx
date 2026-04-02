@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, ChevronDown, Building2, Store, Truck } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const masterAdminNavItems = [
@@ -112,10 +112,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 ml-[165px] flex flex-col min-h-screen">
         {/* Header */}
         <header className="bg-white h-14 border-b border-gray-100 flex items-center justify-end px-8 z-10 sticky top-0 shadow-sm">
-          <div className="flex items-center gap-2 border border-gray-200 rounded-md px-3 py-1.5 cursor-pointer hover:bg-gray-50 transition-colors">
-            <span className="text-xs text-gray-500 font-medium">View as:</span>
+          <div className="flex items-center gap-2">
+            <UserCircle className="w-4 h-4 text-gray-400" />
             <span className="text-sm font-semibold text-[#162B4D]">{adminName}</span>
-            <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
           </div>
           <div className="w-px h-6 bg-gray-200 mx-4" />
           <Button
