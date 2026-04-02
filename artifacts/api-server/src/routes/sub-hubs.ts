@@ -6,6 +6,21 @@ import { requireAuth } from "../middlewares/auth.js";
 const router: IRouter = Router();
 router.use(requireAuth as any);
 
+function subHubToJson(sub: any, superHubName: string) {
+  return {
+    id: String(sub._id),
+    superHubId: String(sub.superHubId),
+    superHubName,
+    name: sub.name,
+    location: sub.location,
+    imageUrl: sub.imageUrl ?? "",
+    pincodes: sub.pincodes,
+    status: sub.status,
+    dbName: sub.dbName ?? "",
+    createdAt: sub.createdAt,
+  };
+}
+
 router.get("/", async (req, res) => {
   try {
     const subs = await SubHub.find({}).sort({ createdAt: 1 });
@@ -13,18 +28,7 @@ router.get("/", async (req, res) => {
     const superHubs = await SuperHub.find({ _id: { $in: superHubIds } });
     const superHubMap: Record<string, string> = {};
     for (const sh of superHubs) superHubMap[String(sh._id)] = sh.name;
-    const result = subs.map((sub) => ({
-      id: String(sub._id),
-      superHubId: String(sub.superHubId),
-      superHubName: superHubMap[String(sub.superHubId)] ?? "",
-      name: sub.name,
-      location: sub.location,
-      imageUrl: sub.imageUrl ?? "",
-      pincodes: sub.pincodes,
-      status: sub.status,
-      createdAt: sub.createdAt,
-    }));
-    res.json({ subHubs: result, total: result.length });
+    res.json({ subHubs: subs.map((sub) => subHubToJson(sub, superHubMap[String(sub.superHubId)] ?? "")), total: subs.length });
   } catch (err) {
     req.log.error({ err }, "Failed to get all sub hubs");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch sub hubs" });
@@ -35,16 +39,26 @@ router.put("/:id", async (req, res) => {
   try {
     const sub = await SubHub.findById(req.params.id);
     if (!sub) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
-    const { name, location, pincodes, status, imageUrl } = req.body;
+    const { name, location, pincodes, status, imageUrl, dbName } = req.body;
     if (name !== undefined) sub.name = name;
     if (location !== undefined) sub.location = location;
     if (pincodes !== undefined) sub.pincodes = pincodes;
     if (status !== undefined) sub.status = status;
     if (imageUrl !== undefined) sub.imageUrl = imageUrl;
+    if (dbName !== undefined) {
+      const trimmed = String(dbName).trim();
+      if (trimmed && trimmed !== sub.dbName) {
+        const duplicate = await SubHub.findOne({ dbName: trimmed, _id: { $ne: sub._id } });
+        if (duplicate) {
+          res.status(400).json({ error: "DuplicateDb", message: `Database name "${trimmed}" is already in use by another sub hub.` });
+          return;
+        }
+      }
+      sub.dbName = trimmed;
+    }
     await sub.save();
     const superHub = await SuperHub.findById(sub.superHubId);
-    const result = { id: String(sub._id), superHubId: String(sub.superHubId), superHubName: superHub?.name ?? "", name: sub.name, location: sub.location, imageUrl: sub.imageUrl ?? "", pincodes: sub.pincodes, status: sub.status, createdAt: sub.createdAt };
-    res.json({ subHub: result });
+    res.json({ subHub: subHubToJson(sub, superHub?.name ?? "") });
   } catch (err) {
     req.log.error({ err }, "Failed to update sub hub");
     res.status(500).json({ error: "InternalError", message: "Failed to update sub hub" });
@@ -70,8 +84,7 @@ router.patch("/:id/toggle-status", async (req, res) => {
     sub.status = sub.status === "Active" ? "Inactive" : "Active";
     await sub.save();
     const superHub = await SuperHub.findById(sub.superHubId);
-    const result = { id: String(sub._id), superHubId: String(sub.superHubId), superHubName: superHub?.name ?? "", name: sub.name, location: sub.location, imageUrl: sub.imageUrl ?? "", pincodes: sub.pincodes, status: sub.status, createdAt: sub.createdAt };
-    res.json({ subHub: result });
+    res.json({ subHub: subHubToJson(sub, superHub?.name ?? "") });
   } catch (err) {
     req.log.error({ err }, "Failed to toggle sub hub status");
     res.status(500).json({ error: "InternalError", message: "Failed to toggle status" });

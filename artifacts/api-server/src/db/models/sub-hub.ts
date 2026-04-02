@@ -8,6 +8,7 @@ const subHubSchema = new mongoose.Schema(
     imageUrl: { type: String, default: "" },
     pincodes: { type: [String], default: [] },
     status: { type: String, default: "Active" },
+    dbName: { type: String, default: "" },
   },
   { timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } }
 );

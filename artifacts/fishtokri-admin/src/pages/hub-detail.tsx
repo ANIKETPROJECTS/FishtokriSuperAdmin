@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, MapPin, Plus, Edit2, Trash2, LayoutDashboard, X, Layers, Search, ArrowUpDown, SlidersHorizontal, LayoutGrid, LayoutList,
+  ArrowLeft, MapPin, Plus, Edit2, Trash2, LayoutDashboard, X, Layers, Search, ArrowUpDown, SlidersHorizontal, LayoutGrid, LayoutList, Database,
 } from "lucide-react";
 import { ImageUpload } from "@/components/image-upload";
 import {
@@ -282,6 +282,7 @@ export default function HubDetail() {
 function SubHubCard({ sub, onEdit, onDelete }: { sub: any; onEdit: () => void; onDelete: () => void }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const toggleStatus = useToggleSubHubStatus();
 
   const handleToggle = () => {
@@ -336,6 +337,7 @@ function SubHubCard({ sub, onEdit, onDelete }: { sub: any; onEdit: () => void; o
 
         <div className="mt-auto pt-3 border-t border-gray-100 space-y-2">
           <Button
+            onClick={() => setLocation(`/sub-hub-menu/${sub.id}`)}
             className="w-full h-8 text-xs font-semibold bg-[#162B4D] hover:bg-[#1E3A5F] text-white gap-2"
             size="sm"
           >
@@ -367,6 +369,7 @@ function SubHubCard({ sub, onEdit, onDelete }: { sub: any; onEdit: () => void; o
 function SubHubRow({ sub, isLast, onEdit, onDelete }: { sub: any; isLast: boolean; onEdit: () => void; onDelete: () => void }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const toggleStatus = useToggleSubHubStatus();
 
   const handleToggle = () => {
@@ -409,6 +412,13 @@ function SubHubRow({ sub, isLast, onEdit, onDelete }: { sub: any; isLast: boolea
         {sub.status}
       </span>
       <div className="flex items-center gap-1.5 flex-shrink-0">
+        <button
+          onClick={() => setLocation(`/sub-hub-menu/${sub.id}`)}
+          className="h-7 px-2 flex items-center gap-1 rounded border border-[#162B4D] bg-[#162B4D] text-white text-xs font-semibold hover:bg-[#1E3A5F] transition-colors"
+        >
+          <LayoutDashboard className="w-3 h-3" />
+          Dashboard
+        </button>
         <Switch checked={sub.status === "Active"} onCheckedChange={handleToggle} className="data-[state=checked]:bg-[#1A56DB] scale-75" />
         <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors">
           <Edit2 className="w-3.5 h-3.5" />
@@ -434,6 +444,11 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
   const [pincodes, setPincodes] = useState<string[]>([]);
   const [pinInput, setPinInput] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [dbName, setDbName] = useState("");
+
+  function computeDbName(n: string) {
+    return n.toLowerCase().trim().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+  }
 
   useEffect(() => {
     if (isOpen) {
@@ -441,8 +456,9 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
         setName(subHub.name); setLocation(subHub.location || "");
         setImageUrl((subHub as any).imageUrl || "");
         setPincodes(subHub.pincodes || []); setIsActive(subHub.status === "Active");
+        setDbName((subHub as any).dbName || "");
       } else {
-        setName(""); setLocation(""); setImageUrl(""); setPincodes([]); setIsActive(true);
+        setName(""); setLocation(""); setImageUrl(""); setPincodes([]); setIsActive(true); setDbName("");
       }
       setPinInput("");
     }
@@ -455,7 +471,7 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { name, location, imageUrl, pincodes, status: isActive ? "Active" : ("Inactive" as const) };
+    const payload = { name, location, imageUrl, pincodes, status: isActive ? "Active" : ("Inactive" as const), dbName: isEditing ? dbName : undefined };
     if (isEditing) {
       updateMutation.mutate({ id: subHub.id, data: payload as any }, {
         onSuccess: () => {
@@ -490,6 +506,22 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-gray-600">Location</Label>
             <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Thane, Mumbai" className="h-9" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600 flex items-center gap-1.5">
+              <Database className="w-3 h-3" />
+              Database Name
+            </Label>
+            {isEditing ? (
+              <Input value={dbName} onChange={(e) => setDbName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} placeholder="e.g. thane" className="h-9 font-mono text-sm" />
+            ) : (
+              <div className="h-9 px-3 flex items-center rounded-md border border-gray-200 bg-gray-50 text-sm font-mono text-gray-500">
+                {computeDbName(name) || <span className="text-gray-400 italic">auto-generated from name</span>}
+              </div>
+            )}
+            <p className="text-[11px] text-gray-400">
+              {isEditing ? "Only edit this if you need to link to an existing database (e.g. \"fishtokri\" for Thane)." : "Automatically set from the sub hub name. Cannot be changed after creation."}
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-gray-600">Image URL</Label>

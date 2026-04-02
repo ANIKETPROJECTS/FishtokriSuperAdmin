@@ -18,6 +18,7 @@ import HubDetail from "@/pages/hub-detail";
 import AdminUsers from "@/pages/admin-users";
 import ComingSoon from "@/pages/coming-soon";
 import MyHubs from "@/pages/my-hubs";
+import SubHubMenuAdmin from "@/pages/sub-hub-menu-admin";
 import { Layout } from "@/components/layout";
 
 const queryClient = new QueryClient({
@@ -112,6 +113,11 @@ function App() {
             </Route>
             <Route path="/coupons">
               <ProtectedRoute component={ComingSoon} requiredRole="master_admin" />
+            </Route>
+
+            {/* Sub Hub Menu Admin (accessible to master_admin and super_hub) */}
+            <Route path="/sub-hub-menu/:id">
+              <ProtectedRoute component={SubHubMenuAdmin} />
             </Route>
 
             {/* Super Hub routes */}
