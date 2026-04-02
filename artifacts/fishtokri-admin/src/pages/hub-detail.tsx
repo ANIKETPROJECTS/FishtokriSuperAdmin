@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, MapPin, Plus, Edit2, Trash2, LayoutDashboard, X, Layers,
+  ArrowLeft, MapPin, Plus, Edit2, Trash2, LayoutDashboard, X, Layers, Search, ArrowUpDown, SlidersHorizontal,
 } from "lucide-react";
 import {
   useGetSuperHubs,
@@ -23,6 +23,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type SortOption = "name_asc" | "name_desc" | "pincodes_asc" | "pincodes_desc" | "status";
 
 function getAdminRole() {
   try {
@@ -55,11 +64,35 @@ export default function HubDetail() {
   const [editingSubHub, setEditingSubHub] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "Active" | "Inactive">("all");
+  const [sort, setSort] = useState<SortOption>("name_asc");
+
   const stats = {
     total: subHubs.length,
     active: subHubs.filter((s) => s.status === "Active").length,
     totalPins: subHubs.reduce((acc, s) => acc + ((s as any).pincodes?.length ?? 0), 0),
   };
+
+  const filtered = subHubs
+    .filter((s) => {
+      const q = search.toLowerCase();
+      const matchesSearch =
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        (s.location || "").toLowerCase().includes(q) ||
+        ((s as any).pincodes || []).some((p: string) => p.toLowerCase().includes(q));
+      const matchesStatus = statusFilter === "all" || s.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      if (sort === "name_asc") return a.name.localeCompare(b.name);
+      if (sort === "name_desc") return b.name.localeCompare(a.name);
+      if (sort === "pincodes_asc") return ((a as any).pincodes?.length ?? 0) - ((b as any).pincodes?.length ?? 0);
+      if (sort === "pincodes_desc") return ((b as any).pincodes?.length ?? 0) - ((a as any).pincodes?.length ?? 0);
+      if (sort === "status") return a.status.localeCompare(b.status);
+      return 0;
+    });
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -114,20 +147,85 @@ export default function HubDetail() {
         ))}
       </div>
 
+      {/* Search, Sort, Filter Bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            placeholder="Search by name, location or pincode..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 h-9 bg-white border-gray-200 text-sm"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+            <SelectTrigger className="h-9 w-36 text-sm border-gray-200 bg-white">
+              <SelectValue placeholder="Filter status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="Active">Active</SelectItem>
+              <SelectItem value="Inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <ArrowUpDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <Select value={sort} onValueChange={(v: any) => setSort(v)}>
+            <SelectTrigger className="h-9 w-44 text-sm border-gray-200 bg-white">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name_asc">Name (A → Z)</SelectItem>
+              <SelectItem value="name_desc">Name (Z → A)</SelectItem>
+              <SelectItem value="pincodes_desc">Pincodes (Most)</SelectItem>
+              <SelectItem value="pincodes_asc">Pincodes (Least)</SelectItem>
+              <SelectItem value="status">Status</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {(search || statusFilter !== "all") && (
+          <button
+            onClick={() => { setSearch(""); setStatusFilter("all"); }}
+            className="text-xs text-[#1A56DB] hover:underline font-medium"
+          >
+            Clear filters
+          </button>
+        )}
+
+        <span className="ml-auto text-xs text-gray-400 font-medium">
+          {filtered.length} of {subHubs.length} sub hub{subHubs.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
       {/* Sub Hub Grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-72 rounded-xl" />)}
         </div>
-      ) : subHubs.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-dashed border-gray-200 py-20 text-center">
           <Layers className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">No sub hubs yet</p>
-          <p className="text-gray-400 text-sm mt-1">Click "Add Sub Hub" to create one</p>
+          <p className="text-gray-500 font-medium">
+            {search || statusFilter !== "all" ? "No sub hubs match your filters" : "No sub hubs yet"}
+          </p>
+          <p className="text-gray-400 text-sm mt-1">
+            {search || statusFilter !== "all" ? "Try adjusting your search or filters" : 'Click "Add Sub Hub" to create one'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {subHubs.map((sub) => (
+          {filtered.map((sub) => (
             <SubHubCard
               key={sub.id}
               sub={sub as any}
@@ -165,7 +263,6 @@ function SubHubCard({ sub, onEdit, onDelete }: { sub: any; onEdit: () => void; o
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col hover:shadow-md transition-shadow">
-      {/* Image */}
       <div className="h-40 w-full relative bg-gradient-to-br from-blue-50 to-indigo-100 overflow-hidden flex-shrink-0">
         {sub.imageUrl ? (
           <img src={sub.imageUrl} alt={sub.name} className="w-full h-full object-cover" />
@@ -186,15 +283,12 @@ function SubHubCard({ sub, onEdit, onDelete }: { sub: any; onEdit: () => void; o
         </div>
       </div>
 
-      {/* Body */}
       <div className="p-4 flex flex-col flex-1">
-        {/* Location */}
         <div className="flex items-center text-gray-500 text-xs mb-3">
           <MapPin className="w-3 h-3 mr-1 text-gray-400 flex-shrink-0" />
           <span className="truncate">{sub.location || "Location not set"}</span>
         </div>
 
-        {/* Pincodes */}
         {sub.pincodes?.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-4">
             {sub.pincodes.slice(0, 4).map((p: string) => (
@@ -208,9 +302,7 @@ function SubHubCard({ sub, onEdit, onDelete }: { sub: any; onEdit: () => void; o
           </div>
         )}
 
-        {/* Actions */}
         <div className="mt-auto pt-3 border-t border-gray-100 space-y-2">
-          {/* Dashboard button */}
           <Button
             className="w-full h-8 text-xs font-semibold bg-[#162B4D] hover:bg-[#1E3A5F] text-white gap-2"
             size="sm"
@@ -219,7 +311,6 @@ function SubHubCard({ sub, onEdit, onDelete }: { sub: any; onEdit: () => void; o
             Dashboard
           </Button>
 
-          {/* Controls row */}
           <div className="flex items-center justify-between">
             <div className="flex gap-1">
               <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors">

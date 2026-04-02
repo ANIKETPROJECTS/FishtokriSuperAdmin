@@ -1,7 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { Truck, MapPin, Building2, Store, Search } from "lucide-react";
+import { Truck, MapPin, Building2, Store, Search, ArrowUpDown, SlidersHorizontal, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { useState } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function getAdminData() {
   try {
@@ -44,9 +52,13 @@ function useAllSuperHubs() {
   });
 }
 
+type SortOption = "name_asc" | "name_desc" | "status";
+
 export default function MyDeliveries() {
   const admin = getAdminData();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "Active" | "Inactive">("all");
+  const [sort, setSort] = useState<SortOption>("name_asc");
   const [tab, setTab] = useState<"super" | "sub">("super");
 
   const superHubIds: string[] = admin?.superHubIds?.length > 0
@@ -65,35 +77,42 @@ export default function MyDeliveries() {
 
   const isLoading = loadingSuperHubs || loadingSubHubs;
 
-  const filteredSuperHubs = mySuperHubs.filter((h) => {
-    const q = search.toLowerCase();
-    return !q || h.name?.toLowerCase().includes(q) || h.location?.toLowerCase().includes(q);
-  });
+  const applyFilters = (items: any[]) =>
+    items
+      .filter((h) => {
+        const q = search.toLowerCase();
+        const matchesSearch =
+          !q ||
+          h.name?.toLowerCase().includes(q) ||
+          h.location?.toLowerCase().includes(q) ||
+          h.superHubName?.toLowerCase().includes(q) ||
+          (h.pincodes || []).some((p: string) => p.toLowerCase().includes(q));
+        const matchesStatus = statusFilter === "all" || h.status === statusFilter;
+        return matchesSearch && matchesStatus;
+      })
+      .sort((a, b) => {
+        if (sort === "name_asc") return (a.name || "").localeCompare(b.name || "");
+        if (sort === "name_desc") return (b.name || "").localeCompare(a.name || "");
+        if (sort === "status") return (a.status || "").localeCompare(b.status || "");
+        return 0;
+      });
 
-  const filteredSubHubs = mySubHubs.filter((h) => {
-    const q = search.toLowerCase();
-    return !q || h.name?.toLowerCase().includes(q) || h.location?.toLowerCase().includes(q) || h.superHubName?.toLowerCase().includes(q) || (h.pincodes || []).some((p: string) => p.toLowerCase().includes(q));
-  });
+  const filteredSuperHubs = applyFilters(mySuperHubs);
+  const filteredSubHubs = applyFilters(mySubHubs);
+  const currentItems = tab === "super" ? filteredSuperHubs : filteredSubHubs;
+  const totalItems = tab === "super" ? mySuperHubs.length : mySubHubs.length;
+
+  const clearFilters = () => { setSearch(""); setStatusFilter("all"); };
+  const hasFilters = search || statusFilter !== "all";
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-[#162B4D]">My Hubs</h2>
-          <p className="text-gray-500 text-sm mt-1">All hubs assigned to your delivery account.</p>
-        </div>
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 w-64 shadow-sm">
-          <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
-          <input
-            type="text"
-            placeholder="Search hubs, pincodes…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="text-sm outline-none flex-1 text-gray-700 placeholder-gray-400 bg-transparent"
-          />
-        </div>
+      <div>
+        <h2 className="text-2xl font-bold text-[#162B4D]">My Hubs</h2>
+        <p className="text-gray-500 text-sm mt-1">All hubs assigned to your delivery account.</p>
       </div>
 
+      {/* Tabs */}
       <div className="flex gap-2">
         <button
           onClick={() => setTab("super")}
@@ -117,6 +136,62 @@ export default function MyDeliveries() {
         </button>
       </div>
 
+      {/* Search, Sort, Filter */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            placeholder={tab === "super" ? "Search super hubs..." : "Search sub hubs, pincodes..."}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 h-9 bg-white border-gray-200 text-sm"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+            <SelectTrigger className="h-9 w-36 text-sm border-gray-200 bg-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="Active">Active</SelectItem>
+              <SelectItem value="Inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <ArrowUpDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <Select value={sort} onValueChange={(v: any) => setSort(v)}>
+            <SelectTrigger className="h-9 w-40 text-sm border-gray-200 bg-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name_asc">Name (A → Z)</SelectItem>
+              <SelectItem value="name_desc">Name (Z → A)</SelectItem>
+              <SelectItem value="status">Status</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {hasFilters && (
+          <button onClick={clearFilters} className="text-xs text-[#1A56DB] hover:underline font-medium">
+            Clear filters
+          </button>
+        )}
+
+        <span className="ml-auto text-xs text-gray-400 font-medium">
+          {currentItems.length} of {totalItems} hub{totalItems !== 1 ? "s" : ""}
+        </span>
+      </div>
+
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
@@ -125,7 +200,7 @@ export default function MyDeliveries() {
         filteredSuperHubs.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-16 text-center">
             <Building2 className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">{search ? "No super hubs match your search." : "No super hubs assigned to your account."}</p>
+            <p className="text-gray-500 font-medium">{hasFilters ? "No super hubs match your filters." : "No super hubs assigned to your account."}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -160,7 +235,7 @@ export default function MyDeliveries() {
         filteredSubHubs.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-16 text-center">
             <Truck className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">{search ? "No sub hubs match your search." : "No sub hubs assigned to your account."}</p>
+            <p className="text-gray-500 font-medium">{hasFilters ? "No sub hubs match your filters." : "No sub hubs assigned to your account."}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">

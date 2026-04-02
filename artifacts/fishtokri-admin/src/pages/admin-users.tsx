@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { Plus, Search, Edit2, Trash2, Mail, Phone, Eye, EyeOff } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Mail, Phone, Eye, EyeOff, ArrowUpDown, SlidersHorizontal, X } from "lucide-react";
 import {
   useGetUsers,
   getGetUsersQueryKey,
@@ -96,6 +96,9 @@ export default function AdminUsers() {
 
   const users = usersData?.users || [];
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | "super_admin" | "super_hub" | "sub_hub" | "delivery_person">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "Active" | "Inactive">("all");
+  const [sort, setSort] = useState<"name_asc" | "name_desc" | "role" | "status">("name_asc");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
@@ -104,12 +107,27 @@ export default function AdminUsers() {
   const queryClient = useQueryClient();
   const toggleStatus = useToggleUserStatus();
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.name.toLowerCase().includes(search.toLowerCase()) ||
-      user.email.toLowerCase().includes(search.toLowerCase()) ||
-      user.role.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredUsers = users
+    .filter((user) => {
+      const q = search.toLowerCase();
+      const matchesSearch =
+        !q ||
+        user.name.toLowerCase().includes(q) ||
+        user.email.toLowerCase().includes(q) ||
+        user.role.toLowerCase().includes(q);
+      const matchesRole = roleFilter === "all" || user.role === roleFilter;
+      const matchesStatus = statusFilter === "all" || user.status === statusFilter;
+      return matchesSearch && matchesRole && matchesStatus;
+    })
+    .sort((a, b) => {
+      if (sort === "name_asc") return a.name.localeCompare(b.name);
+      if (sort === "name_desc") return b.name.localeCompare(a.name);
+      if (sort === "role") return a.role.localeCompare(b.role);
+      if (sort === "status") return a.status.localeCompare(b.status);
+      return 0;
+    });
+
+  const hasFilters = search || roleFilter !== "all" || statusFilter !== "all";
 
   const handleToggleStatus = (id: string) => {
     toggleStatus.mutate({ id }, {
@@ -136,18 +154,77 @@ export default function AdminUsers() {
         </Button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-gray-100">
-          <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <Input
-              placeholder="Search users by name, email or role..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 bg-gray-50 border-gray-200 h-9 text-sm"
-            />
-          </div>
+      {/* Search, Sort, Filter Bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            placeholder="Search by name, email or role..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 bg-white border-gray-200 h-9 text-sm"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
+
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <Select value={roleFilter} onValueChange={(v: any) => setRoleFilter(v)}>
+            <SelectTrigger className="h-9 w-44 text-sm border-gray-200 bg-white">
+              <SelectValue placeholder="Filter by role" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Roles</SelectItem>
+              <SelectItem value="super_admin">Master Admin</SelectItem>
+              <SelectItem value="super_hub">Super Hub</SelectItem>
+              <SelectItem value="sub_hub">Sub Hub</SelectItem>
+              <SelectItem value="delivery_person">Delivery Person</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+          <SelectTrigger className="h-9 w-36 text-sm border-gray-200 bg-white">
+            <SelectValue placeholder="Filter status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="Active">Active</SelectItem>
+            <SelectItem value="Inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <div className="flex items-center gap-2">
+          <ArrowUpDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <Select value={sort} onValueChange={(v: any) => setSort(v)}>
+            <SelectTrigger className="h-9 w-40 text-sm border-gray-200 bg-white">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name_asc">Name (A → Z)</SelectItem>
+              <SelectItem value="name_desc">Name (Z → A)</SelectItem>
+              <SelectItem value="role">Role</SelectItem>
+              <SelectItem value="status">Status</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {hasFilters && (
+          <button onClick={() => { setSearch(""); setRoleFilter("all"); setStatusFilter("all"); }} className="text-xs text-[#1A56DB] hover:underline font-medium">
+            Clear filters
+          </button>
+        )}
+
+        <span className="ml-auto text-xs text-gray-400 font-medium">
+          {filteredUsers.length} of {users.length} user{users.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
 
         {isLoading ? (
           <div className="p-6 space-y-4">
