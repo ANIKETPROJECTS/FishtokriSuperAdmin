@@ -455,7 +455,7 @@ function SuperHubModal({ isOpen, onClose, hub }: { isOpen: boolean; onClose: () 
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[480px] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Super Hub" : "Add Super Hub"}</DialogTitle>
         </DialogHeader>

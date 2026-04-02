@@ -51,9 +51,9 @@ export function ImageUpload({ value, onChange, folder = "fishtokri", label = "Im
       <Label className="text-xs font-semibold text-gray-600">{label}</Label>
 
       {value && (
-        <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-100">
+        <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-100 overflow-hidden">
           <img src={value} alt="preview" className={`${previewClassName} object-cover flex-shrink-0 border border-gray-200`} />
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 overflow-hidden">
             <p className="text-xs text-gray-500 truncate">{value}</p>
           </div>
           <button
