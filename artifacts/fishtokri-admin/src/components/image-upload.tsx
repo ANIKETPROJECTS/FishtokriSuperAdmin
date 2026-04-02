@@ -15,6 +15,16 @@ interface ImageUploadProps {
   previewClassName?: string;
 }
 
+function getDisplayName(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const parts = pathname.split("/").filter(Boolean);
+    return parts[parts.length - 1] || url;
+  } catch {
+    return url;
+  }
+}
+
 export function ImageUpload({ value, onChange, folder = "fishtokri", label = "Image", previewClassName = "w-16 h-16 rounded-lg" }: ImageUploadProps) {
   const [mode, setMode] = useState<"url" | "upload">("url");
   const [uploading, setUploading] = useState(false);
@@ -51,10 +61,11 @@ export function ImageUpload({ value, onChange, folder = "fishtokri", label = "Im
       <Label className="text-xs font-semibold text-gray-600">{label}</Label>
 
       {value && (
-        <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-100 overflow-hidden">
+        <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-100">
           <img src={value} alt="preview" className={`${previewClassName} object-cover flex-shrink-0 border border-gray-200`} />
-          <div className="flex-1 min-w-0 overflow-hidden">
-            <p className="text-xs text-gray-500 truncate">{value}</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-500 truncate font-medium">{getDisplayName(value)}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">Image ready</p>
           </div>
           <button
             type="button"
