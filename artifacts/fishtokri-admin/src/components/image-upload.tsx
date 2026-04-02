@@ -105,13 +105,13 @@ export function ImageUpload({ value, onChange, folder = "fishtokri", label = "Im
       />
 
       {mode === "url" && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0 overflow-hidden">
           <ImageIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
           <Input
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="https://..."
-            className="h-8 text-xs"
+            className="h-8 text-xs min-w-0 flex-1"
           />
         </div>
       )}
