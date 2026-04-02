@@ -29,8 +29,7 @@ export async function getSubHubDbConnection(dbName: string): Promise<mongoose.Co
 
 export function generateDbName(name: string): string {
   return name
-    .toLowerCase()
     .trim()
     .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
+    .replace(/[^a-zA-Z0-9_]/g, "");
 }
