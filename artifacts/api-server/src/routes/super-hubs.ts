@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { SuperHub } from "../db/models/super-hub.js";
 import { SubHub } from "../db/models/sub-hub.js";
 import { requireAuth } from "../middlewares/auth.js";
-import { generateDbName } from "../db/sub-hub-connections.js";
+import { generateDbName, getSubHubDbConnection } from "../db/sub-hub-connections.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
@@ -122,6 +122,19 @@ router.post("/:id/sub-hubs", async (req, res) => {
       status: status ?? "Active",
       dbName,
     });
+
+    try {
+      const conn = await getSubHubDbConnection(dbName);
+      await Promise.all([
+        conn.db.createCollection("products").catch(() => {}),
+        conn.db.createCollection("categories").catch(() => {}),
+        conn.db.createCollection("coupons").catch(() => {}),
+        conn.db.createCollection("orders").catch(() => {}),
+      ]);
+    } catch (initErr) {
+      req.log.warn({ initErr, dbName }, "Could not initialize sub hub database collections");
+    }
+
     res.status(201).json({ subHub: subHubToJson(sub, superHub.name) });
   } catch (err) {
     req.log.error({ err }, "Failed to create sub hub");
