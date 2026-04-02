@@ -10,6 +10,7 @@ import Dashboard from "@/pages/dashboard";
 import SuperHubDashboard from "@/pages/super-hub-dashboard";
 import SubHubDashboard from "@/pages/sub-hub-dashboard";
 import MySubHubs from "@/pages/my-sub-hubs";
+import MySubHubDetail from "@/pages/my-sub-hub-detail";
 import DeliveryDashboard from "@/pages/delivery-dashboard";
 import MyDeliveries from "@/pages/my-deliveries";
 import Hubs from "@/pages/hubs";
@@ -133,6 +134,9 @@ function App() {
             </Route>
             <Route path="/my-sub-hubs">
               <ProtectedRoute component={MySubHubs} requiredRole="sub_hub" />
+            </Route>
+            <Route path="/my-sub-hub/:id">
+              <ProtectedRoute component={MySubHubDetail} requiredRole="sub_hub" />
             </Route>
 
             {/* Delivery Person routes */}

@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Store, Layers, ExternalLink, Search, ArrowUpDown, SlidersHorizontal, X } from "lucide-react";
+import { MapPin, Store, Layers, LayoutDashboard, Search, ArrowUpDown, SlidersHorizontal, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import {
   Select,
   SelectContent,
@@ -190,7 +191,24 @@ export default function MySubHubs() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((sub) => (
-                  <tr key={sub.id} className="hover:bg-gray-50/60 transition-colors">
+                  <TableSubHubRow key={sub.id} sub={sub} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TableSubHubRow({ sub }: { sub: any }) {
+  const [, setLocation] = useLocation();
+  return (
+    <tr
+      className="hover:bg-teal-50/40 cursor-pointer transition-colors"
+      onClick={() => setLocation(`/my-sub-hub/${sub.id}`)}
+    >
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2">
                         {sub.imageUrl ? (
@@ -232,19 +250,13 @@ export default function MySubHubs() {
                         {sub.status}
                       </span>
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
+    </tr>
   );
 }
 
 function SubHubCard({ sub }: { sub: any }) {
   const pincodes: string[] = sub.pincodes || [];
+  const [, setLocation] = useLocation();
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
@@ -302,11 +314,14 @@ function SubHubCard({ sub }: { sub: any }) {
           )}
         </div>
 
-        <div className="pt-1 flex items-center justify-between border-t border-gray-50">
-          <span className="text-[11px] text-gray-400">
-            {pincodes.length} pincode{pincodes.length !== 1 ? "s" : ""}
-          </span>
-          <ExternalLink className="w-3.5 h-3.5 text-gray-300" />
+        <div className="pt-1 border-t border-gray-50">
+          <button
+            onClick={() => setLocation(`/my-sub-hub/${sub.id}`)}
+            className="w-full flex items-center justify-center gap-2 h-8 rounded-lg bg-[#162B4D] hover:bg-[#1E3A5F] text-white text-xs font-semibold transition-colors"
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            Dashboard
+          </button>
         </div>
       </div>
     </div>
