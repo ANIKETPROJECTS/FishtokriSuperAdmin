@@ -102,7 +102,7 @@ router.post("/:id/sub-hubs", async (req, res) => {
   try {
     const superHub = await SuperHub.findById(req.params.id);
     if (!superHub) { res.status(404).json({ error: "NotFound", message: "Super hub not found" }); return; }
-    const { name, location, pincodes, status } = req.body;
+    const { name, location, imageUrl, pincodes, status } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
 
     const dbName = generateDbName(name);
@@ -118,6 +118,7 @@ router.post("/:id/sub-hubs", async (req, res) => {
       superHubId: superHub._id,
       name,
       location: location ?? "",
+      imageUrl: imageUrl ?? "",
       pincodes: pincodes ?? [],
       status: status ?? "Active",
       dbName,

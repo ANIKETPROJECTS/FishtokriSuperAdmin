@@ -447,7 +447,7 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
   const [dbName, setDbName] = useState("");
 
   function computeDbName(n: string) {
-    return n.toLowerCase().trim().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+    return n.trim().replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
   }
 
   useEffect(() => {
@@ -513,7 +513,7 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
               Database Name
             </Label>
             {isEditing ? (
-              <Input value={dbName} onChange={(e) => setDbName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} placeholder="e.g. thane" className="h-9 font-mono text-sm" />
+              <Input value={dbName} onChange={(e) => setDbName(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))} placeholder="e.g. Thane" className="h-9 font-mono text-sm" />
             ) : (
               <div className="h-9 px-3 flex items-center rounded-md border border-gray-200 bg-gray-50 text-sm font-mono text-gray-500">
                 {computeDbName(name) || <span className="text-gray-400 italic">auto-generated from name</span>}
@@ -523,10 +523,12 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
               {isEditing ? "Only edit this if you need to link to an existing database (e.g. \"fishtokri\" for Thane)." : "Automatically set from the sub hub name. Cannot be changed after creation."}
             </p>
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Image URL</Label>
-            <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://image.pollinations.ai/prompt/..." className="h-9" />
-          </div>
+          <ImageUpload
+            value={imageUrl}
+            onChange={setImageUrl}
+            folder="fishtokri/sub-hubs"
+            label="Sub Hub Image"
+          />
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-gray-600">Service Areas (Pincodes)</Label>
             <div className="flex gap-2">
