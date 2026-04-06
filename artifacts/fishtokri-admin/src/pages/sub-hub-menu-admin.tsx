@@ -431,32 +431,30 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
     { value: "name_desc", label: "Name Z→A" },
     { value: "price_asc", label: "Price Low→High" },
     { value: "price_desc", label: "Price High→Low" },
-    { value: "sort_asc", label: "Sort Order" },
-    { value: "status", label: "Status" },
+    { value: "discount_desc", label: "Discount High→Low" },
+    { value: "qty_desc", label: "Stock High→Low" },
   ];
 
   const catOptions = [{ value: "all", label: "All Categories" }, ...categories.map((c) => ({ value: c.name, label: c.name }))];
   const filterGroups: FilterGroup[] = [
-    { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+    { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "available", label: "Available" }, { value: "out_of_stock", label: "Out of Stock" }, { value: "archived", label: "Archived" }] },
     { key: "category", label: "Category", options: catOptions },
   ];
 
-  const firstPrice = (p: any) => Array.isArray(p.priceVariants) && p.priceVariants.length > 0 ? p.priceVariants[0] : null;
-
   const processed = useMemo(() => {
     let items = [...products];
-    if (search) items = items.filter((p) => p.name?.toLowerCase().includes(search.toLowerCase()) || p.category?.toLowerCase().includes(search.toLowerCase()) || p.subCategory?.toLowerCase().includes(search.toLowerCase()));
-    if (filters.status === "active") items = items.filter((p) => p.isActive !== false);
-    if (filters.status === "inactive") items = items.filter((p) => p.isActive === false);
+    if (search) items = items.filter((p) => [p.name, p.category, p.subCategory, p.description].filter(Boolean).some((f: string) => f.toLowerCase().includes(search.toLowerCase())));
+    if (filters.status === "available") items = items.filter((p) => p.status === "available" && !p.isArchived);
+    if (filters.status === "out_of_stock") items = items.filter((p) => p.status === "out_of_stock");
+    if (filters.status === "archived") items = items.filter((p) => p.isArchived === true);
     if (filters.category !== "all") items = items.filter((p) => p.category === filters.category);
     items.sort((a, b) => {
-      const ap = firstPrice(a), bp = firstPrice(b);
       if (sortValue === "name_asc") return (a.name ?? "").localeCompare(b.name ?? "");
       if (sortValue === "name_desc") return (b.name ?? "").localeCompare(a.name ?? "");
-      if (sortValue === "price_asc") return (ap?.price ?? 0) - (bp?.price ?? 0);
-      if (sortValue === "price_desc") return (bp?.price ?? 0) - (ap?.price ?? 0);
-      if (sortValue === "sort_asc") return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-      if (sortValue === "status") return (b.isActive === false ? -1 : 1) - (a.isActive === false ? -1 : 1);
+      if (sortValue === "price_asc") return (a.price ?? 0) - (b.price ?? 0);
+      if (sortValue === "price_desc") return (b.price ?? 0) - (a.price ?? 0);
+      if (sortValue === "discount_desc") return (b.discountPct ?? 0) - (a.discountPct ?? 0);
+      if (sortValue === "qty_desc") return (b.quantity ?? 0) - (a.quantity ?? 0);
       return 0;
     });
     return items;
@@ -471,6 +469,12 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
     finally { setDeleteId(null); }
   };
 
+  const statusBadge = (p: any) => {
+    if (p.isArchived) return <span className="inline-flex items-center gap-1 text-[10px] text-gray-400 font-semibold bg-gray-100 px-1.5 py-0.5 rounded-full"><XCircle className="w-2.5 h-2.5" /> Archived</span>;
+    if (p.status === "out_of_stock") return <span className="inline-flex items-center gap-1 text-[10px] text-orange-500 font-semibold bg-orange-50 px-1.5 py-0.5 rounded-full"><AlertCircle className="w-2.5 h-2.5" /> Out of Stock</span>;
+    return <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-semibold bg-green-50 px-1.5 py-0.5 rounded-full"><CheckCircle className="w-2.5 h-2.5" /> Available</span>;
+  };
+
   return (
     <div className="space-y-4">
       <TabToolbar
@@ -483,7 +487,7 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
       />
 
       {loading ? (
-        <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>
+        <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 rounded-lg" />)}</div>
       ) : processed.length === 0 ? (
         <EmptyState icon={Package} message="No products found" sub="Try adjusting your search or filters" />
       ) : layout === "list" ? (
@@ -491,68 +495,128 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Product</th>
+                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[200px]">Product</th>
                 <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Variants</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tags</th>
+                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Price</th>
+                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Weight / Unit</th>
+                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Pieces / Serves</th>
+                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">Stock</th>
+                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">Recipes</th>
                 <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                 <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {processed.map((p) => {
-                const v = firstPrice(p);
-                const img = Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : p.imageUrl;
-                return (
-                  <tr key={String(p._id)} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        {img ? <img src={img} alt={p.name} className="w-8 h-8 rounded-lg object-cover border border-gray-100 flex-shrink-0" /> : <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0"><Package className="w-3.5 h-3.5 text-gray-400" /></div>}
-                        <div>
-                          <p className="font-semibold text-[#162B4D] text-sm">{p.name}</p>
-                          {p.subCategory && <p className="text-xs text-gray-400">{p.subCategory}</p>}
-                        </div>
+              {processed.map((p) => (
+                <tr key={String(p._id)} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                        <Package className="w-4 h-4 text-blue-300" />
                       </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{p.category || "—"}</td>
-                    <td className="px-4 py-3 text-xs">
-                      {v ? <><span className="font-semibold text-[#162B4D]">₹{v.price}</span>{v.mrp > v.price && <span className="text-gray-400 line-through ml-1">₹{v.mrp}</span>}<span className="text-gray-400 ml-1">/ {v.weight}</span>{Array.isArray(p.priceVariants) && p.priceVariants.length > 1 && <span className="ml-1 text-[10px] bg-blue-50 text-blue-600 px-1 rounded">+{p.priceVariants.length - 1}</span>}</> : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-0.5">{Array.isArray(p.tags) && p.tags.slice(0, 2).map((t: string) => <span key={t} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{t}</span>)}</div>
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge active={p.isActive !== false} /></td>
-                    <td className="px-4 py-3"><ActionButtons onEdit={() => { setEditing(p); setModalOpen(true); }} onDelete={() => setDeleteId(String(p._id))} /></td>
-                  </tr>
-                );
-              })}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-[#162B4D] text-sm leading-tight">{p.name}</p>
+                        {p.description && <p className="text-xs text-gray-400 mt-0.5 leading-tight line-clamp-1">{p.description}</p>}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-xs font-medium text-gray-600">{p.category || "—"}</p>
+                    {p.subCategory && <p className="text-[10px] text-gray-400 mt-0.5">{p.subCategory}</p>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="font-bold text-[#162B4D] text-sm">₹{p.price}</p>
+                    {p.originalPrice > p.price && (
+                      <p className="text-[10px] text-gray-400">
+                        <span className="line-through">₹{p.originalPrice}</span>
+                        <span className="ml-1 text-green-600 font-semibold">{p.discountPct}% off</span>
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-xs text-gray-600 font-medium">{p.weight || "—"}</p>
+                    <p className="text-[10px] text-gray-400">{p.unit || ""}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-xs text-gray-600">{p.pieces || "—"}</p>
+                    {p.serves && <p className="text-[10px] text-gray-400">{p.serves}</p>}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`text-xs font-bold ${(p.quantity ?? 0) < 10 ? "text-red-500" : "text-[#162B4D]"}`}>{p.quantity ?? 0}</span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {Array.isArray(p.recipes) && p.recipes.length > 0
+                      ? <span className="inline-flex items-center gap-1 text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full font-semibold">{p.recipes.length} recipes</span>
+                      : <span className="text-gray-300 text-xs">—</span>}
+                  </td>
+                  <td className="px-4 py-3">{statusBadge(p)}</td>
+                  <td className="px-4 py-3"><ActionButtons onEdit={() => { setEditing(p); setModalOpen(true); }} onDelete={() => setDeleteId(String(p._id))} /></td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {processed.map((p) => {
-            const v = firstPrice(p);
-            const img = Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : p.imageUrl;
-            return (
-              <div key={String(p._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow group">
-                <div className="relative">
-                  {img ? <img src={img} alt={p.name} className="w-full h-28 object-cover" /> : <div className="w-full h-28 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center"><Package className="w-8 h-8 text-blue-200" /></div>}
-                  <div className="absolute top-2 right-2"><StatusBadge active={p.isActive !== false} /></div>
-                </div>
-                <div className="p-3 space-y-1.5">
-                  <p className="font-semibold text-[#162B4D] text-sm leading-tight">{p.name}</p>
-                  {p.category && <p className="text-xs text-gray-400">{p.category}{p.subCategory ? ` › ${p.subCategory}` : ""}</p>}
-                  {v && <p className="text-sm font-bold text-[#1A56DB]">₹{v.price} <span className="text-xs font-normal text-gray-400">/ {v.weight}</span></p>}
-                  {Array.isArray(p.tags) && p.tags.length > 0 && <div className="flex flex-wrap gap-0.5">{p.tags.slice(0, 3).map((t: string) => <span key={t} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{t}</span>)}</div>}
-                  <div className="flex gap-1 pt-1">
-                    <button onClick={() => { setEditing(p); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors text-xs gap-1"><Edit2 className="w-3 h-3" /></button>
-                    <button onClick={() => setDeleteId(String(p._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors text-xs gap-1"><Trash2 className="w-3 h-3" /></button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {processed.map((p) => (
+            <div key={String(p._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
+              <div className="p-4 space-y-3">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-[#162B4D] text-sm leading-tight">{p.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{p.category}{p.subCategory ? ` › ${p.subCategory}` : ""}</p>
                   </div>
+                  {statusBadge(p)}
+                </div>
+
+                {/* Description */}
+                {p.description && <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">{p.description}</p>}
+
+                {/* Pricing row */}
+                <div className="flex items-center gap-3 bg-blue-50/60 rounded-lg px-3 py-2">
+                  <div>
+                    <p className="text-[10px] text-gray-400 font-medium">PRICE</p>
+                    <p className="font-black text-[#1A56DB] text-base leading-tight">₹{p.price}</p>
+                  </div>
+                  {p.originalPrice > p.price && (
+                    <>
+                      <div className="w-px h-8 bg-blue-200" />
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-medium">MRP</p>
+                        <p className="text-xs text-gray-400 line-through">₹{p.originalPrice}</p>
+                      </div>
+                      <div className="ml-auto">
+                        <span className="text-xs font-black text-green-600 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full">{p.discountPct}% off</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Details grid */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  {p.weight && <div><span className="text-gray-400">Weight: </span><span className="font-medium text-gray-600">{p.weight}</span></div>}
+                  {p.unit && <div><span className="text-gray-400">Unit: </span><span className="font-medium text-gray-600">{p.unit}</span></div>}
+                  {p.pieces && <div><span className="text-gray-400">Pieces: </span><span className="font-medium text-gray-600">{p.pieces}</span></div>}
+                  {p.serves && <div><span className="text-gray-400">Serves: </span><span className="font-medium text-gray-600">{p.serves}</span></div>}
+                  <div><span className="text-gray-400">Stock: </span><span className={`font-bold ${(p.quantity ?? 0) < 10 ? "text-red-500" : "text-gray-700"}`}>{p.quantity ?? 0}</span></div>
+                  {Array.isArray(p.recipes) && p.recipes.length > 0 && (
+                    <div><span className="text-gray-400">Recipes: </span><span className="font-medium text-blue-600">{p.recipes.length}</span></div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-1.5 pt-1 border-t border-gray-50">
+                  <button onClick={() => { setEditing(p); setModalOpen(true); }} className="flex-1 h-8 flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors text-xs font-medium">
+                    <Edit2 className="w-3 h-3" /> Edit
+                  </button>
+                  <button onClick={() => setDeleteId(String(p._id))} className="flex-1 h-8 flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors text-xs font-medium">
+                    <Trash2 className="w-3 h-3" /> Delete
+                  </button>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
 
@@ -1361,25 +1425,155 @@ function PincodesTab({ subHubId }: { subHubId: string }) {
 }
 
 // ─── MODALS ───────────────────────────────────────────────────────────────────
+const BLANK_RECIPE = () => ({
+  title: "", description: "", image: "",
+  totalTime: "", prepTime: "", cookTime: "",
+  servings: 2, difficulty: "Medium",
+  ingredients: [""], method: [""],
+});
+
+function RecipeEditor({ recipe, onChange, onRemove }: { recipe: any; onChange: (r: any) => void; onRemove: () => void }) {
+  const [open, setOpen] = useState(false);
+  const upd = (k: string, v: any) => onChange({ ...recipe, [k]: v });
+  const updList = (k: string, i: number, v: string) => onChange({ ...recipe, [k]: recipe[k].map((x: string, idx: number) => idx === i ? v : x) });
+  const addItem = (k: string) => onChange({ ...recipe, [k]: [...recipe[k], ""] });
+  const removeItem = (k: string, i: number) => onChange({ ...recipe, [k]: recipe[k].filter((_: any, idx: number) => idx !== i) });
+
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <button type="button" onClick={() => setOpen(!open)} className="w-full flex items-center justify-between px-4 py-3 bg-gray-50/50 hover:bg-gray-50 transition-colors text-left">
+        <div className="flex items-center gap-2 min-w-0">
+          <GripVertical className="w-4 h-4 text-gray-300 flex-shrink-0" />
+          <p className="font-medium text-[#162B4D] text-sm truncate">{recipe.title || <span className="text-gray-400 italic font-normal">Untitled Recipe</span>}</p>
+          {recipe.totalTime && <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full flex-shrink-0">{recipe.totalTime}</span>}
+          {recipe.difficulty && <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full flex-shrink-0">{recipe.difficulty}</span>}
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(); }} className="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors">
+            <Trash2 className="w-3 h-3" />
+          </button>
+          {open ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-4 border-t border-gray-100">
+          {/* Title + Description */}
+          <div className="space-y-2">
+            <div className="space-y-1"><Label className="text-xs font-semibold text-gray-500">Recipe Title *</Label><Input value={recipe.title} onChange={(e) => upd("title", e.target.value)} placeholder="e.g. Classic Chicken Curry" className="h-8 text-sm" /></div>
+            <div className="space-y-1"><Label className="text-xs font-semibold text-gray-500">Description</Label><textarea value={recipe.description} onChange={(e) => upd("description", e.target.value)} placeholder="Brief description of this recipe..." className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-16" /></div>
+            <div className="space-y-1"><Label className="text-xs font-semibold text-gray-500">Recipe Image URL</Label><Input value={recipe.image} onChange={(e) => upd("image", e.target.value)} placeholder="https://..." className="h-8 text-sm" /></div>
+          </div>
+
+          {/* Timing + Serving */}
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Timing & Servings</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Prep Time</Label><Input value={recipe.prepTime} onChange={(e) => upd("prepTime", e.target.value)} placeholder="15 min" className="h-8 text-sm" /></div>
+              <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Cook Time</Label><Input value={recipe.cookTime} onChange={(e) => upd("cookTime", e.target.value)} placeholder="35 min" className="h-8 text-sm" /></div>
+              <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Total Time</Label><Input value={recipe.totalTime} onChange={(e) => upd("totalTime", e.target.value)} placeholder="50 min" className="h-8 text-sm" /></div>
+              <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Servings</Label><Input type="number" min="1" value={recipe.servings} onChange={(e) => upd("servings", Number(e.target.value))} className="h-8 text-sm" /></div>
+              <div className="space-y-1 sm:col-span-2"><Label className="text-[10px] font-semibold text-gray-500">Difficulty</Label>
+                <Select value={recipe.difficulty} onValueChange={(v) => upd("difficulty", v)}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="Easy">Easy</SelectItem><SelectItem value="Medium">Medium</SelectItem><SelectItem value="Hard">Hard</SelectItem></SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Ingredients */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Ingredients</p>
+              <button type="button" onClick={() => addItem("ingredients")} className="text-xs text-[#1A56DB] font-medium flex items-center gap-1 hover:underline"><Plus className="w-3 h-3" /> Add</button>
+            </div>
+            <div className="space-y-1.5">
+              {(recipe.ingredients ?? []).map((ing: string, i: number) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-gray-300 w-5 flex-shrink-0 text-right">{i + 1}.</span>
+                  <Input value={ing} onChange={(e) => updList("ingredients", i, e.target.value)} placeholder={`e.g. 500g chicken curry cut`} className="h-7 text-sm flex-1" />
+                  {(recipe.ingredients?.length ?? 0) > 1 && <button type="button" onClick={() => removeItem("ingredients", i)} className="text-gray-300 hover:text-red-500 flex-shrink-0"><X className="w-3 h-3" /></button>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Method */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Method Steps</p>
+              <button type="button" onClick={() => addItem("method")} className="text-xs text-[#1A56DB] font-medium flex items-center gap-1 hover:underline"><Plus className="w-3 h-3" /> Add step</button>
+            </div>
+            <div className="space-y-2">
+              {(recipe.method ?? []).map((step: string, i: number) => (
+                <div key={i} className="flex items-start gap-1.5">
+                  <span className="text-[10px] font-bold text-gray-300 w-5 flex-shrink-0 text-right mt-1.5">{i + 1}.</span>
+                  <textarea value={step} onChange={(e) => updList("method", i, e.target.value)} placeholder={`Step ${i + 1}...`} className="flex-1 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-14" />
+                  {(recipe.method?.length ?? 0) > 1 && <button type="button" onClick={() => removeItem("method", i)} className="text-gray-300 hover:text-red-500 flex-shrink-0 mt-1.5"><X className="w-3 h-3" /></button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved }: any) {
   const { toast } = useToast();
   const isEditing = !!product;
-  const [name, setName] = useState(""); const [description, setDescription] = useState("");
-  const [category, setCategory] = useState(""); const [subCategory, setSubCategory] = useState("");
-  const [isActive, setIsActive] = useState(true); const [sortOrder, setSortOrder] = useState("0");
-  const [imageUrl, setImageUrl] = useState(""); const [tagsStr, setTagsStr] = useState("");
-  const [variants, setVariants] = useState([{ weight: "", price: "", mrp: "" }]);
+
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("");
+  const [subCategory, setSubCategory] = useState("");
+  const [price, setPrice] = useState("");
+  const [originalPrice, setOriginalPrice] = useState("");
+  const [unit, setUnit] = useState("per kg");
+  const [weight, setWeight] = useState("");
+  const [pieces, setPieces] = useState("");
+  const [serves, setServes] = useState("");
+  const [quantity, setQuantity] = useState("0");
+  const [status, setStatus] = useState("available");
+  const [isArchived, setIsArchived] = useState(false);
+  const [recipes, setRecipes] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
+  const discountPct = useMemo(() => {
+    const p = Number(price), op = Number(originalPrice);
+    return op > p && p > 0 ? Math.round(((op - p) / op) * 100) : 0;
+  }, [price, originalPrice]);
+
   useEffect(() => {
-    if (isOpen) {
-      if (product) {
-        setName(product.name ?? ""); setDescription(product.description ?? ""); setCategory(product.category ?? ""); setSubCategory(product.subCategory ?? "");
-        setIsActive(product.isActive !== false); setSortOrder(String(product.sortOrder ?? 0));
-        const imgs = Array.isArray(product.images) ? product.images : product.imageUrl ? [product.imageUrl] : [];
-        setImageUrl(imgs[0] ?? ""); setTagsStr(Array.isArray(product.tags) ? product.tags.join(", ") : "");
-        setVariants(Array.isArray(product.priceVariants) && product.priceVariants.length > 0 ? product.priceVariants.map((v: any) => ({ weight: v.weight ?? "", price: String(v.price ?? ""), mrp: String(v.mrp ?? "") })) : [{ weight: "", price: "", mrp: "" }]);
-      } else { setName(""); setDescription(""); setCategory(""); setSubCategory(""); setIsActive(true); setSortOrder("0"); setImageUrl(""); setTagsStr(""); setVariants([{ weight: "", price: "", mrp: "" }]); }
+    if (!isOpen) return;
+    if (product) {
+      setName(product.name ?? "");
+      setDescription(product.description ?? "");
+      setCategory(product.category ?? "");
+      setSubCategory(product.subCategory ?? "");
+      setPrice(String(product.price ?? ""));
+      setOriginalPrice(String(product.originalPrice ?? ""));
+      setUnit(product.unit ?? "per kg");
+      setWeight(product.weight ?? "");
+      setPieces(product.pieces ?? "");
+      setServes(product.serves ?? "");
+      setQuantity(String(product.quantity ?? 0));
+      setStatus(product.status ?? "available");
+      setIsArchived(product.isArchived === true);
+      setRecipes(Array.isArray(product.recipes) ? product.recipes.map((r: any) => ({
+        title: r.title ?? "", description: r.description ?? "", image: r.image ?? "",
+        totalTime: r.totalTime ?? "", prepTime: r.prepTime ?? "", cookTime: r.cookTime ?? "",
+        servings: r.servings ?? 2, difficulty: r.difficulty ?? "Medium",
+        ingredients: Array.isArray(r.ingredients) && r.ingredients.length > 0 ? r.ingredients : [""],
+        method: Array.isArray(r.method) && r.method.length > 0 ? r.method : [""],
+      })) : []);
+    } else {
+      setName(""); setDescription(""); setCategory(""); setSubCategory("");
+      setPrice(""); setOriginalPrice(""); setUnit("per kg"); setWeight("");
+      setPieces(""); setServes(""); setQuantity("0"); setStatus("available");
+      setIsArchived(false); setRecipes([]);
     }
   }, [isOpen, product]);
 
@@ -1387,57 +1581,160 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const subCats: string[] = selectedCat?.subCategories?.map((s: any) => s.name ?? s) ?? [];
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setSaving(true);
-    const priceVariants = variants.filter((v) => v.weight || v.price).map((v) => ({ weight: v.weight, price: Number(v.price) || 0, mrp: Number(v.mrp) || 0, discount: v.mrp && v.price ? Math.round(((Number(v.mrp) - Number(v.price)) / Number(v.mrp)) * 100) : 0 }));
-    const tags = tagsStr.split(",").map((t) => t.trim()).filter(Boolean);
-    const payload = { name, description, category, subCategory, priceVariants, images: imageUrl ? [imageUrl] : [], tags, isActive, sortOrder: Number(sortOrder) || 0 };
+    e.preventDefault();
+    setSaving(true);
+    const cleanedRecipes = recipes.map((r) => ({
+      ...r,
+      ingredients: r.ingredients.filter((s: string) => s.trim()),
+      method: r.method.filter((s: string) => s.trim()),
+    }));
+    const payload = {
+      name, description, category, subCategory,
+      price: Number(price) || 0,
+      originalPrice: Number(originalPrice) || Number(price) || 0,
+      discountPct,
+      unit, weight, pieces, serves,
+      quantity: Number(quantity) || 0,
+      status, isArchived,
+      recipes: cleanedRecipes,
+    };
     try {
-      if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/${product._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Product updated" }); }
-      else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Product added" }); }
+      if (isEditing) {
+        await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/${product._id}`, { method: "PUT", body: JSON.stringify(payload) });
+        toast({ title: "Product updated" });
+      } else {
+        await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, { method: "POST", body: JSON.stringify(payload) });
+        toast({ title: "Product added" });
+      }
       onSaved(); onClose();
-    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
-    finally { setSaving(false); }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally { setSaving(false); }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Product" : "Add Product"}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Product Name *</Label><Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Silver Pomfret" className="h-9" /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" className="h-9" /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Category</Label>
-              <Select value={category} onValueChange={(v) => { setCategory(v); setSubCategory(""); }}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>{categories?.map((c: any) => <SelectItem key={String(c._id)} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sub-Category</Label>
-              {subCats.length > 0 ? (
-                <Select value={subCategory} onValueChange={setSubCategory}><SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select..." /></SelectTrigger><SelectContent>{subCats.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
-              ) : <Input value={subCategory} onChange={(e) => setSubCategory(e.target.value)} placeholder="e.g. Silver Pomfret" className="h-9" />}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between"><Label className="text-xs font-semibold text-gray-600">Price Variants</Label><button type="button" onClick={() => setVariants([...variants, { weight: "", price: "", mrp: "" }])} className="text-xs text-[#1A56DB] font-medium hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Add</button></div>
-            {variants.map((v, i) => (
-              <div key={i} className="grid grid-cols-3 gap-2 items-center">
-                <Input value={v.weight} onChange={(e) => setVariants(variants.map((x, idx) => idx === i ? { ...x, weight: e.target.value } : x))} placeholder="Weight (500g)" className="h-8 text-sm" />
-                <Input type="number" value={v.price} onChange={(e) => setVariants(variants.map((x, idx) => idx === i ? { ...x, price: e.target.value } : x))} placeholder="Price ₹" className="h-8 text-sm" />
-                <div className="flex gap-1"><Input type="number" value={v.mrp} onChange={(e) => setVariants(variants.map((x, idx) => idx === i ? { ...x, mrp: e.target.value } : x))} placeholder="MRP ₹" className="h-8 text-sm" />{variants.length > 1 && <button type="button" onClick={() => setVariants(variants.filter((_, idx) => idx !== i))} className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-600 flex-shrink-0"><X className="w-3 h-3" /></button>}</div>
+      <DialogContent className="sm:max-w-[640px] max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Product" : "Add Product"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-5 pt-1">
+
+          {/* ── BASIC INFO ─────────────────────────────────── */}
+          <section>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Basic Info</p>
+            <div className="space-y-3">
+              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Product Name *</Label><Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Chicken Curry Cut" className="h-9" /></div>
+              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Description</Label><textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe this product..." className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-16" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Category</Label>
+                  <Select value={category} onValueChange={(v) => { setCategory(v); setSubCategory(""); }}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select category..." /></SelectTrigger>
+                    <SelectContent>{categories?.map((c: any) => <SelectItem key={String(c._id)} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sub-Category</Label>
+                  {subCats.length > 0
+                    ? <Select value={subCategory} onValueChange={setSubCategory}><SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select..." /></SelectTrigger><SelectContent>{subCats.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
+                    : <Input value={subCategory} onChange={(e) => setSubCategory(e.target.value)} placeholder="e.g. Chicken Curry Cut" className="h-9" />}
+                </div>
               </div>
-            ))}
-          </div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Image URL</Label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Tags <span className="font-normal text-gray-400">(comma-separated)</span></Label><Input value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} placeholder="Fresh, Bestseller" className="h-9" /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sort Order</Label><Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" /></div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
-          </div>
-          <DialogFooter className="pt-1">
+            </div>
+          </section>
+
+          {/* ── PRICING ────────────────────────────────────── */}
+          <section>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Pricing</p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-gray-600">Sale Price (₹) *</Label>
+                  <Input required type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" className="h-9" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-gray-600">Original Price / MRP (₹)</Label>
+                  <Input type="number" min="0" value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} placeholder="0" className="h-9" />
+                </div>
+              </div>
+              {discountPct > 0 && (
+                <div className="flex items-center gap-2 text-sm bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+                  <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                  <span className="text-green-700 font-semibold">Customer saves {discountPct}% — ₹{Number(originalPrice) - Number(price)} off</span>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-gray-600">Unit</Label>
+                  <Select value={unit} onValueChange={setUnit}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["per kg", "per 500g", "per 250g", "per 100g", "per tray", "per pack", "per piece"].map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Weight / Quantity Label</Label><Input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g. 500 g" className="h-9" /></div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Pieces</Label><Input value={pieces} onChange={(e) => setPieces(e.target.value)} placeholder="e.g. 8–10 Pieces" className="h-9" /></div>
+                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Serves</Label><Input value={serves} onChange={(e) => setServes(e.target.value)} placeholder="e.g. Serves 4" className="h-9" /></div>
+                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Stock (Qty)</Label><Input type="number" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="h-9" /></div>
+              </div>
+            </div>
+          </section>
+
+          {/* ── STATUS ─────────────────────────────────────── */}
+          <section>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Status</p>
+            <div className="flex gap-3">
+              <div className="flex-1 space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-600">Availability</Label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="available">Available</SelectItem>
+                    <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                    <SelectItem value="unavailable">Unavailable</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end pb-0.5">
+                <div className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100 h-9 px-4">
+                  <Label className="text-sm text-gray-600">Archived</Label>
+                  <Switch checked={isArchived} onCheckedChange={setIsArchived} className="data-[state=checked]:bg-red-500" />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ── RECIPES ────────────────────────────────────── */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recipes ({recipes.length})</p>
+              <button
+                type="button"
+                onClick={() => setRecipes([...recipes, BLANK_RECIPE()])}
+                className="text-xs text-[#1A56DB] font-semibold flex items-center gap-1 hover:underline"
+              >
+                <Plus className="w-3 h-3" /> Add Recipe
+              </button>
+            </div>
+            {recipes.length === 0
+              ? <div className="text-center py-6 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">No recipes yet. Click "Add Recipe" to include cooking instructions.</div>
+              : <div className="space-y-2">{recipes.map((r, i) => (
+                  <RecipeEditor
+                    key={i}
+                    recipe={r}
+                    onChange={(updated) => setRecipes(recipes.map((x, idx) => idx === i ? updated : x))}
+                    onRemove={() => setRecipes(recipes.filter((_, idx) => idx !== i))}
+                  />
+                ))}</div>}
+          </section>
+
+          <DialogFooter className="pt-2 border-t border-gray-100">
             <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
-            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Product"}</Button>
+            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 px-6">
+              {saving ? "Saving..." : isEditing ? "Save Changes" : "Add Product"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

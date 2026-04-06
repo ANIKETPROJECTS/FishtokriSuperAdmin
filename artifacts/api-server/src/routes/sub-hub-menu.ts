@@ -66,19 +66,31 @@ router.post("/products", async (req, res) => {
   try {
     const ctx = await getSubHubDb(req.params.id, res);
     if (!ctx) return;
-    const { name, description, category, subCategory, priceVariants, images, tags, nutrition, isActive, sortOrder } = req.body;
+    const {
+      name, description, category, subCategory,
+      price, originalPrice, discountPct, unit, weight, pieces, serves, quantity,
+      status, isArchived,
+      recipes,
+    } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
+    const p = Number(price) || 0;
+    const op = Number(originalPrice) || p;
     const doc = {
       name,
       description: description ?? "",
       category: category ?? "",
       subCategory: subCategory ?? "",
-      priceVariants: Array.isArray(priceVariants) ? priceVariants : [],
-      images: Array.isArray(images) ? images : [],
-      tags: Array.isArray(tags) ? tags : [],
-      nutrition: Array.isArray(nutrition) ? nutrition : [],
-      isActive: isActive !== false,
-      sortOrder: Number(sortOrder) || 0,
+      price: p,
+      originalPrice: op,
+      discountPct: Number(discountPct) || (op > p ? Math.round(((op - p) / op) * 100) : 0),
+      unit: unit ?? "per kg",
+      weight: weight ?? "",
+      pieces: pieces ?? "",
+      serves: serves ?? "",
+      quantity: Number(quantity) || 0,
+      status: status ?? "available",
+      isArchived: isArchived === true,
+      recipes: Array.isArray(recipes) ? recipes : [],
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -96,18 +108,28 @@ router.put("/products/:productId", async (req, res) => {
     if (!ctx) return;
     const oid = toId(req.params.productId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid product ID" }); return; }
-    const { name, description, category, subCategory, priceVariants, images, tags, nutrition, isActive, sortOrder } = req.body;
+    const {
+      name, description, category, subCategory,
+      price, originalPrice, discountPct, unit, weight, pieces, serves, quantity,
+      status, isArchived,
+      recipes,
+    } = req.body;
     const update: any = { updatedAt: new Date() };
     if (name !== undefined) update.name = name;
     if (description !== undefined) update.description = description;
     if (category !== undefined) update.category = category;
     if (subCategory !== undefined) update.subCategory = subCategory;
-    if (priceVariants !== undefined) update.priceVariants = priceVariants;
-    if (images !== undefined) update.images = images;
-    if (tags !== undefined) update.tags = tags;
-    if (nutrition !== undefined) update.nutrition = nutrition;
-    if (isActive !== undefined) update.isActive = isActive;
-    if (sortOrder !== undefined) update.sortOrder = Number(sortOrder) || 0;
+    if (price !== undefined) update.price = Number(price) || 0;
+    if (originalPrice !== undefined) update.originalPrice = Number(originalPrice) || 0;
+    if (discountPct !== undefined) update.discountPct = Number(discountPct) || 0;
+    if (unit !== undefined) update.unit = unit;
+    if (weight !== undefined) update.weight = weight;
+    if (pieces !== undefined) update.pieces = pieces;
+    if (serves !== undefined) update.serves = serves;
+    if (quantity !== undefined) update.quantity = Number(quantity) || 0;
+    if (status !== undefined) update.status = status;
+    if (isArchived !== undefined) update.isArchived = isArchived === true;
+    if (recipes !== undefined) update.recipes = Array.isArray(recipes) ? recipes : [];
     const result = await ctx.conn.db.collection("products").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
     if (!result) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
     res.json({ product: result });
