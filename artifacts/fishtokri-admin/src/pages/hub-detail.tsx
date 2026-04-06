@@ -520,7 +520,7 @@ function SubHubModal({ isOpen, onClose, subHub, superHubId }: { isOpen: boolean;
               </div>
             )}
             <p className="text-[11px] text-gray-400">
-              {isEditing ? "Only edit this if you need to link to an existing database (e.g. \"fishtokri\" for Thane)." : "Automatically set from the sub hub name. Cannot be changed after creation."}
+              {isEditing ? "Only edit this if you need to link to an existing database (e.g. \"Thane\" for Thane)." : "Automatically set from the sub hub name. Cannot be changed after creation."}
             </p>
           </div>
           <ImageUpload
