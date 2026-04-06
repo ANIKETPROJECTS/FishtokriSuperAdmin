@@ -394,7 +394,11 @@ function SubHubsList({ superHubId, superHubName }: { superHubId: string; superHu
   const [editingSubHub, setEditingSubHub] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  if (isLoading) return <p className="text-xs text-gray-400 py-2 text-center">Loading...</p>;
+  if (isLoading) return (
+    <div className="space-y-2 py-1">
+      {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
+    </div>
+  );
 
   const subHubs = data?.subHubs || [];
 
