@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
-import { useParams, useLocation } from "wouter";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useParams } from "wouter";
 import {
   ArrowLeft, Plus, Edit2, Trash2, Search, X, Package, Tag, Ticket,
   RefreshCw, Database, AlertCircle, CheckCircle, XCircle, Image,
   LayoutList, MapPin, ShoppingBag, ChevronDown, ChevronUp, GripVertical,
+  LayoutGrid, List, SlidersHorizontal, ArrowUpDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,10 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+  DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
 
 function getToken() {
   return localStorage.getItem("fishtokri_token") ?? "";
@@ -39,6 +44,7 @@ async function apiFetch(path: string, options?: RequestInit) {
 }
 
 type Tab = "products" | "categories" | "combos" | "coupons" | "carousels" | "sections" | "pincodes";
+type Layout = "list" | "grid";
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: "products", label: "Products", icon: Package },
@@ -50,9 +56,224 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: "pincodes", label: "Pincodes", icon: MapPin },
 ];
 
+// ─── SHARED TOOLBAR ───────────────────────────────────────────────────────────
+interface SortOption { value: string; label: string }
+interface FilterGroup { key: string; label: string; options: { value: string; label: string }[] }
+
+function TabToolbar({
+  search, onSearch,
+  sortOptions, sortValue, onSortChange,
+  filterGroups = [], filterValues = {}, onFilterChange,
+  layout, onLayout,
+  addLabel, onAdd,
+  resultCount, totalCount,
+}: {
+  search: string; onSearch: (v: string) => void;
+  sortOptions: SortOption[]; sortValue: string; onSortChange: (v: string) => void;
+  filterGroups?: FilterGroup[]; filterValues?: Record<string, string>; onFilterChange?: (key: string, v: string) => void;
+  layout: Layout; onLayout: (v: Layout) => void;
+  addLabel: string; onAdd: () => void;
+  resultCount: number; totalCount: number;
+}) {
+  const activeFilters = filterGroups.filter((g) => filterValues[g.key] && filterValues[g.key] !== "all");
+  const currentSort = sortOptions.find((s) => s.value === sortValue);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <Input
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => onSearch(e.target.value)}
+            className="pl-8 h-9 text-sm"
+          />
+          {search && (
+            <button onClick={() => onSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {/* Sort */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="h-9 px-3 text-sm gap-1.5 font-medium text-gray-600">
+              <ArrowUpDown className="w-3.5 h-3.5" />
+              {currentSort?.label ?? "Sort"}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuLabel className="text-xs text-gray-500">Sort by</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {sortOptions.map((opt) => (
+              <DropdownMenuItem
+                key={opt.value}
+                onClick={() => onSortChange(opt.value)}
+                className={`text-sm cursor-pointer ${sortValue === opt.value ? "font-semibold text-[#1A56DB]" : ""}`}
+              >
+                {sortValue === opt.value && <CheckCircle className="w-3.5 h-3.5 mr-2 text-[#1A56DB]" />}
+                {sortValue !== opt.value && <span className="w-3.5 h-3.5 mr-2 inline-block" />}
+                {opt.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Filters */}
+        {filterGroups.length > 0 && onFilterChange && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className={`h-9 px-3 text-sm gap-1.5 font-medium ${activeFilters.length > 0 ? "border-[#1A56DB] text-[#1A56DB] bg-blue-50" : "text-gray-600"}`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                Filter
+                {activeFilters.length > 0 && (
+                  <span className="ml-0.5 bg-[#1A56DB] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52">
+              {filterGroups.map((group, gi) => (
+                <div key={group.key}>
+                  {gi > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel className="text-xs text-gray-500">{group.label}</DropdownMenuLabel>
+                  {group.options.map((opt) => (
+                    <DropdownMenuItem
+                      key={opt.value}
+                      onClick={() => onFilterChange(group.key, opt.value)}
+                      className={`text-sm cursor-pointer ${filterValues[group.key] === opt.value ? "font-semibold text-[#1A56DB]" : ""}`}
+                    >
+                      {filterValues[group.key] === opt.value
+                        ? <CheckCircle className="w-3.5 h-3.5 mr-2 text-[#1A56DB]" />
+                        : <span className="w-3.5 h-3.5 mr-2 inline-block" />}
+                      {opt.label}
+                    </DropdownMenuItem>
+                  ))}
+                </div>
+              ))}
+              {activeFilters.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => filterGroups.forEach((g) => onFilterChange(g.key, "all"))}
+                    className="text-xs text-red-500 cursor-pointer font-medium"
+                  >
+                    <X className="w-3 h-3 mr-2" /> Clear all filters
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        {/* Layout toggle */}
+        <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden ml-auto">
+          <button
+            onClick={() => onLayout("list")}
+            className={`w-9 h-9 flex items-center justify-center transition-colors ${layout === "list" ? "bg-[#1A56DB] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+            title="List view"
+          >
+            <List className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onLayout("grid")}
+            className={`w-9 h-9 flex items-center justify-center transition-colors border-l border-gray-200 ${layout === "grid" ? "bg-[#1A56DB] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+            title="Grid view"
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Add button */}
+        <Button onClick={onAdd} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-4 text-sm font-semibold">
+          <Plus className="w-4 h-4 mr-1.5" /> {addLabel}
+        </Button>
+      </div>
+
+      {/* Active filter chips + result count */}
+      {(activeFilters.length > 0 || search || resultCount !== totalCount) && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-400">
+            {resultCount === totalCount ? `${totalCount} items` : `${resultCount} of ${totalCount}`}
+          </span>
+          {activeFilters.map((g) => {
+            const opt = g.options.find((o) => o.value === filterValues[g.key]);
+            return (
+              <span key={g.key} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-[#1A56DB] border border-blue-100 px-2 py-0.5 rounded-full font-medium">
+                {g.label}: {opt?.label}
+                <button onClick={() => onFilterChange!(g.key, "all")} className="hover:text-red-500 ml-0.5"><X className="w-2.5 h-2.5" /></button>
+              </span>
+            );
+          })}
+          {search && (
+            <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full font-medium">
+              "{search}"
+              <button onClick={() => onSearch("")} className="hover:text-red-500 ml-0.5"><X className="w-2.5 h-2.5" /></button>
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
+function StatusBadge({ active }: { active: boolean }) {
+  return active
+    ? <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-semibold bg-green-50 px-1.5 py-0.5 rounded-full"><CheckCircle className="w-2.5 h-2.5" /> Active</span>
+    : <span className="inline-flex items-center gap-1 text-[10px] text-gray-400 font-semibold bg-gray-100 px-1.5 py-0.5 rounded-full"><XCircle className="w-2.5 h-2.5" /> Inactive</span>;
+}
+
+function ActionButtons({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors">
+        <Edit2 className="w-3 h-3" />
+      </button>
+      <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors">
+        <Trash2 className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+function DeleteDialog({ open, onCancel, onConfirm, title, description }: { open: boolean; onCancel: () => void; onConfirm: () => void; title: string; description: string }) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button onClick={onConfirm} className="bg-red-600 hover:bg-red-700 text-white">Delete</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EmptyState({ icon: Icon, message, sub }: { icon: any; message: string; sub?: string }) {
+  return (
+    <div className="py-16 text-center">
+      <Icon className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+      <p className="text-gray-400 font-medium">{message}</p>
+      {sub && <p className="text-gray-300 text-sm mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 export default function SubHubMenuAdmin() {
   const params = useParams<{ id: string }>();
-  const [, setLocation] = useLocation();
   const subHubId = params.id;
   const { toast } = useToast();
 
@@ -124,7 +345,6 @@ export default function SubHubMenuAdmin() {
           <div>
             <p className="text-red-700 font-semibold text-sm">Cannot connect to this sub hub's database</p>
             <p className="text-red-600 text-xs mt-1">{statsError}</p>
-            <p className="text-red-500 text-xs mt-1">Go back, edit the sub hub, and set the correct Database Name (e.g. "fishtokri" for Thane).</p>
           </div>
         </div>
       )}
@@ -133,13 +353,17 @@ export default function SubHubMenuAdmin() {
         {loadingStats
           ? [1, 2, 3, 4, 5, 6, 7].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)
           : statCards.map(({ label, value, icon: Icon, color, bg }) => (
-            <div key={label} className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5 flex flex-col gap-1">
+            <button
+              key={label}
+              onClick={() => setTab(TABS.find((t) => t.label === label)?.key ?? tab)}
+              className={`bg-white rounded-xl border shadow-sm px-3 py-2.5 flex flex-col gap-1 text-left transition-all hover:shadow-md ${tab === TABS.find((t) => t.label === label)?.key ? "border-[#1A56DB] ring-1 ring-[#1A56DB]/20" : "border-gray-100"}`}
+            >
               <div className={`w-7 h-7 rounded-lg ${bg} flex items-center justify-center`}>
                 <Icon className={`w-3.5 h-3.5 ${color}`} />
               </div>
               <p className={`text-lg font-bold ${color} leading-none`}>{value}</p>
               <p className="text-[10px] text-gray-400 font-medium">{label}</p>
-            </div>
+            </button>
           ))}
       </div>
 
@@ -165,52 +389,10 @@ export default function SubHubMenuAdmin() {
           {!statsError && tab === "carousels" && <CarouselsTab subHubId={subHubId} />}
           {!statsError && tab === "sections" && <SectionsTab subHubId={subHubId} />}
           {!statsError && tab === "pincodes" && <PincodesTab subHubId={subHubId} />}
-          {statsError && (
-            <div className="py-12 text-center text-gray-400 text-sm">
-              Fix the database connection to manage this sub hub's menu.
-            </div>
-          )}
+          {statsError && <div className="py-12 text-center text-gray-400 text-sm">Fix the database connection to manage this sub hub's menu.</div>}
         </div>
       </div>
     </div>
-  );
-}
-
-// ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
-
-function StatusBadge({ active }: { active: boolean }) {
-  return active
-    ? <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium bg-green-50 px-1.5 py-0.5 rounded-full"><CheckCircle className="w-3 h-3" /> Active</span>
-    : <span className="inline-flex items-center gap-1 text-xs text-gray-400 font-medium bg-gray-100 px-1.5 py-0.5 rounded-full"><XCircle className="w-3 h-3" /> Inactive</span>;
-}
-
-function ActionButtons({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
-  return (
-    <div className="flex items-center gap-1">
-      <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors">
-        <Edit2 className="w-3 h-3" />
-      </button>
-      <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors">
-        <Trash2 className="w-3 h-3" />
-      </button>
-    </div>
-  );
-}
-
-function DeleteDialog({ open, onCancel, onConfirm, title, description }: { open: boolean; onCancel: () => void; onConfirm: () => void; title: string; description: string }) {
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button onClick={onConfirm} className="bg-red-600 hover:bg-red-700 text-white">Delete</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -218,8 +400,12 @@ function DeleteDialog({ open, onCancel, onConfirm, title, description }: { open:
 function ProductsTab({ subHubId }: { subHubId: string }) {
   const { toast } = useToast();
   const [products, setProducts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [sortValue, setSortValue] = useState("name_asc");
+  const [filters, setFilters] = useState<Record<string, string>>({ status: "all", category: "all" });
+  const [layout, setLayout] = useState<Layout>("list");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -227,8 +413,12 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`);
-      setProducts(data.products ?? []);
+      const [pd, cd] = await Promise.all([
+        apiFetch(`/api/sub-hubs/${subHubId}/menu/products`),
+        apiFetch(`/api/sub-hubs/${subHubId}/menu/categories`),
+      ]);
+      setProducts(pd.products ?? []);
+      setCategories(cd.categories ?? []);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally { setLoading(false); }
@@ -236,45 +426,67 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = products.filter((p) => !search || p.name?.toLowerCase().includes(search.toLowerCase()));
+  const sortOptions: SortOption[] = [
+    { value: "name_asc", label: "Name A→Z" },
+    { value: "name_desc", label: "Name Z→A" },
+    { value: "price_asc", label: "Price Low→High" },
+    { value: "price_desc", label: "Price High→Low" },
+    { value: "sort_asc", label: "Sort Order" },
+    { value: "status", label: "Status" },
+  ];
+
+  const catOptions = [{ value: "all", label: "All Categories" }, ...categories.map((c) => ({ value: c.name, label: c.name }))];
+  const filterGroups: FilterGroup[] = [
+    { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+    { key: "category", label: "Category", options: catOptions },
+  ];
+
+  const firstPrice = (p: any) => Array.isArray(p.priceVariants) && p.priceVariants.length > 0 ? p.priceVariants[0] : null;
+
+  const processed = useMemo(() => {
+    let items = [...products];
+    if (search) items = items.filter((p) => p.name?.toLowerCase().includes(search.toLowerCase()) || p.category?.toLowerCase().includes(search.toLowerCase()) || p.subCategory?.toLowerCase().includes(search.toLowerCase()));
+    if (filters.status === "active") items = items.filter((p) => p.isActive !== false);
+    if (filters.status === "inactive") items = items.filter((p) => p.isActive === false);
+    if (filters.category !== "all") items = items.filter((p) => p.category === filters.category);
+    items.sort((a, b) => {
+      const ap = firstPrice(a), bp = firstPrice(b);
+      if (sortValue === "name_asc") return (a.name ?? "").localeCompare(b.name ?? "");
+      if (sortValue === "name_desc") return (b.name ?? "").localeCompare(a.name ?? "");
+      if (sortValue === "price_asc") return (ap?.price ?? 0) - (bp?.price ?? 0);
+      if (sortValue === "price_desc") return (bp?.price ?? 0) - (ap?.price ?? 0);
+      if (sortValue === "sort_asc") return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      if (sortValue === "status") return (b.isActive === false ? -1 : 1) - (a.isActive === false ? -1 : 1);
+      return 0;
+    });
+    return items;
+  }, [products, search, filters, sortValue]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
       await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/${deleteId}`, { method: "DELETE" });
-      toast({ title: "Product deleted" });
-      load();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setDeleteId(null); }
-  };
-
-  const firstPrice = (p: any) => {
-    if (Array.isArray(p.priceVariants) && p.priceVariants.length > 0) return p.priceVariants[0];
-    return null;
+      toast({ title: "Product deleted" }); load();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setDeleteId(null); }
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input placeholder="Search products..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9 text-sm" />
-          {search && <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X className="w-3.5 h-3.5" /></button>}
-        </div>
-        <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-4 text-sm font-semibold ml-auto">
-          <Plus className="w-4 h-4 mr-1.5" /> Add Product
-        </Button>
-      </div>
+      <TabToolbar
+        search={search} onSearch={setSearch}
+        sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
+        filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
+        layout={layout} onLayout={setLayout}
+        addLabel="Add Product" onAdd={() => { setEditing(null); setModalOpen(true); }}
+        resultCount={processed.length} totalCount={products.length}
+      />
 
       {loading ? (
         <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>
-      ) : filtered.length === 0 ? (
-        <div className="py-16 text-center">
-          <Package className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 font-medium">{search ? "No products match" : "No products yet"}</p>
-        </div>
-      ) : (
+      ) : processed.length === 0 ? (
+        <EmptyState icon={Package} message="No products found" sub="Try adjusting your search or filters" />
+      ) : layout === "list" ? (
         <div className="overflow-x-auto rounded-lg border border-gray-100">
           <table className="w-full text-sm">
             <thead>
@@ -288,20 +500,14 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map((p) => {
-                const variant = firstPrice(p);
+              {processed.map((p) => {
+                const v = firstPrice(p);
                 const img = Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : p.imageUrl;
                 return (
                   <tr key={String(p._id)} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
-                        {img ? (
-                          <img src={img} alt={p.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0 border border-gray-100" />
-                        ) : (
-                          <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                            <Package className="w-3.5 h-3.5 text-gray-400" />
-                          </div>
-                        )}
+                        {img ? <img src={img} alt={p.name} className="w-8 h-8 rounded-lg object-cover border border-gray-100 flex-shrink-0" /> : <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0"><Package className="w-3.5 h-3.5 text-gray-400" /></div>}
                         <div>
                           <p className="font-semibold text-[#162B4D] text-sm">{p.name}</p>
                           {p.subCategory && <p className="text-xs text-gray-400">{p.subCategory}</p>}
@@ -309,210 +515,50 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{p.category || "—"}</td>
-                    <td className="px-4 py-3">
-                      {variant ? (
-                        <div className="text-xs">
-                          <span className="font-semibold text-[#162B4D]">₹{variant.price}</span>
-                          {variant.mrp > variant.price && <span className="text-gray-400 line-through ml-1">₹{variant.mrp}</span>}
-                          <span className="text-gray-400 ml-1">/ {variant.weight}</span>
-                          {Array.isArray(p.priceVariants) && p.priceVariants.length > 1 && (
-                            <span className="ml-1 text-[10px] bg-blue-50 text-blue-600 px-1 rounded">+{p.priceVariants.length - 1} more</span>
-                          )}
-                        </div>
-                      ) : "—"}
+                    <td className="px-4 py-3 text-xs">
+                      {v ? <><span className="font-semibold text-[#162B4D]">₹{v.price}</span>{v.mrp > v.price && <span className="text-gray-400 line-through ml-1">₹{v.mrp}</span>}<span className="text-gray-400 ml-1">/ {v.weight}</span>{Array.isArray(p.priceVariants) && p.priceVariants.length > 1 && <span className="ml-1 text-[10px] bg-blue-50 text-blue-600 px-1 rounded">+{p.priceVariants.length - 1}</span>}</> : "—"}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-0.5">
-                        {Array.isArray(p.tags) && p.tags.slice(0, 2).map((t: string) => (
-                          <span key={t} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{t}</span>
-                        ))}
-                      </div>
+                      <div className="flex flex-wrap gap-0.5">{Array.isArray(p.tags) && p.tags.slice(0, 2).map((t: string) => <span key={t} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{t}</span>)}</div>
                     </td>
                     <td className="px-4 py-3"><StatusBadge active={p.isActive !== false} /></td>
-                    <td className="px-4 py-3">
-                      <ActionButtons onEdit={() => { setEditing(p); setModalOpen(true); }} onDelete={() => setDeleteId(String(p._id))} />
-                    </td>
+                    <td className="px-4 py-3"><ActionButtons onEdit={() => { setEditing(p); setModalOpen(true); }} onDelete={() => setDeleteId(String(p._id))} /></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-      )}
-
-      <ProductModal isOpen={modalOpen} onClose={() => setModalOpen(false)} product={editing} subHubId={subHubId} onSaved={load} />
-      <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Product" description="This will permanently remove the product from the menu." />
-    </div>
-  );
-}
-
-function ProductModal({ isOpen, onClose, product, subHubId, onSaved }: any) {
-  const { toast } = useToast();
-  const isEditing = !!product;
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("");
-  const [subCategory, setSubCategory] = useState("");
-  const [isActive, setIsActive] = useState(true);
-  const [sortOrder, setSortOrder] = useState("0");
-  const [imageUrl, setImageUrl] = useState("");
-  const [tagsStr, setTagsStr] = useState("");
-  const [variants, setVariants] = useState([{ weight: "", price: "", mrp: "" }]);
-  const [saving, setSaving] = useState(false);
-  const [categories, setCategories] = useState<any[]>([]);
-
-  useEffect(() => {
-    apiFetch(`/api/sub-hubs/${subHubId}/menu/categories`).then((d) => setCategories(d.categories ?? [])).catch(() => {});
-  }, [subHubId]);
-
-  useEffect(() => {
-    if (isOpen) {
-      if (product) {
-        setName(product.name ?? "");
-        setDescription(product.description ?? "");
-        setCategory(product.category ?? "");
-        setSubCategory(product.subCategory ?? "");
-        setIsActive(product.isActive !== false);
-        setSortOrder(String(product.sortOrder ?? 0));
-        const imgs = Array.isArray(product.images) ? product.images : product.imageUrl ? [product.imageUrl] : [];
-        setImageUrl(imgs[0] ?? "");
-        setTagsStr(Array.isArray(product.tags) ? product.tags.join(", ") : "");
-        setVariants(Array.isArray(product.priceVariants) && product.priceVariants.length > 0
-          ? product.priceVariants.map((v: any) => ({ weight: v.weight ?? "", price: String(v.price ?? ""), mrp: String(v.mrp ?? "") }))
-          : [{ weight: "", price: "", mrp: "" }]);
-      } else {
-        setName(""); setDescription(""); setCategory(""); setSubCategory("");
-        setIsActive(true); setSortOrder("0"); setImageUrl(""); setTagsStr("");
-        setVariants([{ weight: "", price: "", mrp: "" }]);
-      }
-    }
-  }, [isOpen, product]);
-
-  const addVariant = () => setVariants([...variants, { weight: "", price: "", mrp: "" }]);
-  const removeVariant = (i: number) => setVariants(variants.filter((_, idx) => idx !== i));
-  const updateVariant = (i: number, field: string, val: string) => {
-    setVariants(variants.map((v, idx) => idx === i ? { ...v, [field]: val } : v));
-  };
-
-  const selectedCat = categories.find((c) => c.name === category);
-  const subCats: string[] = selectedCat?.subCategories?.map((s: any) => s.name) ?? [];
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    const priceVariants = variants.filter((v) => v.weight || v.price).map((v) => ({
-      weight: v.weight,
-      price: Number(v.price) || 0,
-      mrp: Number(v.mrp) || 0,
-      discount: v.mrp && v.price ? Math.round(((Number(v.mrp) - Number(v.price)) / Number(v.mrp)) * 100) : 0,
-    }));
-    const tags = tagsStr.split(",").map((t) => t.trim()).filter(Boolean);
-    const images = imageUrl ? [imageUrl] : [];
-    const payload = { name, description, category, subCategory, priceVariants, images, tags, isActive, sortOrder: Number(sortOrder) || 0 };
-    try {
-      if (isEditing) {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/${product._id}`, { method: "PUT", body: JSON.stringify(payload) });
-        toast({ title: "Product updated" });
-      } else {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, { method: "POST", body: JSON.stringify(payload) });
-        toast({ title: "Product added" });
-      }
-      onSaved(); onClose();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Product" : "Add Product"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Product Name *</Label>
-            <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Silver Pomfret" className="h-9" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Description</Label>
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" className="h-9" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Category</Label>
-              <Select value={category} onValueChange={(v) => { setCategory(v); setSubCategory(""); }}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => <SelectItem key={String(c._id)} value={c.name}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Sub-Category</Label>
-              {subCats.length > 0 ? (
-                <Select value={subCategory} onValueChange={setSubCategory}>
-                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select..." /></SelectTrigger>
-                  <SelectContent>
-                    {subCats.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input value={subCategory} onChange={(e) => setSubCategory(e.target.value)} placeholder="e.g. Silver Pomfret" className="h-9" />
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-semibold text-gray-600">Price Variants</Label>
-              <button type="button" onClick={addVariant} className="text-xs text-[#1A56DB] font-medium hover:underline flex items-center gap-1">
-                <Plus className="w-3 h-3" /> Add Variant
-              </button>
-            </div>
-            {variants.map((v, i) => (
-              <div key={i} className="grid grid-cols-3 gap-2 items-center">
-                <Input value={v.weight} onChange={(e) => updateVariant(i, "weight", e.target.value)} placeholder="Weight (e.g. 500g)" className="h-8 text-sm" />
-                <Input type="number" value={v.price} onChange={(e) => updateVariant(i, "price", e.target.value)} placeholder="Price ₹" className="h-8 text-sm" />
-                <div className="flex gap-1">
-                  <Input type="number" value={v.mrp} onChange={(e) => updateVariant(i, "mrp", e.target.value)} placeholder="MRP ₹" className="h-8 text-sm" />
-                  {variants.length > 1 && (
-                    <button type="button" onClick={() => removeVariant(i)} className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-600 flex-shrink-0">
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {processed.map((p) => {
+            const v = firstPrice(p);
+            const img = Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : p.imageUrl;
+            return (
+              <div key={String(p._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow group">
+                <div className="relative">
+                  {img ? <img src={img} alt={p.name} className="w-full h-28 object-cover" /> : <div className="w-full h-28 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center"><Package className="w-8 h-8 text-blue-200" /></div>}
+                  <div className="absolute top-2 right-2"><StatusBadge active={p.isActive !== false} /></div>
+                </div>
+                <div className="p-3 space-y-1.5">
+                  <p className="font-semibold text-[#162B4D] text-sm leading-tight">{p.name}</p>
+                  {p.category && <p className="text-xs text-gray-400">{p.category}{p.subCategory ? ` › ${p.subCategory}` : ""}</p>}
+                  {v && <p className="text-sm font-bold text-[#1A56DB]">₹{v.price} <span className="text-xs font-normal text-gray-400">/ {v.weight}</span></p>}
+                  {Array.isArray(p.tags) && p.tags.length > 0 && <div className="flex flex-wrap gap-0.5">{p.tags.slice(0, 3).map((t: string) => <span key={t} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{t}</span>)}</div>}
+                  <div className="flex gap-1 pt-1">
+                    <button onClick={() => { setEditing(p); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors text-xs gap-1"><Edit2 className="w-3 h-3" /></button>
+                    <button onClick={() => setDeleteId(String(p._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors text-xs gap-1"><Trash2 className="w-3 h-3" /></button>
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
+        </div>
+      )}
 
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Image URL</Label>
-            <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Tags <span className="font-normal text-gray-400">(comma-separated)</span></Label>
-            <Input value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} placeholder="e.g. Fresh, Bestseller, Family Size" className="h-9" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Sort Order</Label>
-              <Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" />
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <Label className="text-sm">Active</Label>
-              <Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" />
-            </div>
-          </div>
-          <DialogFooter className="pt-1">
-            <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
-            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">
-              {isEditing ? "Save Changes" : "Add Product"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <ProductModal isOpen={modalOpen} onClose={() => setModalOpen(false)} product={editing} subHubId={subHubId} categories={categories} onSaved={load} />
+      <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Product" description="This will permanently remove the product from the menu." />
+    </div>
   );
 }
 
@@ -521,6 +567,10 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
   const { toast } = useToast();
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [sortValue, setSortValue] = useState("sort_asc");
+  const [filters, setFilters] = useState<Record<string, string>>({ status: "all" });
+  const [layout, setLayout] = useState<Layout>("grid");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -531,59 +581,98 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
     try {
       const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/categories`);
       setCategories(data.categories ?? []);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setLoading(false); }
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setLoading(false); }
   }, [subHubId, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const sortOptions: SortOption[] = [
+    { value: "sort_asc", label: "Sort Order" },
+    { value: "name_asc", label: "Name A→Z" },
+    { value: "name_desc", label: "Name Z→A" },
+    { value: "subcats_desc", label: "Most Sub-categories" },
+    { value: "status", label: "Status" },
+  ];
+  const filterGroups: FilterGroup[] = [
+    { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+  ];
+
+  const processed = useMemo(() => {
+    let items = [...categories];
+    if (search) items = items.filter((c) => c.name?.toLowerCase().includes(search.toLowerCase()));
+    if (filters.status === "active") items = items.filter((c) => c.isActive !== false);
+    if (filters.status === "inactive") items = items.filter((c) => c.isActive === false);
+    items.sort((a, b) => {
+      if (sortValue === "name_asc") return (a.name ?? "").localeCompare(b.name ?? "");
+      if (sortValue === "name_desc") return (b.name ?? "").localeCompare(a.name ?? "");
+      if (sortValue === "sort_asc") return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      if (sortValue === "subcats_desc") return (b.subCategories?.length ?? 0) - (a.subCategories?.length ?? 0);
+      if (sortValue === "status") return (b.isActive === false ? -1 : 1) - (a.isActive === false ? -1 : 1);
+      return 0;
+    });
+    return items;
+  }, [categories, search, filters, sortValue]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
       await apiFetch(`/api/sub-hubs/${subHubId}/menu/categories/${deleteId}`, { method: "DELETE" });
-      toast({ title: "Category deleted" });
-      load(); onRefreshStats();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setDeleteId(null); }
+      toast({ title: "Category deleted" }); load(); onRefreshStats();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setDeleteId(null); }
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-4 text-sm font-semibold">
-          <Plus className="w-4 h-4 mr-1.5" /> Add Category
-        </Button>
-      </div>
+      <TabToolbar
+        search={search} onSearch={setSearch}
+        sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
+        filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
+        layout={layout} onLayout={setLayout}
+        addLabel="Add Category" onAdd={() => { setEditing(null); setModalOpen(true); }}
+        resultCount={processed.length} totalCount={categories.length}
+      />
 
-      {loading ? (
-        <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>
-      ) : categories.length === 0 ? (
-        <div className="py-16 text-center"><Tag className="w-10 h-10 text-gray-200 mx-auto mb-3" /><p className="text-gray-400">No categories yet</p></div>
+      {loading ? <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[1,2,3,4].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}</div>
+      : processed.length === 0 ? <EmptyState icon={Tag} message="No categories found" />
+      : layout === "grid" ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          {processed.map((c) => (
+            <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
+              {c.imageUrl ? <img src={c.imageUrl} alt={c.name} className="w-full h-24 object-cover" /> : <div className="w-full h-24 bg-gradient-to-br from-purple-50 to-indigo-100 flex items-center justify-center"><Tag className="w-7 h-7 text-purple-200" /></div>}
+              <div className="p-3 space-y-2">
+                <div className="flex items-center justify-between gap-1">
+                  <p className="font-semibold text-[#162B4D] text-sm truncate">{c.name}</p>
+                  <StatusBadge active={c.isActive !== false} />
+                </div>
+                {Array.isArray(c.subCategories) && c.subCategories.length > 0 && (
+                  <p className="text-xs text-gray-400">{c.subCategories.length} sub-categories</p>
+                )}
+                <div className="flex gap-1">
+                  <button onClick={() => { setEditing(c); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
+                  <button onClick={() => setDeleteId(String(c._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="space-y-2">
-          {categories.map((c) => {
+          {processed.map((c) => {
             const expanded = expandedId === String(c._id);
             return (
               <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden">
                 <div className="flex items-center gap-3 px-4 py-3 bg-white hover:bg-gray-50/50 transition-colors">
-                  {c.imageUrl ? (
-                    <img src={c.imageUrl} alt={c.name} className="w-10 h-10 rounded-lg object-cover border border-gray-100 flex-shrink-0" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center flex-shrink-0">
-                      <Tag className="w-4 h-4 text-blue-300" />
-                    </div>
-                  )}
+                  {c.imageUrl ? <img src={c.imageUrl} alt={c.name} className="w-10 h-10 rounded-lg object-cover border border-gray-100 flex-shrink-0" /> : <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-50 to-indigo-100 flex items-center justify-center flex-shrink-0"><Tag className="w-4 h-4 text-purple-300" /></div>}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-[#162B4D] text-sm">{c.name}</p>
                       <StatusBadge active={c.isActive !== false} />
                     </div>
-                    {Array.isArray(c.subCategories) && c.subCategories.length > 0 && (
-                      <p className="text-xs text-gray-400 mt-0.5">{c.subCategories.length} sub-categories</p>
-                    )}
+                    {Array.isArray(c.subCategories) && c.subCategories.length > 0 && <p className="text-xs text-gray-400 mt-0.5">{c.subCategories.length} sub-categories</p>}
                   </div>
+                  <span className="text-xs text-gray-400 flex-shrink-0">#{c.sortOrder ?? 0}</span>
                   <div className="flex items-center gap-1">
                     {Array.isArray(c.subCategories) && c.subCategories.length > 0 && (
                       <button onClick={() => setExpandedId(expanded ? null : String(c._id))} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors">
@@ -595,11 +684,8 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
                 </div>
                 {expanded && Array.isArray(c.subCategories) && c.subCategories.length > 0 && (
                   <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
-                    <p className="text-xs font-semibold text-gray-500 mb-2">Sub-Categories</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {c.subCategories.map((s: any) => (
-                        <span key={s.name} className="text-xs bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded-full">{s.name}</span>
-                      ))}
+                      {c.subCategories.map((s: any) => <span key={s.name} className="text-xs bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded-full">{s.name}</span>)}
                     </div>
                   </div>
                 )}
@@ -615,114 +701,15 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
   );
 }
 
-function CategoryModal({ isOpen, onClose, category, subHubId, onSaved }: any) {
-  const { toast } = useToast();
-  const isEditing = !!category;
-  const [name, setName] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [isActive, setIsActive] = useState(true);
-  const [sortOrder, setSortOrder] = useState("0");
-  const [subCatInput, setSubCatInput] = useState("");
-  const [subCategories, setSubCategories] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      if (category) {
-        setName(category.name ?? "");
-        setImageUrl(category.imageUrl ?? "");
-        setIsActive(category.isActive !== false);
-        setSortOrder(String(category.sortOrder ?? 0));
-        setSubCategories(Array.isArray(category.subCategories) ? category.subCategories.map((s: any) => s.name ?? s) : []);
-      } else {
-        setName(""); setImageUrl(""); setIsActive(true); setSortOrder("0"); setSubCategories([]);
-      }
-      setSubCatInput("");
-    }
-  }, [isOpen, category]);
-
-  const addSubCat = () => {
-    const v = subCatInput.trim();
-    if (v && !subCategories.includes(v)) { setSubCategories([...subCategories, v]); }
-    setSubCatInput("");
-  };
-  const removeSubCat = (s: string) => setSubCategories(subCategories.filter((x) => x !== s));
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    const payload = { name, imageUrl, isActive, sortOrder: Number(sortOrder) || 0, subCategories: subCategories.map((s) => ({ name: s, imageUrl: null })) };
-    try {
-      if (isEditing) {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/categories/${category._id}`, { method: "PUT", body: JSON.stringify(payload) });
-        toast({ title: "Category updated" });
-      } else {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/categories`, { method: "POST", body: JSON.stringify(payload) });
-        toast({ title: "Category added" });
-      }
-      onSaved(); onClose();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Category" : "Add Category"}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Category Name *</Label>
-            <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Fish" className="h-9" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Image URL</Label>
-            <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold text-gray-600">Sub-Categories</Label>
-            <div className="flex gap-2">
-              <Input value={subCatInput} onChange={(e) => setSubCatInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSubCat())} placeholder="Type and press Enter or Add" className="h-8 text-sm flex-1" />
-              <Button type="button" onClick={addSubCat} variant="outline" className="h-8 px-3 text-xs">Add</Button>
-            </div>
-            {subCategories.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 rounded-lg">
-                {subCategories.map((s) => (
-                  <span key={s} className="inline-flex items-center gap-1 text-xs bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded-full">
-                    {s}
-                    <button type="button" onClick={() => removeSubCat(s)} className="text-gray-400 hover:text-red-500"><X className="w-2.5 h-2.5" /></button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Sort Order</Label>
-              <Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" />
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <Label className="text-sm">Active</Label>
-              <Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" />
-            </div>
-          </div>
-          <DialogFooter className="pt-1">
-            <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
-            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">
-              {isEditing ? "Save Changes" : "Add Category"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ─── COMBOS TAB ───────────────────────────────────────────────────────────────
 function CombosTab({ subHubId }: { subHubId: string }) {
   const { toast } = useToast();
   const [combos, setCombos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [sortValue, setSortValue] = useState("sort_asc");
+  const [filters, setFilters] = useState<Record<string, string>>({ status: "all" });
+  const [layout, setLayout] = useState<Layout>("grid");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -732,76 +719,125 @@ function CombosTab({ subHubId }: { subHubId: string }) {
     try {
       const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/combos`);
       setCombos(data.combos ?? []);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setLoading(false); }
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setLoading(false); }
   }, [subHubId, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const sortOptions: SortOption[] = [
+    { value: "sort_asc", label: "Sort Order" },
+    { value: "name_asc", label: "Name A→Z" },
+    { value: "name_desc", label: "Name Z→A" },
+    { value: "price_asc", label: "Price Low→High" },
+    { value: "price_desc", label: "Price High→Low" },
+    { value: "discount_desc", label: "Discount High→Low" },
+  ];
+  const filterGroups: FilterGroup[] = [
+    { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+  ];
+
+  const processed = useMemo(() => {
+    let items = [...combos];
+    if (search) items = items.filter((c) => c.name?.toLowerCase().includes(search.toLowerCase()) || c.description?.toLowerCase().includes(search.toLowerCase()));
+    if (filters.status === "active") items = items.filter((c) => c.isActive !== false);
+    if (filters.status === "inactive") items = items.filter((c) => c.isActive === false);
+    items.sort((a, b) => {
+      if (sortValue === "name_asc") return (a.name ?? "").localeCompare(b.name ?? "");
+      if (sortValue === "name_desc") return (b.name ?? "").localeCompare(a.name ?? "");
+      if (sortValue === "price_asc") return (a.price ?? 0) - (b.price ?? 0);
+      if (sortValue === "price_desc") return (b.price ?? 0) - (a.price ?? 0);
+      if (sortValue === "discount_desc") return (b.discount ?? 0) - (a.discount ?? 0);
+      if (sortValue === "sort_asc") return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      return 0;
+    });
+    return items;
+  }, [combos, search, filters, sortValue]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
       await apiFetch(`/api/sub-hubs/${subHubId}/menu/combos/${deleteId}`, { method: "DELETE" });
-      toast({ title: "Combo deleted" });
-      load();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setDeleteId(null); }
+      toast({ title: "Combo deleted" }); load();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setDeleteId(null); }
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-4 text-sm font-semibold">
-          <Plus className="w-4 h-4 mr-1.5" /> Add Combo
-        </Button>
-      </div>
+      <TabToolbar
+        search={search} onSearch={setSearch}
+        sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
+        filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
+        layout={layout} onLayout={setLayout}
+        addLabel="Add Combo" onAdd={() => { setEditing(null); setModalOpen(true); }}
+        resultCount={processed.length} totalCount={combos.length}
+      />
 
-      {loading ? (
-        <div className="space-y-2">{[1, 2].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
-      ) : combos.length === 0 ? (
-        <div className="py-16 text-center"><ShoppingBag className="w-10 h-10 text-gray-200 mx-auto mb-3" /><p className="text-gray-400">No combos yet</p></div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {combos.map((c) => {
+      {loading ? <div className="space-y-2">{[1,2].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
+      : processed.length === 0 ? <EmptyState icon={ShoppingBag} message="No combos found" />
+      : layout === "grid" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {processed.map((c) => {
             const img = Array.isArray(c.images) && c.images.length > 0 ? c.images[0] : null;
             return (
-              <div key={String(c._id)} className="border border-gray-100 rounded-xl p-4 flex gap-3 hover:shadow-sm transition-shadow bg-white">
-                {img ? (
-                  <img src={img} alt={c.name} className="w-16 h-16 rounded-lg object-cover border border-gray-100 flex-shrink-0" />
-                ) : (
-                  <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-indigo-50 to-blue-100 flex items-center justify-center flex-shrink-0">
-                    <ShoppingBag className="w-6 h-6 text-indigo-200" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
+              <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
+                {img ? <img src={img} alt={c.name} className="w-full h-32 object-cover" /> : <div className="w-full h-32 bg-gradient-to-br from-indigo-50 to-blue-100 flex items-center justify-center"><ShoppingBag className="w-9 h-9 text-indigo-200" /></div>}
+                <div className="p-3 space-y-1.5">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold text-[#162B4D] text-sm">{c.name}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-sm font-bold text-[#162B4D]">₹{c.price}</span>
-                        {c.originalPrice > c.price && <span className="text-xs text-gray-400 line-through">₹{c.originalPrice}</span>}
-                        {c.discount > 0 && <span className="text-xs text-green-600 font-semibold">{c.discount}% off</span>}
-                      </div>
-                      {Array.isArray(c.items) && c.items.length > 0 && (
-                        <p className="text-xs text-gray-400 mt-0.5">{c.items.length} items</p>
-                      )}
-                      {Array.isArray(c.tags) && c.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {c.tags.map((t: string) => <span key={t} className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded-full">{t}</span>)}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <StatusBadge active={c.isActive !== false} />
-                      <ActionButtons onEdit={() => { setEditing(c); setModalOpen(true); }} onDelete={() => setDeleteId(String(c._id))} />
-                    </div>
+                    <p className="font-semibold text-[#162B4D] text-sm">{c.name}</p>
+                    <StatusBadge active={c.isActive !== false} />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-[#1A56DB]">₹{c.price}</span>
+                    {c.originalPrice > c.price && <span className="text-xs text-gray-400 line-through">₹{c.originalPrice}</span>}
+                    {c.discount > 0 && <span className="text-xs bg-green-50 text-green-600 font-semibold px-1.5 py-0.5 rounded-full">{c.discount}% off</span>}
+                  </div>
+                  {Array.isArray(c.items) && c.items.length > 0 && <p className="text-xs text-gray-400">{c.items.length} items included</p>}
+                  <div className="flex gap-1 pt-1">
+                    <button onClick={() => { setEditing(c); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
+                    <button onClick={() => setDeleteId(String(c._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
                   </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-gray-100">
+          <table className="w-full text-sm">
+            <thead><tr className="bg-gray-50 text-left">
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Combo</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Price</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Discount</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Actions</th>
+            </tr></thead>
+            <tbody className="divide-y divide-gray-50">
+              {processed.map((c) => {
+                const img = Array.isArray(c.images) && c.images.length > 0 ? c.images[0] : null;
+                return (
+                  <tr key={String(c._id)} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        {img ? <img src={img} alt={c.name} className="w-9 h-9 rounded-lg object-cover border border-gray-100 flex-shrink-0" /> : <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0"><ShoppingBag className="w-4 h-4 text-indigo-200" /></div>}
+                        <div>
+                          <p className="font-semibold text-[#162B4D] text-sm">{c.name}</p>
+                          {c.description && <p className="text-xs text-gray-400 truncate max-w-[180px]">{c.description}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3"><span className="font-bold text-[#162B4D]">₹{c.price}</span>{c.originalPrice > c.price && <span className="text-xs text-gray-400 line-through ml-1">₹{c.originalPrice}</span>}</td>
+                    <td className="px-4 py-3">{c.discount > 0 ? <span className="text-xs bg-green-50 text-green-600 font-semibold px-1.5 py-0.5 rounded-full">{c.discount}% off</span> : "—"}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{Array.isArray(c.items) ? c.items.length : 0}</td>
+                    <td className="px-4 py-3"><StatusBadge active={c.isActive !== false} /></td>
+                    <td className="px-4 py-3"><ActionButtons onEdit={() => { setEditing(c); setModalOpen(true); }} onDelete={() => setDeleteId(String(c._id))} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -811,116 +847,15 @@ function CombosTab({ subHubId }: { subHubId: string }) {
   );
 }
 
-function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
-  const { toast } = useToast();
-  const isEditing = !!combo;
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [originalPrice, setOriginalPrice] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [tagsStr, setTagsStr] = useState("");
-  const [isActive, setIsActive] = useState(true);
-  const [sortOrder, setSortOrder] = useState("0");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      if (combo) {
-        setName(combo.name ?? ""); setDescription(combo.description ?? "");
-        setPrice(String(combo.price ?? "")); setOriginalPrice(String(combo.originalPrice ?? ""));
-        const imgs = Array.isArray(combo.images) ? combo.images : [];
-        setImageUrl(imgs[0] ?? "");
-        setTagsStr(Array.isArray(combo.tags) ? combo.tags.join(", ") : "");
-        setIsActive(combo.isActive !== false); setSortOrder(String(combo.sortOrder ?? 0));
-      } else {
-        setName(""); setDescription(""); setPrice(""); setOriginalPrice("");
-        setImageUrl(""); setTagsStr(""); setIsActive(true); setSortOrder("0");
-      }
-    }
-  }, [isOpen, combo]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    const p = Number(price) || 0;
-    const op = Number(originalPrice) || 0;
-    const discount = op > p ? Math.round(((op - p) / op) * 100) : 0;
-    const tags = tagsStr.split(",").map((t) => t.trim()).filter(Boolean);
-    const images = imageUrl ? [imageUrl] : [];
-    const payload = { name, description, price: p, originalPrice: op, discount, images, tags, isActive, sortOrder: Number(sortOrder) || 0 };
-    try {
-      if (isEditing) {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/combos/${combo._id}`, { method: "PUT", body: JSON.stringify(payload) });
-        toast({ title: "Combo updated" });
-      } else {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/combos`, { method: "POST", body: JSON.stringify(payload) });
-        toast({ title: "Combo added" });
-      }
-      onSaved(); onClose();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Combo" : "Add Combo"}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Combo Name *</Label>
-            <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Family Fish Combo" className="h-9" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Description</Label>
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" className="h-9" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Sale Price (₹) *</Label>
-              <Input required type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" className="h-9" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Original Price (₹)</Label>
-              <Input type="number" min="0" value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} placeholder="0" className="h-9" />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Image URL</Label>
-            <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Tags <span className="font-normal text-gray-400">(comma-separated)</span></Label>
-            <Input value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} placeholder="e.g. Family Size, Value" className="h-9" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Sort Order</Label>
-              <Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" />
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <Label className="text-sm">Active</Label>
-              <Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" />
-            </div>
-          </div>
-          <DialogFooter className="pt-1">
-            <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
-            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">
-              {isEditing ? "Save Changes" : "Add Combo"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ─── COUPONS TAB ──────────────────────────────────────────────────────────────
 function CouponsTab({ subHubId }: { subHubId: string }) {
   const { toast } = useToast();
   const [coupons, setCoupons] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [sortValue, setSortValue] = useState("code_asc");
+  const [filters, setFilters] = useState<Record<string, string>>({ status: "all", type: "all" });
+  const [layout, setLayout] = useState<Layout>("list");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -930,77 +865,126 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
     try {
       const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons`);
       setCoupons(data.coupons ?? []);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setLoading(false); }
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setLoading(false); }
   }, [subHubId, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const sortOptions: SortOption[] = [
+    { value: "code_asc", label: "Code A→Z" },
+    { value: "discount_desc", label: "Discount High→Low" },
+    { value: "used_desc", label: "Most Used" },
+    { value: "minorder_asc", label: "Min Order Low→High" },
+    { value: "expiry_asc", label: "Expiry Soonest" },
+  ];
+  const filterGroups: FilterGroup[] = [
+    { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+    { key: "type", label: "Type", options: [{ value: "all", label: "All Types" }, { value: "percentage", label: "Percentage" }, { value: "flat", label: "Flat" }] },
+    { key: "firstTime", label: "Eligibility", options: [{ value: "all", label: "All" }, { value: "yes", label: "First Time Only" }] },
+  ];
+
+  const processed = useMemo(() => {
+    let items = [...coupons];
+    if (search) items = items.filter((c) => c.code?.toLowerCase().includes(search.toLowerCase()));
+    if (filters.status === "active") items = items.filter((c) => c.isActive !== false);
+    if (filters.status === "inactive") items = items.filter((c) => c.isActive === false);
+    if (filters.type !== "all") items = items.filter((c) => c.type === filters.type);
+    if (filters.firstTime === "yes") items = items.filter((c) => c.isFirstTimeOnly === true);
+    items.sort((a, b) => {
+      if (sortValue === "code_asc") return (a.code ?? "").localeCompare(b.code ?? "");
+      if (sortValue === "discount_desc") return (b.discountValue ?? 0) - (a.discountValue ?? 0);
+      if (sortValue === "used_desc") return (b.usedCount ?? 0) - (a.usedCount ?? 0);
+      if (sortValue === "minorder_asc") return (a.minOrderAmount ?? 0) - (b.minOrderAmount ?? 0);
+      if (sortValue === "expiry_asc") return new Date(a.expiresAt ?? "9999").getTime() - new Date(b.expiresAt ?? "9999").getTime();
+      return 0;
+    });
+    return items;
+  }, [coupons, search, filters, sortValue]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
       await apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons/${deleteId}`, { method: "DELETE" });
-      toast({ title: "Coupon deleted" });
-      load();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setDeleteId(null); }
+      toast({ title: "Coupon deleted" }); load();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setDeleteId(null); }
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-4 text-sm font-semibold">
-          <Plus className="w-4 h-4 mr-1.5" /> Add Coupon
-        </Button>
-      </div>
+      <TabToolbar
+        search={search} onSearch={setSearch}
+        sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
+        filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
+        layout={layout} onLayout={setLayout}
+        addLabel="Add Coupon" onAdd={() => { setEditing(null); setModalOpen(true); }}
+        resultCount={processed.length} totalCount={coupons.length}
+      />
 
-      {loading ? (
-        <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>
-      ) : coupons.length === 0 ? (
-        <div className="py-16 text-center"><Ticket className="w-10 h-10 text-gray-200 mx-auto mb-3" /><p className="text-gray-400">No coupons yet</p></div>
-      ) : (
+      {loading ? <div className="space-y-2">{[1,2,3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>
+      : processed.length === 0 ? <EmptyState icon={Ticket} message="No coupons found" />
+      : layout === "list" ? (
         <div className="overflow-x-auto rounded-lg border border-gray-100">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Code</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Discount</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Min Order</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Used</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Expires</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Actions</th>
-              </tr>
-            </thead>
+            <thead><tr className="bg-gray-50 text-left">
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Code</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Discount</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Min Order</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Used</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Expires</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Actions</th>
+            </tr></thead>
             <tbody className="divide-y divide-gray-50">
-              {coupons.map((c) => (
+              {processed.map((c) => (
                 <tr key={String(c._id)} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-4 py-3">
                     <span className="font-mono font-bold text-[#162B4D] text-sm tracking-wider bg-gray-100 px-2 py-0.5 rounded">{c.code}</span>
-                    {c.isFirstTimeOnly && <span className="ml-2 text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full font-semibold">First Time</span>}
+                    {c.isFirstTimeOnly && <span className="ml-2 text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full font-semibold">1st Time</span>}
                   </td>
                   <td className="px-4 py-3 capitalize text-gray-500 text-xs">{c.type}</td>
-                  <td className="px-4 py-3 font-semibold text-[#162B4D]">
-                    {c.type === "percentage" ? `${c.discountValue}%` : `₹${c.discountValue}`}
-                  </td>
+                  <td className="px-4 py-3 font-semibold text-[#162B4D]">{c.type === "percentage" ? `${c.discountValue}%` : `₹${c.discountValue}`}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">₹{c.minOrderAmount}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
-                    {c.usedCount ?? 0}{c.maxUsage ? ` / ${c.maxUsage}` : ""}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
-                    {c.expiresAt ? new Date(c.expiresAt).toLocaleDateString("en-IN") : "No expiry"}
-                  </td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{c.usedCount ?? 0}{c.maxUsage ? ` / ${c.maxUsage}` : ""}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString("en-IN") : "No expiry"}</td>
                   <td className="px-4 py-3"><StatusBadge active={c.isActive !== false} /></td>
-                  <td className="px-4 py-3">
-                    <ActionButtons onEdit={() => { setEditing(c); setModalOpen(true); }} onDelete={() => setDeleteId(String(c._id))} />
-                  </td>
+                  <td className="px-4 py-3"><ActionButtons onEdit={() => { setEditing(c); setModalOpen(true); }} onDelete={() => setDeleteId(String(c._id))} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {processed.map((c) => (
+            <div key={String(c._id)} className="border border-dashed border-orange-200 rounded-xl bg-orange-50/30 p-4 hover:shadow-sm transition-shadow relative overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-400 rounded-l-xl" />
+              <div className="pl-2 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="font-mono font-black text-[#162B4D] text-base tracking-widest">{c.code}</span>
+                    {c.isFirstTimeOnly && <span className="ml-2 text-[10px] text-purple-600 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded-full font-semibold">1st Time</span>}
+                  </div>
+                  <StatusBadge active={c.isActive !== false} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xl font-black text-orange-500">{c.type === "percentage" ? `${c.discountValue}%` : `₹${c.discountValue}`}</span>
+                  <span className="text-xs text-gray-500 capitalize">{c.type} off</span>
+                </div>
+                <div className="flex gap-3 text-xs text-gray-500">
+                  <span>Min: ₹{c.minOrderAmount}</span>
+                  <span>Used: {c.usedCount ?? 0}{c.maxUsage ? `/${c.maxUsage}` : ""}</span>
+                </div>
+                {c.expiresAt && <p className="text-xs text-gray-400">Expires: {new Date(c.expiresAt).toLocaleDateString("en-IN")}</p>}
+                <div className="flex gap-1 pt-1">
+                  <button onClick={() => { setEditing(c); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 bg-white text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
+                  <button onClick={() => setDeleteId(String(c._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 bg-white text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1010,120 +994,15 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
   );
 }
 
-function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
-  const { toast } = useToast();
-  const isEditing = !!coupon;
-  const [code, setCode] = useState("");
-  const [type, setType] = useState("percentage");
-  const [discountValue, setDiscountValue] = useState("");
-  const [minOrderAmount, setMinOrderAmount] = useState("");
-  const [maxUsage, setMaxUsage] = useState("");
-  const [isFirstTimeOnly, setIsFirstTimeOnly] = useState(false);
-  const [isActive, setIsActive] = useState(true);
-  const [expiresAt, setExpiresAt] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      if (coupon) {
-        setCode(coupon.code ?? ""); setType(coupon.type ?? "percentage");
-        setDiscountValue(String(coupon.discountValue ?? "")); setMinOrderAmount(String(coupon.minOrderAmount ?? ""));
-        setMaxUsage(coupon.maxUsage ? String(coupon.maxUsage) : "");
-        setIsFirstTimeOnly(coupon.isFirstTimeOnly === true); setIsActive(coupon.isActive !== false);
-        setExpiresAt(coupon.expiresAt ? new Date(coupon.expiresAt).toISOString().split("T")[0] : "");
-      } else {
-        setCode(""); setType("percentage"); setDiscountValue(""); setMinOrderAmount("");
-        setMaxUsage(""); setIsFirstTimeOnly(false); setIsActive(true); setExpiresAt("");
-      }
-    }
-  }, [isOpen, coupon]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    const payload: any = { code, type, discountValue: Number(discountValue) || 0, minOrderAmount: Number(minOrderAmount) || 0, isFirstTimeOnly, isActive };
-    if (maxUsage) payload.maxUsage = Number(maxUsage);
-    if (expiresAt) payload.expiresAt = expiresAt;
-    try {
-      if (isEditing) {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons/${coupon._id}`, { method: "PUT", body: JSON.stringify(payload) });
-        toast({ title: "Coupon updated" });
-      } else {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons`, { method: "POST", body: JSON.stringify(payload) });
-        toast({ title: "Coupon added" });
-      }
-      onSaved(); onClose();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Coupon" : "Add Coupon"}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Coupon Code *</Label>
-            <Input required value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. FISH10" className="h-9 font-mono" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Discount Type</Label>
-              <Select value={type} onValueChange={setType}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="percentage">Percentage (%)</SelectItem>
-                  <SelectItem value="flat">Flat (₹)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Discount Value *</Label>
-              <Input required type="number" min="0" value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} placeholder={type === "percentage" ? "e.g. 10" : "e.g. 50"} className="h-9" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Min Order (₹)</Label>
-              <Input type="number" min="0" value={minOrderAmount} onChange={(e) => setMinOrderAmount(e.target.value)} placeholder="0" className="h-9" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Max Usage</Label>
-              <Input type="number" min="0" value={maxUsage} onChange={(e) => setMaxUsage(e.target.value)} placeholder="Unlimited" className="h-9" />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Expiry Date</Label>
-            <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="h-9" />
-          </div>
-          <div className="flex gap-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1">
-              <Label className="text-sm">First Time Only</Label>
-              <Switch checked={isFirstTimeOnly} onCheckedChange={setIsFirstTimeOnly} className="data-[state=checked]:bg-[#1A56DB]" />
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1">
-              <Label className="text-sm">Active</Label>
-              <Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" />
-            </div>
-          </div>
-          <DialogFooter className="pt-1">
-            <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
-            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">
-              {isEditing ? "Save Changes" : "Add Coupon"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ─── CAROUSELS TAB ────────────────────────────────────────────────────────────
 function CarouselsTab({ subHubId }: { subHubId: string }) {
   const { toast } = useToast();
   const [carousels, setCarousels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [sortValue, setSortValue] = useState("order_asc");
+  const [filters, setFilters] = useState<Record<string, string>>({ status: "all" });
+  const [layout, setLayout] = useState<Layout>("grid");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -1133,60 +1012,94 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
     try {
       const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/carousels`);
       setCarousels(data.carousels ?? []);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setLoading(false); }
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setLoading(false); }
   }, [subHubId, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const sortOptions: SortOption[] = [
+    { value: "order_asc", label: "Display Order" },
+    { value: "title_asc", label: "Title A→Z" },
+    { value: "status", label: "Status" },
+  ];
+  const filterGroups: FilterGroup[] = [
+    { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+  ];
+
+  const processed = useMemo(() => {
+    let items = [...carousels];
+    if (search) items = items.filter((c) => c.title?.toLowerCase().includes(search.toLowerCase()) || c.imageUrl?.toLowerCase().includes(search.toLowerCase()));
+    if (filters.status === "active") items = items.filter((c) => c.isActive !== false);
+    if (filters.status === "inactive") items = items.filter((c) => c.isActive === false);
+    items.sort((a, b) => {
+      if (sortValue === "order_asc") return (a.order ?? 0) - (b.order ?? 0);
+      if (sortValue === "title_asc") return (a.title ?? "").localeCompare(b.title ?? "");
+      if (sortValue === "status") return (b.isActive === false ? -1 : 1) - (a.isActive === false ? -1 : 1);
+      return 0;
+    });
+    return items;
+  }, [carousels, search, filters, sortValue]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
       await apiFetch(`/api/sub-hubs/${subHubId}/menu/carousels/${deleteId}`, { method: "DELETE" });
-      toast({ title: "Banner deleted" });
-      load();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setDeleteId(null); }
+      toast({ title: "Banner deleted" }); load();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setDeleteId(null); }
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-4 text-sm font-semibold">
-          <Plus className="w-4 h-4 mr-1.5" /> Add Banner
-        </Button>
-      </div>
+      <TabToolbar
+        search={search} onSearch={setSearch}
+        sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
+        filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
+        layout={layout} onLayout={setLayout}
+        addLabel="Add Banner" onAdd={() => { setEditing(null); setModalOpen(true); }}
+        resultCount={processed.length} totalCount={carousels.length}
+      />
 
-      {loading ? (
-        <div className="space-y-2">{[1, 2].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
-      ) : carousels.length === 0 ? (
-        <div className="py-16 text-center"><Image className="w-10 h-10 text-gray-200 mx-auto mb-3" /><p className="text-gray-400">No banners yet</p></div>
+      {loading ? <div className="space-y-2">{[1,2].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}</div>
+      : processed.length === 0 ? <EmptyState icon={Image} message="No banners found" />
+      : layout === "grid" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {processed.map((c) => (
+            <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
+              <div className="relative h-36 bg-gray-100">
+                {c.imageUrl ? <img src={c.imageUrl} alt={c.title ?? "Banner"} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Image className="w-8 h-8 text-gray-300" /></div>}
+                <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full font-semibold">#{c.order}</div>
+                <div className="absolute top-2 right-2"><StatusBadge active={c.isActive !== false} /></div>
+              </div>
+              <div className="p-3 space-y-1.5">
+                <p className="font-semibold text-[#162B4D] text-sm">{c.title || <span className="text-gray-400 font-normal italic">No title</span>}</p>
+                {c.linkUrl && <p className="text-xs text-gray-400 truncate">{c.linkUrl}</p>}
+                <div className="flex gap-1 pt-0.5">
+                  <button onClick={() => { setEditing(c); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
+                  <button onClick={() => setDeleteId(String(c._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="space-y-3">
-          {carousels.map((c, idx) => (
+          {processed.map((c) => (
             <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden flex gap-3 bg-white p-3 hover:shadow-sm transition-shadow items-center">
               <div className="flex items-center gap-2 text-gray-300 flex-shrink-0">
                 <GripVertical className="w-4 h-4" />
-                <span className="text-xs font-bold text-gray-400">#{idx + 1}</span>
+                <span className="text-xs font-bold text-gray-400">#{c.order}</span>
               </div>
-              <div className="w-32 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-100">
-                {c.imageUrl ? (
-                  <img src={c.imageUrl} alt={c.title ?? "Banner"} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center"><Image className="w-5 h-5 text-gray-300" /></div>
-                )}
+              <div className="w-28 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-100">
+                {c.imageUrl ? <img src={c.imageUrl} alt={c.title ?? "Banner"} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Image className="w-4 h-4 text-gray-300" /></div>}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-[#162B4D] text-sm">{c.title || <span className="text-gray-400 font-normal">No title</span>}</p>
+                <p className="font-semibold text-[#162B4D] text-sm">{c.title || <span className="text-gray-400 font-normal italic">No title</span>}</p>
                 {c.linkUrl && <p className="text-xs text-gray-400 truncate">{c.linkUrl}</p>}
-                <p className="text-xs text-gray-400 mt-0.5">Order: {c.order}</p>
               </div>
-              <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                <StatusBadge active={c.isActive !== false} />
-                <ActionButtons onEdit={() => { setEditing(c); setModalOpen(true); }} onDelete={() => setDeleteId(String(c._id))} />
-              </div>
+              <StatusBadge active={c.isActive !== false} />
+              <ActionButtons onEdit={() => { setEditing(c); setModalOpen(true); }} onDelete={() => setDeleteId(String(c._id))} />
             </div>
           ))}
         </div>
@@ -1198,91 +1111,15 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
   );
 }
 
-function CarouselModal({ isOpen, onClose, carousel, subHubId, onSaved }: any) {
-  const { toast } = useToast();
-  const isEditing = !!carousel;
-  const [imageUrl, setImageUrl] = useState("");
-  const [title, setTitle] = useState("");
-  const [linkUrl, setLinkUrl] = useState("");
-  const [order, setOrder] = useState("0");
-  const [isActive, setIsActive] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      if (carousel) {
-        setImageUrl(carousel.imageUrl ?? ""); setTitle(carousel.title ?? "");
-        setLinkUrl(carousel.linkUrl ?? ""); setOrder(String(carousel.order ?? 0));
-        setIsActive(carousel.isActive !== false);
-      } else {
-        setImageUrl(""); setTitle(""); setLinkUrl(""); setOrder("0"); setIsActive(true);
-      }
-    }
-  }, [isOpen, carousel]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    const payload = { imageUrl, title: title || null, linkUrl: linkUrl || null, order: Number(order) || 0, isActive };
-    try {
-      if (isEditing) {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/carousels/${carousel._id}`, { method: "PUT", body: JSON.stringify(payload) });
-        toast({ title: "Banner updated" });
-      } else {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/carousels`, { method: "POST", body: JSON.stringify(payload) });
-        toast({ title: "Banner added" });
-      }
-      onSaved(); onClose();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[440px]">
-        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Banner" : "Add Banner"}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Image URL *</Label>
-            <Input required value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" />
-            {imageUrl && <img src={imageUrl} alt="Preview" className="w-full h-24 object-cover rounded-lg border border-gray-100 mt-1" onError={(e) => { (e.target as any).style.display = "none"; }} />}
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Optional title" className="h-9" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Link URL</Label>
-            <Input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://... (optional)" className="h-9" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Display Order</Label>
-              <Input type="number" min="0" value={order} onChange={(e) => setOrder(e.target.value)} className="h-9" />
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <Label className="text-sm">Active</Label>
-              <Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" />
-            </div>
-          </div>
-          <DialogFooter className="pt-1">
-            <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
-            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">
-              {isEditing ? "Save Changes" : "Add Banner"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ─── SECTIONS TAB ─────────────────────────────────────────────────────────────
 function SectionsTab({ subHubId }: { subHubId: string }) {
   const { toast } = useToast();
   const [sections, setSections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [sortValue, setSortValue] = useState("sort_asc");
+  const [filters, setFilters] = useState<Record<string, string>>({ status: "all", type: "all" });
+  const [layout, setLayout] = useState<Layout>("list");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -1292,56 +1129,98 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
     try {
       const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections`);
       setSections(data.sections ?? []);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setLoading(false); }
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setLoading(false); }
   }, [subHubId, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const sortOptions: SortOption[] = [
+    { value: "sort_asc", label: "Sort Order" },
+    { value: "title_asc", label: "Title A→Z" },
+    { value: "title_desc", label: "Title Z→A" },
+    { value: "type", label: "Content Type" },
+  ];
+  const filterGroups: FilterGroup[] = [
+    { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+    { key: "type", label: "Content Type", options: [{ value: "all", label: "All Types" }, { value: "products", label: "Products" }, { value: "combos", label: "Combos" }, { value: "categories", label: "Categories" }, { value: "carousels", label: "Carousels" }] },
+  ];
+
+  const TYPE_COLORS: Record<string, string> = {
+    products: "bg-blue-50 text-blue-600 border-blue-100",
+    combos: "bg-indigo-50 text-indigo-600 border-indigo-100",
+    categories: "bg-purple-50 text-purple-600 border-purple-100",
+    carousels: "bg-pink-50 text-pink-600 border-pink-100",
+  };
+
+  const processed = useMemo(() => {
+    let items = [...sections];
+    if (search) items = items.filter((s) => s.title?.toLowerCase().includes(search.toLowerCase()));
+    if (filters.status === "active") items = items.filter((s) => s.isActive !== false);
+    if (filters.status === "inactive") items = items.filter((s) => s.isActive === false);
+    if (filters.type !== "all") items = items.filter((s) => s.type === filters.type);
+    items.sort((a, b) => {
+      if (sortValue === "title_asc") return (a.title ?? "").localeCompare(b.title ?? "");
+      if (sortValue === "title_desc") return (b.title ?? "").localeCompare(a.title ?? "");
+      if (sortValue === "type") return (a.type ?? "").localeCompare(b.type ?? "");
+      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    });
+    return items;
+  }, [sections, search, filters, sortValue]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
       await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections/${deleteId}`, { method: "DELETE" });
-      toast({ title: "Section deleted" });
-      load();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setDeleteId(null); }
-  };
-
-  const TYPE_COLORS: Record<string, string> = {
-    products: "bg-blue-50 text-blue-600",
-    combos: "bg-indigo-50 text-indigo-600",
-    categories: "bg-purple-50 text-purple-600",
+      toast({ title: "Section deleted" }); load();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setDeleteId(null); }
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-4 text-sm font-semibold">
-          <Plus className="w-4 h-4 mr-1.5" /> Add Section
-        </Button>
-      </div>
+      <TabToolbar
+        search={search} onSearch={setSearch}
+        sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
+        filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
+        layout={layout} onLayout={setLayout}
+        addLabel="Add Section" onAdd={() => { setEditing(null); setModalOpen(true); }}
+        resultCount={processed.length} totalCount={sections.length}
+      />
 
-      {loading ? (
-        <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
-      ) : sections.length === 0 ? (
-        <div className="py-16 text-center"><LayoutList className="w-10 h-10 text-gray-200 mx-auto mb-3" /><p className="text-gray-400">No sections yet</p></div>
-      ) : (
+      {loading ? <div className="space-y-2">{[1,2,3].map((i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
+      : processed.length === 0 ? <EmptyState icon={LayoutList} message="No sections found" />
+      : layout === "list" ? (
         <div className="space-y-2">
-          {sections.map((s) => (
+          {processed.map((s) => (
             <div key={String(s._id)} className="flex items-center gap-3 border border-gray-100 rounded-xl px-4 py-3 bg-white hover:bg-gray-50/50 transition-colors">
               <div className="flex items-center gap-2 text-gray-300 flex-shrink-0">
                 <GripVertical className="w-4 h-4" />
                 <span className="text-xs font-bold text-gray-400">#{s.sortOrder}</span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-[#162B4D] text-sm">{s.title}</p>
-              </div>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold capitalize flex-shrink-0 ${TYPE_COLORS[s.type] ?? "bg-gray-100 text-gray-500"}`}>{s.type}</span>
+              <p className="font-semibold text-[#162B4D] text-sm flex-1 min-w-0 truncate">{s.title}</p>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold capitalize border flex-shrink-0 ${TYPE_COLORS[s.type] ?? "bg-gray-100 text-gray-500 border-gray-200"}`}>{s.type}</span>
               <StatusBadge active={s.isActive !== false} />
               <ActionButtons onEdit={() => { setEditing(s); setModalOpen(true); }} onDelete={() => setDeleteId(String(s._id))} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {processed.map((s) => (
+            <div key={String(s._id)} className="border border-gray-100 rounded-xl p-4 bg-white hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div>
+                  <p className="font-semibold text-[#162B4D] text-sm">{s.title}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Order #{s.sortOrder}</p>
+                </div>
+                <StatusBadge active={s.isActive !== false} />
+              </div>
+              <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-semibold capitalize border mb-3 ${TYPE_COLORS[s.type] ?? "bg-gray-100 text-gray-500 border-gray-200"}`}>{s.type}</span>
+              <div className="flex gap-1">
+                <button onClick={() => { setEditing(s); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
+                <button onClick={() => setDeleteId(String(s._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
+              </div>
             </div>
           ))}
         </div>
@@ -1353,93 +1232,15 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
   );
 }
 
-function SectionModal({ isOpen, onClose, section, subHubId, onSaved }: any) {
-  const { toast } = useToast();
-  const isEditing = !!section;
-  const [title, setTitle] = useState("");
-  const [type, setType] = useState("products");
-  const [sortOrder, setSortOrder] = useState("0");
-  const [isActive, setIsActive] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      if (section) {
-        setTitle(section.title ?? ""); setType(section.type ?? "products");
-        setSortOrder(String(section.sortOrder ?? 0)); setIsActive(section.isActive !== false);
-      } else {
-        setTitle(""); setType("products"); setSortOrder("0"); setIsActive(true);
-      }
-    }
-  }, [isOpen, section]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    const payload = { title, type, sortOrder: Number(sortOrder) || 0, isActive };
-    try {
-      if (isEditing) {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections/${section._id}`, { method: "PUT", body: JSON.stringify(payload) });
-        toast({ title: "Section updated" });
-      } else {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections`, { method: "POST", body: JSON.stringify(payload) });
-        toast({ title: "Section added" });
-      }
-      onSaved(); onClose();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[440px]">
-        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Section" : "Add Section"}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Section Title *</Label>
-            <Input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Today's Special" className="h-9" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Content Type</Label>
-            <Select value={type} onValueChange={setType}>
-              <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="products">Products</SelectItem>
-                <SelectItem value="combos">Combos</SelectItem>
-                <SelectItem value="categories">Categories</SelectItem>
-                <SelectItem value="carousels">Carousels</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600">Sort Order</Label>
-              <Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" />
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <Label className="text-sm">Active</Label>
-              <Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" />
-            </div>
-          </div>
-          <DialogFooter className="pt-1">
-            <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
-            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">
-              {isEditing ? "Save Changes" : "Add Section"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ─── PINCODES TAB ─────────────────────────────────────────────────────────────
 function PincodesTab({ subHubId }: { subHubId: string }) {
   const { toast } = useToast();
   const [pincodes, setPincodes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [sortValue, setSortValue] = useState("pincode_asc");
+  const [filters, setFilters] = useState<Record<string, string>>({ status: "all", city: "all" });
+  const [layout, setLayout] = useState<Layout>("list");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -1449,71 +1250,107 @@ function PincodesTab({ subHubId }: { subHubId: string }) {
     try {
       const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes`);
       setPincodes(data.pincodes ?? []);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setLoading(false); }
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setLoading(false); }
   }, [subHubId, toast]);
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = pincodes.filter((p) => !search || p.pincode?.includes(search) || p.area?.toLowerCase().includes(search.toLowerCase()) || p.city?.toLowerCase().includes(search.toLowerCase()));
+  const cities = useMemo(() => {
+    const unique = [...new Set(pincodes.map((p) => p.city).filter(Boolean))].sort();
+    return [{ value: "all", label: "All Cities" }, ...unique.map((c) => ({ value: c, label: c }))];
+  }, [pincodes]);
+
+  const sortOptions: SortOption[] = [
+    { value: "pincode_asc", label: "Pincode A→Z" },
+    { value: "area_asc", label: "Area A→Z" },
+    { value: "city_asc", label: "City A→Z" },
+    { value: "status", label: "Status" },
+  ];
+  const filterGroups: FilterGroup[] = [
+    { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+    { key: "city", label: "City", options: cities },
+  ];
+
+  const processed = useMemo(() => {
+    let items = [...pincodes];
+    if (search) items = items.filter((p) => p.pincode?.includes(search) || p.area?.toLowerCase().includes(search.toLowerCase()) || p.city?.toLowerCase().includes(search.toLowerCase()));
+    if (filters.status === "active") items = items.filter((p) => p.isActive !== false);
+    if (filters.status === "inactive") items = items.filter((p) => p.isActive === false);
+    if (filters.city !== "all") items = items.filter((p) => p.city === filters.city);
+    items.sort((a, b) => {
+      if (sortValue === "pincode_asc") return (a.pincode ?? "").localeCompare(b.pincode ?? "");
+      if (sortValue === "area_asc") return (a.area ?? "").localeCompare(b.area ?? "");
+      if (sortValue === "city_asc") return (a.city ?? "").localeCompare(b.city ?? "");
+      if (sortValue === "status") return (b.isActive === false ? -1 : 1) - (a.isActive === false ? -1 : 1);
+      return 0;
+    });
+    return items;
+  }, [pincodes, search, filters, sortValue]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
       await apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes/${deleteId}`, { method: "DELETE" });
-      toast({ title: "Pincode deleted" });
-      load();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setDeleteId(null); }
+      toast({ title: "Pincode deleted" }); load();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setDeleteId(null); }
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input placeholder="Search pincode, area..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9 text-sm" />
-          {search && <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X className="w-3.5 h-3.5" /></button>}
-        </div>
-        <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-4 text-sm font-semibold ml-auto">
-          <Plus className="w-4 h-4 mr-1.5" /> Add Pincode
-        </Button>
-      </div>
+      <TabToolbar
+        search={search} onSearch={setSearch}
+        sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
+        filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
+        layout={layout} onLayout={setLayout}
+        addLabel="Add Pincode" onAdd={() => { setEditing(null); setModalOpen(true); }}
+        resultCount={processed.length} totalCount={pincodes.length}
+      />
 
-      {loading ? (
-        <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
-      ) : filtered.length === 0 ? (
-        <div className="py-16 text-center"><MapPin className="w-10 h-10 text-gray-200 mx-auto mb-3" /><p className="text-gray-400">{search ? "No pincodes match" : "No pincodes yet"}</p></div>
-      ) : (
+      {loading ? <div className="space-y-2">{[1,2,3].map((i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
+      : processed.length === 0 ? <EmptyState icon={MapPin} message="No pincodes found" />
+      : layout === "list" ? (
         <div className="overflow-x-auto rounded-lg border border-gray-100">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Pincode</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Area</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">City</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Actions</th>
-              </tr>
-            </thead>
+            <thead><tr className="bg-gray-50 text-left">
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Pincode</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Area</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">City</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Actions</th>
+            </tr></thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map((p) => (
+              {processed.map((p) => (
                 <tr key={String(p._id)} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-4 py-3">
-                    <span className="font-mono font-bold text-[#162B4D]">{p.pincode}</span>
-                  </td>
+                  <td className="px-4 py-3"><span className="font-mono font-bold text-[#162B4D]">{p.pincode}</span></td>
                   <td className="px-4 py-3 text-gray-600 text-sm">{p.area || "—"}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{p.city || "—"}</td>
                   <td className="px-4 py-3"><StatusBadge active={p.isActive !== false} /></td>
-                  <td className="px-4 py-3">
-                    <ActionButtons onEdit={() => { setEditing(p); setModalOpen(true); }} onDelete={() => setDeleteId(String(p._id))} />
-                  </td>
+                  <td className="px-4 py-3"><ActionButtons onEdit={() => { setEditing(p); setModalOpen(true); }} onDelete={() => setDeleteId(String(p._id))} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {processed.map((p) => (
+            <div key={String(p._id)} className="border border-gray-100 rounded-xl p-3 bg-white hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between gap-1 mb-2">
+                <div>
+                  <p className="font-mono font-black text-[#162B4D] text-lg leading-none">{p.pincode}</p>
+                  {p.area && <p className="text-xs text-gray-500 mt-1">{p.area}</p>}
+                  {p.city && <p className="text-[10px] text-gray-400">{p.city}</p>}
+                </div>
+                <div className="mt-0.5"><StatusBadge active={p.isActive !== false} /></div>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => { setEditing(p); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
+                <button onClick={() => setDeleteId(String(p._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1523,41 +1360,360 @@ function PincodesTab({ subHubId }: { subHubId: string }) {
   );
 }
 
-function PincodeModal({ isOpen, onClose, pincode, subHubId, onSaved }: any) {
+// ─── MODALS ───────────────────────────────────────────────────────────────────
+function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved }: any) {
   const { toast } = useToast();
-  const isEditing = !!pincode;
-  const [code, setCode] = useState("");
-  const [area, setArea] = useState("");
-  const [city, setCity] = useState("");
-  const [isActive, setIsActive] = useState(true);
+  const isEditing = !!product;
+  const [name, setName] = useState(""); const [description, setDescription] = useState("");
+  const [category, setCategory] = useState(""); const [subCategory, setSubCategory] = useState("");
+  const [isActive, setIsActive] = useState(true); const [sortOrder, setSortOrder] = useState("0");
+  const [imageUrl, setImageUrl] = useState(""); const [tagsStr, setTagsStr] = useState("");
+  const [variants, setVariants] = useState([{ weight: "", price: "", mrp: "" }]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      if (pincode) {
-        setCode(pincode.pincode ?? ""); setArea(pincode.area ?? ""); setCity(pincode.city ?? ""); setIsActive(pincode.isActive !== false);
-      } else {
-        setCode(""); setArea(""); setCity("Thane"); setIsActive(true);
-      }
+      if (product) {
+        setName(product.name ?? ""); setDescription(product.description ?? ""); setCategory(product.category ?? ""); setSubCategory(product.subCategory ?? "");
+        setIsActive(product.isActive !== false); setSortOrder(String(product.sortOrder ?? 0));
+        const imgs = Array.isArray(product.images) ? product.images : product.imageUrl ? [product.imageUrl] : [];
+        setImageUrl(imgs[0] ?? ""); setTagsStr(Array.isArray(product.tags) ? product.tags.join(", ") : "");
+        setVariants(Array.isArray(product.priceVariants) && product.priceVariants.length > 0 ? product.priceVariants.map((v: any) => ({ weight: v.weight ?? "", price: String(v.price ?? ""), mrp: String(v.mrp ?? "") })) : [{ weight: "", price: "", mrp: "" }]);
+      } else { setName(""); setDescription(""); setCategory(""); setSubCategory(""); setIsActive(true); setSortOrder("0"); setImageUrl(""); setTagsStr(""); setVariants([{ weight: "", price: "", mrp: "" }]); }
+    }
+  }, [isOpen, product]);
+
+  const selectedCat = categories?.find((c: any) => c.name === category);
+  const subCats: string[] = selectedCat?.subCategories?.map((s: any) => s.name ?? s) ?? [];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setSaving(true);
+    const priceVariants = variants.filter((v) => v.weight || v.price).map((v) => ({ weight: v.weight, price: Number(v.price) || 0, mrp: Number(v.mrp) || 0, discount: v.mrp && v.price ? Math.round(((Number(v.mrp) - Number(v.price)) / Number(v.mrp)) * 100) : 0 }));
+    const tags = tagsStr.split(",").map((t) => t.trim()).filter(Boolean);
+    const payload = { name, description, category, subCategory, priceVariants, images: imageUrl ? [imageUrl] : [], tags, isActive, sortOrder: Number(sortOrder) || 0 };
+    try {
+      if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/${product._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Product updated" }); }
+      else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Product added" }); }
+      onSaved(); onClose();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Product" : "Add Product"}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Product Name *</Label><Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Silver Pomfret" className="h-9" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" className="h-9" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Category</Label>
+              <Select value={category} onValueChange={(v) => { setCategory(v); setSubCategory(""); }}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select..." /></SelectTrigger>
+                <SelectContent>{categories?.map((c: any) => <SelectItem key={String(c._id)} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sub-Category</Label>
+              {subCats.length > 0 ? (
+                <Select value={subCategory} onValueChange={setSubCategory}><SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select..." /></SelectTrigger><SelectContent>{subCats.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
+              ) : <Input value={subCategory} onChange={(e) => setSubCategory(e.target.value)} placeholder="e.g. Silver Pomfret" className="h-9" />}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between"><Label className="text-xs font-semibold text-gray-600">Price Variants</Label><button type="button" onClick={() => setVariants([...variants, { weight: "", price: "", mrp: "" }])} className="text-xs text-[#1A56DB] font-medium hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Add</button></div>
+            {variants.map((v, i) => (
+              <div key={i} className="grid grid-cols-3 gap-2 items-center">
+                <Input value={v.weight} onChange={(e) => setVariants(variants.map((x, idx) => idx === i ? { ...x, weight: e.target.value } : x))} placeholder="Weight (500g)" className="h-8 text-sm" />
+                <Input type="number" value={v.price} onChange={(e) => setVariants(variants.map((x, idx) => idx === i ? { ...x, price: e.target.value } : x))} placeholder="Price ₹" className="h-8 text-sm" />
+                <div className="flex gap-1"><Input type="number" value={v.mrp} onChange={(e) => setVariants(variants.map((x, idx) => idx === i ? { ...x, mrp: e.target.value } : x))} placeholder="MRP ₹" className="h-8 text-sm" />{variants.length > 1 && <button type="button" onClick={() => setVariants(variants.filter((_, idx) => idx !== i))} className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-600 flex-shrink-0"><X className="w-3 h-3" /></button>}</div>
+              </div>
+            ))}
+          </div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Image URL</Label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Tags <span className="font-normal text-gray-400">(comma-separated)</span></Label><Input value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} placeholder="Fresh, Bestseller" className="h-9" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sort Order</Label><Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" /></div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
+          </div>
+          <DialogFooter className="pt-1">
+            <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
+            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Product"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CategoryModal({ isOpen, onClose, category, subHubId, onSaved }: any) {
+  const { toast } = useToast();
+  const isEditing = !!category;
+  const [name, setName] = useState(""); const [imageUrl, setImageUrl] = useState("");
+  const [isActive, setIsActive] = useState(true); const [sortOrder, setSortOrder] = useState("0");
+  const [subCatInput, setSubCatInput] = useState(""); const [subCategories, setSubCategories] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (category) { setName(category.name ?? ""); setImageUrl(category.imageUrl ?? ""); setIsActive(category.isActive !== false); setSortOrder(String(category.sortOrder ?? 0)); setSubCategories(Array.isArray(category.subCategories) ? category.subCategories.map((s: any) => s.name ?? s) : []); }
+      else { setName(""); setImageUrl(""); setIsActive(true); setSortOrder("0"); setSubCategories([]); }
+      setSubCatInput("");
+    }
+  }, [isOpen, category]);
+
+  const addSubCat = () => { const v = subCatInput.trim(); if (v && !subCategories.includes(v)) setSubCategories([...subCategories, v]); setSubCatInput(""); };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setSaving(true);
+    const payload = { name, imageUrl, isActive, sortOrder: Number(sortOrder) || 0, subCategories: subCategories.map((s) => ({ name: s, imageUrl: null })) };
+    try {
+      if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/categories/${category._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Category updated" }); }
+      else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/categories`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Category added" }); }
+      onSaved(); onClose();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Category" : "Add Category"}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Category Name *</Label><Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Fish" className="h-9" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Image URL</Label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" /></div>
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold text-gray-600">Sub-Categories</Label>
+            <div className="flex gap-2"><Input value={subCatInput} onChange={(e) => setSubCatInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSubCat())} placeholder="Type and press Enter or Add" className="h-8 text-sm flex-1" /><Button type="button" onClick={addSubCat} variant="outline" className="h-8 px-3 text-xs">Add</Button></div>
+            {subCategories.length > 0 && <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 rounded-lg">{subCategories.map((s) => <span key={s} className="inline-flex items-center gap-1 text-xs bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded-full">{s}<button type="button" onClick={() => setSubCategories(subCategories.filter((x) => x !== s))} className="text-gray-400 hover:text-red-500"><X className="w-2.5 h-2.5" /></button></span>)}</div>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sort Order</Label><Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" /></div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
+          </div>
+          <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Category"}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
+  const { toast } = useToast();
+  const isEditing = !!combo;
+  const [name, setName] = useState(""); const [description, setDescription] = useState("");
+  const [price, setPrice] = useState(""); const [originalPrice, setOriginalPrice] = useState("");
+  const [imageUrl, setImageUrl] = useState(""); const [tagsStr, setTagsStr] = useState("");
+  const [isActive, setIsActive] = useState(true); const [sortOrder, setSortOrder] = useState("0");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (combo) { setName(combo.name ?? ""); setDescription(combo.description ?? ""); setPrice(String(combo.price ?? "")); setOriginalPrice(String(combo.originalPrice ?? "")); setImageUrl((Array.isArray(combo.images) ? combo.images[0] : "") ?? ""); setTagsStr(Array.isArray(combo.tags) ? combo.tags.join(", ") : ""); setIsActive(combo.isActive !== false); setSortOrder(String(combo.sortOrder ?? 0)); }
+      else { setName(""); setDescription(""); setPrice(""); setOriginalPrice(""); setImageUrl(""); setTagsStr(""); setIsActive(true); setSortOrder("0"); }
+    }
+  }, [isOpen, combo]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setSaving(true);
+    const p = Number(price) || 0; const op = Number(originalPrice) || 0;
+    const payload = { name, description, price: p, originalPrice: op, discount: op > p ? Math.round(((op - p) / op) * 100) : 0, images: imageUrl ? [imageUrl] : [], tags: tagsStr.split(",").map((t) => t.trim()).filter(Boolean), isActive, sortOrder: Number(sortOrder) || 0 };
+    try {
+      if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/combos/${combo._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Combo updated" }); }
+      else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/combos`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Combo added" }); }
+      onSaved(); onClose();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Combo" : "Add Combo"}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Combo Name *</Label><Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Family Fish Combo" className="h-9" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" className="h-9" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sale Price (₹) *</Label><Input required type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" className="h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Original Price (₹)</Label><Input type="number" min="0" value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} placeholder="0" className="h-9" /></div>
+          </div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Image URL</Label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Tags <span className="font-normal text-gray-400">(comma-separated)</span></Label><Input value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} placeholder="Family Size, Value" className="h-9" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sort Order</Label><Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" /></div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
+          </div>
+          <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Combo"}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
+  const { toast } = useToast();
+  const isEditing = !!coupon;
+  const [code, setCode] = useState(""); const [type, setType] = useState("percentage");
+  const [discountValue, setDiscountValue] = useState(""); const [minOrderAmount, setMinOrderAmount] = useState("");
+  const [maxUsage, setMaxUsage] = useState(""); const [isFirstTimeOnly, setIsFirstTimeOnly] = useState(false);
+  const [isActive, setIsActive] = useState(true); const [expiresAt, setExpiresAt] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (coupon) { setCode(coupon.code ?? ""); setType(coupon.type ?? "percentage"); setDiscountValue(String(coupon.discountValue ?? "")); setMinOrderAmount(String(coupon.minOrderAmount ?? "")); setMaxUsage(coupon.maxUsage ? String(coupon.maxUsage) : ""); setIsFirstTimeOnly(coupon.isFirstTimeOnly === true); setIsActive(coupon.isActive !== false); setExpiresAt(coupon.expiresAt ? new Date(coupon.expiresAt).toISOString().split("T")[0] : ""); }
+      else { setCode(""); setType("percentage"); setDiscountValue(""); setMinOrderAmount(""); setMaxUsage(""); setIsFirstTimeOnly(false); setIsActive(true); setExpiresAt(""); }
+    }
+  }, [isOpen, coupon]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setSaving(true);
+    const payload: any = { code, type, discountValue: Number(discountValue) || 0, minOrderAmount: Number(minOrderAmount) || 0, isFirstTimeOnly, isActive };
+    if (maxUsage) payload.maxUsage = Number(maxUsage);
+    if (expiresAt) payload.expiresAt = expiresAt;
+    try {
+      if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons/${coupon._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Coupon updated" }); }
+      else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Coupon added" }); }
+      onSaved(); onClose();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Coupon" : "Add Coupon"}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Coupon Code *</Label><Input required value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. FISH10" className="h-9 font-mono" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Discount Type</Label><Select value={type} onValueChange={setType}><SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="percentage">Percentage (%)</SelectItem><SelectItem value="flat">Flat (₹)</SelectItem></SelectContent></Select></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Discount Value *</Label><Input required type="number" min="0" value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} placeholder={type === "percentage" ? "10" : "50"} className="h-9" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Min Order (₹)</Label><Input type="number" min="0" value={minOrderAmount} onChange={(e) => setMinOrderAmount(e.target.value)} placeholder="0" className="h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Max Usage</Label><Input type="number" min="0" value={maxUsage} onChange={(e) => setMaxUsage(e.target.value)} placeholder="Unlimited" className="h-9" /></div>
+          </div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Expiry Date</Label><Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="h-9" /></div>
+          <div className="flex gap-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1"><Label className="text-sm">First Time Only</Label><Switch checked={isFirstTimeOnly} onCheckedChange={setIsFirstTimeOnly} className="data-[state=checked]:bg-[#1A56DB]" /></div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
+          </div>
+          <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Coupon"}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CarouselModal({ isOpen, onClose, carousel, subHubId, onSaved }: any) {
+  const { toast } = useToast();
+  const isEditing = !!carousel;
+  const [imageUrl, setImageUrl] = useState(""); const [title, setTitle] = useState("");
+  const [linkUrl, setLinkUrl] = useState(""); const [order, setOrder] = useState("0");
+  const [isActive, setIsActive] = useState(true); const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (carousel) { setImageUrl(carousel.imageUrl ?? ""); setTitle(carousel.title ?? ""); setLinkUrl(carousel.linkUrl ?? ""); setOrder(String(carousel.order ?? 0)); setIsActive(carousel.isActive !== false); }
+      else { setImageUrl(""); setTitle(""); setLinkUrl(""); setOrder("0"); setIsActive(true); }
+    }
+  }, [isOpen, carousel]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setSaving(true);
+    const payload = { imageUrl, title: title || null, linkUrl: linkUrl || null, order: Number(order) || 0, isActive };
+    try {
+      if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/carousels/${carousel._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Banner updated" }); }
+      else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/carousels`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Banner added" }); }
+      onSaved(); onClose();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Banner" : "Add Banner"}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Image URL *</Label><Input required value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" />{imageUrl && <img src={imageUrl} alt="Preview" className="w-full h-24 object-cover rounded-lg border border-gray-100 mt-1" onError={(e) => { (e.target as any).style.display = "none"; }} />}</div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Title</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Optional title" className="h-9" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Link URL</Label><Input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://... (optional)" className="h-9" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Display Order</Label><Input type="number" min="0" value={order} onChange={(e) => setOrder(e.target.value)} className="h-9" /></div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
+          </div>
+          <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Banner"}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SectionModal({ isOpen, onClose, section, subHubId, onSaved }: any) {
+  const { toast } = useToast();
+  const isEditing = !!section;
+  const [title, setTitle] = useState(""); const [type, setType] = useState("products");
+  const [sortOrder, setSortOrder] = useState("0"); const [isActive, setIsActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (section) { setTitle(section.title ?? ""); setType(section.type ?? "products"); setSortOrder(String(section.sortOrder ?? 0)); setIsActive(section.isActive !== false); }
+      else { setTitle(""); setType("products"); setSortOrder("0"); setIsActive(true); }
+    }
+  }, [isOpen, section]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setSaving(true);
+    const payload = { title, type, sortOrder: Number(sortOrder) || 0, isActive };
+    try {
+      if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections/${section._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Section updated" }); }
+      else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Section added" }); }
+      onSaved(); onClose();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Section" : "Add Section"}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Section Title *</Label><Input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Today's Special" className="h-9" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Content Type</Label><Select value={type} onValueChange={setType}><SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="products">Products</SelectItem><SelectItem value="combos">Combos</SelectItem><SelectItem value="categories">Categories</SelectItem><SelectItem value="carousels">Carousels</SelectItem></SelectContent></Select></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sort Order</Label><Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" /></div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
+          </div>
+          <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Section"}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PincodeModal({ isOpen, onClose, pincode, subHubId, onSaved }: any) {
+  const { toast } = useToast();
+  const isEditing = !!pincode;
+  const [code, setCode] = useState(""); const [area, setArea] = useState("");
+  const [city, setCity] = useState("Thane"); const [isActive, setIsActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (pincode) { setCode(pincode.pincode ?? ""); setArea(pincode.area ?? ""); setCity(pincode.city ?? ""); setIsActive(pincode.isActive !== false); }
+      else { setCode(""); setArea(""); setCity("Thane"); setIsActive(true); }
     }
   }, [isOpen, pincode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
+    e.preventDefault(); setSaving(true);
     const payload = { pincode: code, area, city, isActive };
     try {
-      if (isEditing) {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes/${pincode._id}`, { method: "PUT", body: JSON.stringify(payload) });
-        toast({ title: "Pincode updated" });
-      } else {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes`, { method: "POST", body: JSON.stringify(payload) });
-        toast({ title: "Pincode added" });
-      }
+      if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes/${pincode._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Pincode updated" }); }
+      else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Pincode added" }); }
       onSaved(); onClose();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setSaving(false); }
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -1565,28 +1721,11 @@ function PincodeModal({ isOpen, onClose, pincode, subHubId, onSaved }: any) {
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Pincode" : "Add Pincode"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Pincode *</Label>
-            <Input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. 400601" maxLength={6} className="h-9 font-mono" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">Area</Label>
-            <Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Thane West" className="h-9" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-600">City</Label>
-            <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Thane" className="h-9" />
-          </div>
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-            <Label className="text-sm">Active</Label>
-            <Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" />
-          </div>
-          <DialogFooter className="pt-1">
-            <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
-            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">
-              {isEditing ? "Save Changes" : "Add Pincode"}
-            </Button>
-          </DialogFooter>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Pincode *</Label><Input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. 400601" maxLength={6} className="h-9 font-mono" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Area</Label><Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Thane West" className="h-9" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">City</Label><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Thane" className="h-9" /></div>
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
+          <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Pincode"}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
