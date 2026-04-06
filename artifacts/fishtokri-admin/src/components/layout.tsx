@@ -70,8 +70,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <aside className="fixed inset-y-0 left-0 w-[165px] bg-[#162B4D] text-white flex flex-col z-20">
         {/* Logo */}
         <div className="flex items-center justify-center px-4 py-4 border-b border-white/10">
-          <div className="w-[130px] h-[52px] rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
-            <img src="/logo.png" alt="FishTokri" className="w-[118px] h-[44px] object-contain" />
+          <div className="w-[148px] h-[72px] rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
+            <img src="/logo.png" alt="FishTokri" className="w-[136px] h-[64px] object-contain" />
           </div>
         </div>
 
