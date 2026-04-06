@@ -69,11 +69,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className="fixed inset-y-0 left-0 w-[165px] bg-[#162B4D] text-white flex flex-col z-20">
         {/* Logo */}
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-white/10">
-          <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
-            <img src="/logo.png" alt="FishTokri" className="w-8 h-8 object-contain" />
+        <div className="flex items-center justify-center px-4 py-4 border-b border-white/10">
+          <div className="w-[130px] h-[52px] rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
+            <img src="/logo.png" alt="FishTokri" className="w-[118px] h-[44px] object-contain" />
           </div>
-          <span className="font-bold text-base tracking-tight text-white">FishTokri</span>
         </div>
 
         {/* Role Label */}
