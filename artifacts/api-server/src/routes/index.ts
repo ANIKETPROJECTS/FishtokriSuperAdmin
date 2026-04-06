@@ -7,6 +7,7 @@ import subHubMenuRouter from "./sub-hub-menu";
 import usersRouter from "./users";
 import statsRouter from "./stats";
 import uploadRouter from "./upload";
+import customersRouter from "./customers";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use("/sub-hubs/:id/menu", subHubMenuRouter);
 router.use("/users", usersRouter);
 router.use("/stats", statsRouter);
 router.use("/upload", uploadRouter);
+router.use("/customers", customersRouter);
 
 export default router;

@@ -1,11 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const masterAdminNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/hubs", label: "Hubs", icon: Warehouse },
   { href: "/admin-users", label: "Admin Users", icon: Users },
+  { href: "/customers", label: "Customers", icon: ShoppingBasket },
 ];
 
 function getAdminData() {
