@@ -17,6 +17,7 @@ import Hubs from "@/pages/hubs";
 import HubDetail from "@/pages/hub-detail";
 import AdminUsers from "@/pages/admin-users";
 import Customers from "@/pages/customers";
+import Orders from "@/pages/orders";
 import ComingSoon from "@/pages/coming-soon";
 import MyHubs from "@/pages/my-hubs";
 import SubHubMenuAdmin from "@/pages/sub-hub-menu-admin";
@@ -111,6 +112,9 @@ function App() {
             </Route>
             <Route path="/customers">
               <ProtectedRoute component={Customers} requiredRole="master_admin" />
+            </Route>
+            <Route path="/orders">
+              <ProtectedRoute component={Orders} requiredRole="master_admin" />
             </Route>
             <Route path="/coupons">
               <ProtectedRoute component={ComingSoon} requiredRole="master_admin" />

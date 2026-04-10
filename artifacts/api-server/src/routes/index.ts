@@ -8,6 +8,7 @@ import usersRouter from "./users";
 import statsRouter from "./stats";
 import uploadRouter from "./upload";
 import customersRouter from "./customers";
+import ordersRouter from "./orders";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use("/users", usersRouter);
 router.use("/stats", statsRouter);
 router.use("/upload", uploadRouter);
 router.use("/customers", customersRouter);
+router.use("/orders", ordersRouter);
 
 export default router;
