@@ -31,7 +31,7 @@ router.get("/stats", async (req, res) => {
     const ctx = await getSubHubDb(req.params.id, res);
     if (!ctx) return;
     const db = ctx.conn.db;
-    const [products, categories, coupons, combos, carousels, pincodes, sections] = await Promise.all([
+    const [products, categories, coupons, combos, carousels, pincodes, sections, timeslots] = await Promise.all([
       db.collection("products").countDocuments(),
       db.collection("categories").countDocuments(),
       db.collection("coupons").countDocuments(),
@@ -39,8 +39,9 @@ router.get("/stats", async (req, res) => {
       db.collection("carousels").countDocuments(),
       db.collection("pincodes").countDocuments(),
       db.collection("sections").countDocuments(),
+      db.collection("timeslots").countDocuments(),
     ]);
-    res.json({ stats: { products, categories, coupons, combos, carousels, pincodes, sections, dbName: ctx.sub.dbName } });
+    res.json({ stats: { products, categories, coupons, combos, carousels, pincodes, sections, timeslots, dbName: ctx.sub.dbName } });
   } catch (err) {
     req.log.error({ err }, "Failed to get sub hub menu stats");
     res.status(500).json({ error: "InternalError", message: "Failed to get stats" });
@@ -68,9 +69,9 @@ router.post("/products", async (req, res) => {
     if (!ctx) return;
     const {
       name, description, category, subCategory,
-      price, originalPrice, discountPct, unit, weight, pieces, serves, quantity,
-      status, isArchived,
-      recipes,
+      price, originalPrice, discountPct, unit, weight, grossWeight, netWeight, pieces, serves, quantity,
+      status, isArchived, imageUrl, limitedStockNote,
+      recipes, sectionId, couponIds, inventoryBatches,
     } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
     const p = Number(price) || 0;
@@ -85,12 +86,19 @@ router.post("/products", async (req, res) => {
       discountPct: Number(discountPct) || (op > p ? Math.round(((op - p) / op) * 100) : 0),
       unit: unit ?? "per kg",
       weight: weight ?? "",
+      grossWeight: grossWeight ?? "",
+      netWeight: netWeight ?? "",
       pieces: pieces ?? "",
       serves: serves ?? "",
       quantity: Number(quantity) || 0,
       status: status ?? "available",
       isArchived: isArchived === true,
+      imageUrl: imageUrl ?? "",
+      limitedStockNote: limitedStockNote ?? "",
       recipes: Array.isArray(recipes) ? recipes : [],
+      sectionId: Array.isArray(sectionId) ? sectionId : [],
+      couponIds: Array.isArray(couponIds) ? couponIds : [],
+      inventoryBatches: Array.isArray(inventoryBatches) ? inventoryBatches : [],
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -110,9 +118,9 @@ router.put("/products/:productId", async (req, res) => {
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid product ID" }); return; }
     const {
       name, description, category, subCategory,
-      price, originalPrice, discountPct, unit, weight, pieces, serves, quantity,
-      status, isArchived,
-      recipes,
+      price, originalPrice, discountPct, unit, weight, grossWeight, netWeight, pieces, serves, quantity,
+      status, isArchived, imageUrl, limitedStockNote,
+      recipes, sectionId, couponIds, inventoryBatches,
     } = req.body;
     const update: any = { updatedAt: new Date() };
     if (name !== undefined) update.name = name;
@@ -124,12 +132,19 @@ router.put("/products/:productId", async (req, res) => {
     if (discountPct !== undefined) update.discountPct = Number(discountPct) || 0;
     if (unit !== undefined) update.unit = unit;
     if (weight !== undefined) update.weight = weight;
+    if (grossWeight !== undefined) update.grossWeight = grossWeight;
+    if (netWeight !== undefined) update.netWeight = netWeight;
     if (pieces !== undefined) update.pieces = pieces;
     if (serves !== undefined) update.serves = serves;
     if (quantity !== undefined) update.quantity = Number(quantity) || 0;
     if (status !== undefined) update.status = status;
     if (isArchived !== undefined) update.isArchived = isArchived === true;
+    if (imageUrl !== undefined) update.imageUrl = imageUrl;
+    if (limitedStockNote !== undefined) update.limitedStockNote = limitedStockNote;
     if (recipes !== undefined) update.recipes = Array.isArray(recipes) ? recipes : [];
+    if (sectionId !== undefined) update.sectionId = Array.isArray(sectionId) ? sectionId : [];
+    if (couponIds !== undefined) update.couponIds = Array.isArray(couponIds) ? couponIds : [];
+    if (inventoryBatches !== undefined) update.inventoryBatches = Array.isArray(inventoryBatches) ? inventoryBatches : [];
     const result = await ctx.conn.db.collection("products").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
     if (!result) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
     res.json({ product: result });
@@ -242,23 +257,26 @@ router.post("/coupons", async (req, res) => {
   try {
     const ctx = await getSubHubDb(req.params.id, res);
     if (!ctx) return;
-    const { code, type, discountValue, minOrderAmount, maxUsage, isFirstTimeOnly, categoryId, isActive, expiresAt } = req.body;
+    const { code, title, description, type, discountValue, minOrderAmount, maxUsage, isFirstTimeOnly, applicableCategories, color, isActive, expiresAt } = req.body;
     if (!code) { res.status(400).json({ error: "ValidationError", message: "Code is required" }); return; }
     const existing = await ctx.conn.db.collection("coupons").findOne({ code: { $regex: `^${code}$`, $options: "i" } });
     if (existing) { res.status(400).json({ error: "DuplicateCoupon", message: "Coupon code already exists" }); return; }
     const doc: any = {
       code: code.toUpperCase(),
+      title: title ?? "",
+      description: description ?? "",
       type: type ?? "percentage",
       discountValue: Number(discountValue) || 0,
       minOrderAmount: Number(minOrderAmount) || 0,
       usedCount: 0,
       isFirstTimeOnly: isFirstTimeOnly === true,
+      applicableCategories: Array.isArray(applicableCategories) ? applicableCategories : [],
+      color: color ?? "",
       isActive: isActive !== false,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
     if (maxUsage) doc.maxUsage = Number(maxUsage);
-    if (categoryId) doc.categoryId = categoryId;
     if (expiresAt) doc.expiresAt = new Date(expiresAt);
     const result = await ctx.conn.db.collection("coupons").insertOne(doc);
     res.status(201).json({ coupon: { ...doc, _id: result.insertedId } });
@@ -274,15 +292,18 @@ router.put("/coupons/:couponId", async (req, res) => {
     if (!ctx) return;
     const oid = toId(req.params.couponId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid coupon ID" }); return; }
-    const { code, type, discountValue, minOrderAmount, maxUsage, isFirstTimeOnly, categoryId, isActive, expiresAt } = req.body;
+    const { code, title, description, type, discountValue, minOrderAmount, maxUsage, isFirstTimeOnly, applicableCategories, color, isActive, expiresAt } = req.body;
     const update: any = { updatedAt: new Date() };
     if (code !== undefined) update.code = code.toUpperCase();
+    if (title !== undefined) update.title = title;
+    if (description !== undefined) update.description = description;
     if (type !== undefined) update.type = type;
     if (discountValue !== undefined) update.discountValue = Number(discountValue) || 0;
     if (minOrderAmount !== undefined) update.minOrderAmount = Number(minOrderAmount) || 0;
     if (maxUsage !== undefined) update.maxUsage = maxUsage ? Number(maxUsage) : null;
     if (isFirstTimeOnly !== undefined) update.isFirstTimeOnly = isFirstTimeOnly;
-    if (categoryId !== undefined) update.categoryId = categoryId || null;
+    if (applicableCategories !== undefined) update.applicableCategories = Array.isArray(applicableCategories) ? applicableCategories : [];
+    if (color !== undefined) update.color = color;
     if (isActive !== undefined) update.isActive = isActive;
     if (expiresAt !== undefined) update.expiresAt = expiresAt ? new Date(expiresAt) : null;
     const result = await ctx.conn.db.collection("coupons").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
@@ -325,16 +346,20 @@ router.post("/combos", async (req, res) => {
   try {
     const ctx = await getSubHubDb(req.params.id, res);
     if (!ctx) return;
-    const { name, description, price, originalPrice, discount, images, items, tags, nutrition, isActive, sortOrder } = req.body;
+    const { name, description, fullDescription, serves, weight, discountedPrice, originalPrice, discount, includes, tags, nutrition, isActive, sortOrder } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
+    const dp = Number(discountedPrice) || 0;
+    const op = Number(originalPrice) || 0;
     const doc = {
       name,
       description: description ?? "",
-      price: Number(price) || 0,
-      originalPrice: Number(originalPrice) || 0,
-      discount: Number(discount) || 0,
-      images: Array.isArray(images) ? images : [],
-      items: Array.isArray(items) ? items : [],
+      fullDescription: fullDescription ?? "",
+      serves: serves ?? "",
+      weight: weight ?? "",
+      discountedPrice: dp,
+      originalPrice: op,
+      discount: Number(discount) || (op > dp && dp > 0 ? Math.round(((op - dp) / op) * 100) : 0),
+      includes: Array.isArray(includes) ? includes : [],
       tags: Array.isArray(tags) ? tags : [],
       nutrition: Array.isArray(nutrition) ? nutrition : [],
       isActive: isActive !== false,
@@ -356,15 +381,17 @@ router.put("/combos/:comboId", async (req, res) => {
     if (!ctx) return;
     const oid = toId(req.params.comboId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid combo ID" }); return; }
-    const { name, description, price, originalPrice, discount, images, items, tags, nutrition, isActive, sortOrder } = req.body;
+    const { name, description, fullDescription, serves, weight, discountedPrice, originalPrice, discount, includes, tags, nutrition, isActive, sortOrder } = req.body;
     const update: any = { updatedAt: new Date() };
     if (name !== undefined) update.name = name;
     if (description !== undefined) update.description = description;
-    if (price !== undefined) update.price = Number(price) || 0;
+    if (fullDescription !== undefined) update.fullDescription = fullDescription;
+    if (serves !== undefined) update.serves = serves;
+    if (weight !== undefined) update.weight = weight;
+    if (discountedPrice !== undefined) update.discountedPrice = Number(discountedPrice) || 0;
     if (originalPrice !== undefined) update.originalPrice = Number(originalPrice) || 0;
     if (discount !== undefined) update.discount = Number(discount) || 0;
-    if (images !== undefined) update.images = images;
-    if (items !== undefined) update.items = items;
+    if (includes !== undefined) update.includes = Array.isArray(includes) ? includes : [];
     if (tags !== undefined) update.tags = tags;
     if (nutrition !== undefined) update.nutrition = nutrition;
     if (isActive !== undefined) update.isActive = isActive;
@@ -599,6 +626,83 @@ router.delete("/pincodes/:pincodeId", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to delete pincode");
     res.status(500).json({ error: "InternalError", message: "Failed to delete pincode" });
+  }
+});
+
+// ─── TIMESLOTS ─────────────────────────────────────────────────────────────────
+router.get("/timeslots", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res);
+    if (!ctx) return;
+    const timeslots = await ctx.conn.db.collection("timeslots").find({}).sort({ sortOrder: 1, startTime: 1 }).toArray();
+    res.json({ timeslots, total: timeslots.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get timeslots");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch timeslots" });
+  }
+});
+
+router.post("/timeslots", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res);
+    if (!ctx) return;
+    const { label, startTime, endTime, isInstant, extraCharge, isActive, sortOrder } = req.body;
+    if (!label) { res.status(400).json({ error: "ValidationError", message: "Label is required" }); return; }
+    if (!startTime || !endTime) { res.status(400).json({ error: "ValidationError", message: "Start time and end time are required" }); return; }
+    const doc = {
+      label,
+      startTime,
+      endTime,
+      isInstant: isInstant === true,
+      extraCharge: Number(extraCharge) || 0,
+      isActive: isActive !== false,
+      sortOrder: Number(sortOrder) || 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const result = await ctx.conn.db.collection("timeslots").insertOne(doc);
+    res.status(201).json({ timeslot: { ...doc, _id: result.insertedId } });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create timeslot");
+    res.status(500).json({ error: "InternalError", message: "Failed to create timeslot" });
+  }
+});
+
+router.put("/timeslots/:timeslotId", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res);
+    if (!ctx) return;
+    const oid = toId(req.params.timeslotId);
+    if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid timeslot ID" }); return; }
+    const { label, startTime, endTime, isInstant, extraCharge, isActive, sortOrder } = req.body;
+    const update: any = { updatedAt: new Date() };
+    if (label !== undefined) update.label = label;
+    if (startTime !== undefined) update.startTime = startTime;
+    if (endTime !== undefined) update.endTime = endTime;
+    if (isInstant !== undefined) update.isInstant = isInstant === true;
+    if (extraCharge !== undefined) update.extraCharge = Number(extraCharge) || 0;
+    if (isActive !== undefined) update.isActive = isActive;
+    if (sortOrder !== undefined) update.sortOrder = Number(sortOrder) || 0;
+    const result = await ctx.conn.db.collection("timeslots").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
+    if (!result) { res.status(404).json({ error: "NotFound", message: "Timeslot not found" }); return; }
+    res.json({ timeslot: result });
+  } catch (err) {
+    req.log.error({ err }, "Failed to update timeslot");
+    res.status(500).json({ error: "InternalError", message: "Failed to update timeslot" });
+  }
+});
+
+router.delete("/timeslots/:timeslotId", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res);
+    if (!ctx) return;
+    const oid = toId(req.params.timeslotId);
+    if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid timeslot ID" }); return; }
+    await ctx.conn.db.collection("timeslots").deleteOne({ _id: oid });
+    res.json({ message: "Timeslot deleted" });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete timeslot");
+    res.status(500).json({ error: "InternalError", message: "Failed to delete timeslot" });
   }
 });
 

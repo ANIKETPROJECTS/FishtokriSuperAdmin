@@ -98,6 +98,20 @@ scripts/
 
 ---
 
+## Sub-Hub DB Schema (per sub-hub MongoDB DB e.g. "Thane")
+
+Each sub-hub connects to its own MongoDB database (name stored in `SubHub.dbName`).
+Collections and key fields as of latest sync with Thane DB:
+
+- **products**: `name`, `description`, `category`, `subCategory`, `price`, `originalPrice`, `discountPct`, `unit`, `weight`, `grossWeight`, `netWeight`, `pieces`, `serves`, `quantity`, `status`, `isArchived`, `imageUrl`, `limitedStockNote`, `couponIds[]`, `sectionId[]`, `inventoryBatches[]`, `recipes[]`
+- **categories**: `name`, `slug`, `description`, `image`, `subCategories[]`, `isActive`, `sortOrder`
+- **combos**: `name`, `description`, `fullDescription`, `serves`, `weight`, `discountedPrice`, `originalPrice`, `discount`, `imageUrl`, `includes[{label}]`, `tags[]`, `isActive`, `sortOrder`
+- **coupons**: `code`, `title`, `description`, `color`, `type`, `discountValue`, `minOrderAmount`, `maxUsage`, `applicableCategories[]`, `isFirstTimeOnly`, `isActive`, `expiresAt`
+- **carousels**: `title`, `image`, `link`, `isActive`, `sortOrder`
+- **sections**: `name`, `isActive`, `sortOrder`
+- **pincodes**: `pincode`, `area`, `city`, `isActive`
+- **timeslots**: `label`, `startTime`, `endTime`, `isInstant`, `extraCharge`, `isActive`, `sortOrder`
+
 ## API Routes
 
 ```
@@ -124,6 +138,25 @@ DELETE /api/users/:id
 PATCH  /api/users/:id/toggle-status
 
 GET    /api/stats/summary
+
+# Per-sub-hub menu routes (artifacts/api-server/src/routes/sub-hub-menu.ts)
+GET  /api/sub-hubs/:id/menu/stats
+GET|POST        /api/sub-hubs/:id/menu/products
+PUT|DELETE      /api/sub-hubs/:id/menu/products/:productId
+GET|POST        /api/sub-hubs/:id/menu/categories
+PUT|DELETE      /api/sub-hubs/:id/menu/categories/:categoryId
+GET|POST        /api/sub-hubs/:id/menu/combos
+PUT|DELETE      /api/sub-hubs/:id/menu/combos/:comboId
+GET|POST        /api/sub-hubs/:id/menu/coupons
+PUT|DELETE      /api/sub-hubs/:id/menu/coupons/:couponId
+GET|POST        /api/sub-hubs/:id/menu/carousels
+PUT|DELETE      /api/sub-hubs/:id/menu/carousels/:carouselId
+GET|POST        /api/sub-hubs/:id/menu/sections
+PUT|DELETE      /api/sub-hubs/:id/menu/sections/:sectionId
+GET|POST        /api/sub-hubs/:id/menu/pincodes
+PUT|DELETE      /api/sub-hubs/:id/menu/pincodes/:pincodeId
+GET|POST        /api/sub-hubs/:id/menu/timeslots
+PUT|DELETE      /api/sub-hubs/:id/menu/timeslots/:timeslotId
 ```
 
 ---

@@ -4,7 +4,7 @@ import {
   ArrowLeft, Plus, Edit2, Trash2, Search, X, Package, Tag, Ticket,
   RefreshCw, Database, AlertCircle, CheckCircle, XCircle, Image,
   LayoutList, MapPin, ShoppingBag, ChevronDown, ChevronUp, GripVertical,
-  LayoutGrid, List, SlidersHorizontal, ArrowUpDown,
+  LayoutGrid, List, SlidersHorizontal, ArrowUpDown, Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,7 @@ async function apiFetch(path: string, options?: RequestInit) {
   return res.json();
 }
 
-type Tab = "products" | "categories" | "combos" | "coupons" | "carousels" | "sections" | "pincodes";
+type Tab = "products" | "categories" | "combos" | "coupons" | "carousels" | "sections" | "pincodes" | "timeslots";
 type Layout = "list" | "grid";
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
@@ -54,6 +54,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: "carousels", label: "Banners", icon: Image },
   { key: "sections", label: "Sections", icon: LayoutList },
   { key: "pincodes", label: "Pincodes", icon: MapPin },
+  { key: "timeslots", label: "Time Slots", icon: Clock },
 ];
 
 // ─── SHARED TOOLBAR ───────────────────────────────────────────────────────────
@@ -314,6 +315,7 @@ export default function SubHubMenuAdmin() {
     { label: "Banners", value: stats?.carousels ?? 0, icon: Image, color: "text-pink-600", bg: "bg-pink-50" },
     { label: "Sections", value: stats?.sections ?? 0, icon: LayoutList, color: "text-teal-600", bg: "bg-teal-50" },
     { label: "Pincodes", value: stats?.pincodes ?? 0, icon: MapPin, color: "text-green-600", bg: "bg-green-50" },
+    { label: "Time Slots", value: stats?.timeslots ?? 0, icon: Clock, color: "text-cyan-600", bg: "bg-cyan-50" },
   ];
 
   return (
@@ -349,9 +351,9 @@ export default function SubHubMenuAdmin() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 md:grid-cols-7 gap-3">
+      <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
         {loadingStats
-          ? [1, 2, 3, 4, 5, 6, 7].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)
+          ? [1, 2, 3, 4, 5, 6, 7, 8].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)
           : statCards.map(({ label, value, icon: Icon, color, bg }) => (
             <button
               key={label}
@@ -389,6 +391,7 @@ export default function SubHubMenuAdmin() {
           {!statsError && tab === "carousels" && <CarouselsTab subHubId={subHubId} />}
           {!statsError && tab === "sections" && <SectionsTab subHubId={subHubId} />}
           {!statsError && tab === "pincodes" && <PincodesTab subHubId={subHubId} />}
+          {!statsError && tab === "timeslots" && <TimeSlotsTab subHubId={subHubId} />}
           {statsError && <div className="py-12 text-center text-gray-400 text-sm">Fix the database connection to manage this sub hub's menu.</div>}
         </div>
       </div>
@@ -846,18 +849,18 @@ function CombosTab({ subHubId }: { subHubId: string }) {
             const img = Array.isArray(c.images) && c.images.length > 0 ? c.images[0] : null;
             return (
               <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
-                {img ? <img src={img} alt={c.name} className="w-full h-32 object-cover" /> : <div className="w-full h-32 bg-gradient-to-br from-indigo-50 to-blue-100 flex items-center justify-center"><ShoppingBag className="w-9 h-9 text-indigo-200" /></div>}
+                {c.imageUrl ? <img src={c.imageUrl} alt={c.name} className="w-full h-32 object-cover" /> : <div className="w-full h-32 bg-gradient-to-br from-indigo-50 to-blue-100 flex items-center justify-center"><ShoppingBag className="w-9 h-9 text-indigo-200" /></div>}
                 <div className="p-3 space-y-1.5">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-semibold text-[#162B4D] text-sm">{c.name}</p>
                     <StatusBadge active={c.isActive !== false} />
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-[#1A56DB]">₹{c.price}</span>
-                    {c.originalPrice > c.price && <span className="text-xs text-gray-400 line-through">₹{c.originalPrice}</span>}
+                    <span className="font-bold text-[#1A56DB]">₹{c.discountedPrice ?? c.price}</span>
+                    {c.originalPrice > (c.discountedPrice ?? c.price) && <span className="text-xs text-gray-400 line-through">₹{c.originalPrice}</span>}
                     {c.discount > 0 && <span className="text-xs bg-green-50 text-green-600 font-semibold px-1.5 py-0.5 rounded-full">{c.discount}% off</span>}
                   </div>
-                  {Array.isArray(c.items) && c.items.length > 0 && <p className="text-xs text-gray-400">{c.items.length} items included</p>}
+                  {Array.isArray(c.includes) && c.includes.length > 0 && <p className="text-xs text-gray-400">{c.includes.length} items included</p>}
                   <div className="flex gap-1 pt-1">
                     <button onClick={() => { setEditing(c); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
                     <button onClick={() => setDeleteId(String(c._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
@@ -885,16 +888,16 @@ function CombosTab({ subHubId }: { subHubId: string }) {
                   <tr key={String(c._id)} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
-                        {img ? <img src={img} alt={c.name} className="w-9 h-9 rounded-lg object-cover border border-gray-100 flex-shrink-0" /> : <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0"><ShoppingBag className="w-4 h-4 text-indigo-200" /></div>}
+                        {c.imageUrl ? <img src={c.imageUrl} alt={c.name} className="w-9 h-9 rounded-lg object-cover border border-gray-100 flex-shrink-0" /> : <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0"><ShoppingBag className="w-4 h-4 text-indigo-200" /></div>}
                         <div>
                           <p className="font-semibold text-[#162B4D] text-sm">{c.name}</p>
                           {c.description && <p className="text-xs text-gray-400 truncate max-w-[180px]">{c.description}</p>}
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3"><span className="font-bold text-[#162B4D]">₹{c.price}</span>{c.originalPrice > c.price && <span className="text-xs text-gray-400 line-through ml-1">₹{c.originalPrice}</span>}</td>
+                    <td className="px-4 py-3"><span className="font-bold text-[#162B4D]">₹{c.discountedPrice ?? c.price}</span>{c.originalPrice > (c.discountedPrice ?? c.price) && <span className="text-xs text-gray-400 line-through ml-1">₹{c.originalPrice}</span>}</td>
                     <td className="px-4 py-3">{c.discount > 0 ? <span className="text-xs bg-green-50 text-green-600 font-semibold px-1.5 py-0.5 rounded-full">{c.discount}% off</span> : "—"}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{Array.isArray(c.items) ? c.items.length : 0}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{Array.isArray(c.includes) ? c.includes.length : 0}</td>
                     <td className="px-4 py-3"><StatusBadge active={c.isActive !== false} /></td>
                     <td className="px-4 py-3"><ActionButtons onEdit={() => { setEditing(c); setModalOpen(true); }} onDelete={() => setDeleteId(String(c._id))} /></td>
                   </tr>
@@ -1533,11 +1536,15 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const [originalPrice, setOriginalPrice] = useState("");
   const [unit, setUnit] = useState("per kg");
   const [weight, setWeight] = useState("");
+  const [grossWeight, setGrossWeight] = useState("");
+  const [netWeight, setNetWeight] = useState("");
   const [pieces, setPieces] = useState("");
   const [serves, setServes] = useState("");
   const [quantity, setQuantity] = useState("0");
   const [status, setStatus] = useState("available");
   const [isArchived, setIsArchived] = useState(false);
+  const [imageUrl, setProductImageUrl] = useState("");
+  const [limitedStockNote, setLimitedStockNote] = useState("");
   const [recipes, setRecipes] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -1557,11 +1564,15 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setOriginalPrice(String(product.originalPrice ?? ""));
       setUnit(product.unit ?? "per kg");
       setWeight(product.weight ?? "");
+      setGrossWeight(product.grossWeight ?? "");
+      setNetWeight(product.netWeight ?? "");
       setPieces(product.pieces ?? "");
       setServes(product.serves ?? "");
       setQuantity(String(product.quantity ?? 0));
       setStatus(product.status ?? "available");
       setIsArchived(product.isArchived === true);
+      setProductImageUrl(product.imageUrl ?? "");
+      setLimitedStockNote(product.limitedStockNote ?? "");
       setRecipes(Array.isArray(product.recipes) ? product.recipes.map((r: any) => ({
         title: r.title ?? "", description: r.description ?? "", image: r.image ?? "",
         totalTime: r.totalTime ?? "", prepTime: r.prepTime ?? "", cookTime: r.cookTime ?? "",
@@ -1572,8 +1583,8 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
     } else {
       setName(""); setDescription(""); setCategory(""); setSubCategory("");
       setPrice(""); setOriginalPrice(""); setUnit("per kg"); setWeight("");
-      setPieces(""); setServes(""); setQuantity("0"); setStatus("available");
-      setIsArchived(false); setRecipes([]);
+      setGrossWeight(""); setNetWeight(""); setPieces(""); setServes(""); setQuantity("0"); setStatus("available");
+      setIsArchived(false); setProductImageUrl(""); setLimitedStockNote(""); setRecipes([]);
     }
   }, [isOpen, product]);
 
@@ -1593,9 +1604,9 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       price: Number(price) || 0,
       originalPrice: Number(originalPrice) || Number(price) || 0,
       discountPct,
-      unit, weight, pieces, serves,
+      unit, weight, grossWeight, netWeight, pieces, serves,
       quantity: Number(quantity) || 0,
-      status, isArchived,
+      status, isArchived, imageUrl, limitedStockNote,
       recipes: cleanedRecipes,
     };
     try {
@@ -1672,7 +1683,11 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Weight / Quantity Label</Label><Input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g. 500 g" className="h-9" /></div>
+                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Weight / Qty Label</Label><Input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g. 500 g" className="h-9" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Gross Weight</Label><Input value={grossWeight} onChange={(e) => setGrossWeight(e.target.value)} placeholder="e.g. 550g" className="h-9" /></div>
+                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Net Weight</Label><Input value={netWeight} onChange={(e) => setNetWeight(e.target.value)} placeholder="e.g. 500g" className="h-9" /></div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Pieces</Label><Input value={pieces} onChange={(e) => setPieces(e.target.value)} placeholder="e.g. 8–10 Pieces" className="h-9" /></div>
@@ -1684,25 +1699,29 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
 
           {/* ── STATUS ─────────────────────────────────────── */}
           <section>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Status</p>
-            <div className="flex gap-3">
-              <div className="flex-1 space-y-1.5">
-                <Label className="text-xs font-semibold text-gray-600">Availability</Label>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="available">Available</SelectItem>
-                    <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-                    <SelectItem value="unavailable">Unavailable</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-end pb-0.5">
-                <div className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100 h-9 px-4">
-                  <Label className="text-sm text-gray-600">Archived</Label>
-                  <Switch checked={isArchived} onCheckedChange={setIsArchived} className="data-[state=checked]:bg-red-500" />
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Status & Media</p>
+            <div className="space-y-3">
+              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Product Image URL</Label><Input value={imageUrl} onChange={(e) => setProductImageUrl(e.target.value)} placeholder="https://..." className="h-9" /></div>
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1.5">
+                  <Label className="text-xs font-semibold text-gray-600">Availability</Label>
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="available">Available</SelectItem>
+                      <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                      <SelectItem value="unavailable">Unavailable</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end pb-0.5">
+                  <div className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100 h-9 px-4">
+                    <Label className="text-sm text-gray-600">Archived</Label>
+                    <Switch checked={isArchived} onCheckedChange={setIsArchived} className="data-[state=checked]:bg-red-500" />
+                  </div>
                 </div>
               </div>
+              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Limited Stock Note</Label><Input value={limitedStockNote} onChange={(e) => setLimitedStockNote(e.target.value)} placeholder="e.g. Only 5 left!" className="h-9" /></div>
             </div>
           </section>
 
@@ -1798,22 +1817,45 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
   const { toast } = useToast();
   const isEditing = !!combo;
   const [name, setName] = useState(""); const [description, setDescription] = useState("");
-  const [price, setPrice] = useState(""); const [originalPrice, setOriginalPrice] = useState("");
+  const [fullDescription, setFullDescription] = useState("");
+  const [discountedPrice, setDiscountedPrice] = useState(""); const [originalPrice, setOriginalPrice] = useState("");
+  const [serves, setServes] = useState(""); const [weight, setWeight] = useState("");
   const [imageUrl, setImageUrl] = useState(""); const [tagsStr, setTagsStr] = useState("");
   const [isActive, setIsActive] = useState(true); const [sortOrder, setSortOrder] = useState("0");
+  const [includesStr, setIncludesStr] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      if (combo) { setName(combo.name ?? ""); setDescription(combo.description ?? ""); setPrice(String(combo.price ?? "")); setOriginalPrice(String(combo.originalPrice ?? "")); setImageUrl((Array.isArray(combo.images) ? combo.images[0] : "") ?? ""); setTagsStr(Array.isArray(combo.tags) ? combo.tags.join(", ") : ""); setIsActive(combo.isActive !== false); setSortOrder(String(combo.sortOrder ?? 0)); }
-      else { setName(""); setDescription(""); setPrice(""); setOriginalPrice(""); setImageUrl(""); setTagsStr(""); setIsActive(true); setSortOrder("0"); }
+      if (combo) {
+        setName(combo.name ?? ""); setDescription(combo.description ?? "");
+        setFullDescription(combo.fullDescription ?? "");
+        setDiscountedPrice(String(combo.discountedPrice ?? combo.price ?? ""));
+        setOriginalPrice(String(combo.originalPrice ?? ""));
+        setServes(combo.serves ?? ""); setWeight(combo.weight ?? "");
+        setImageUrl(combo.imageUrl ?? (Array.isArray(combo.images) ? combo.images[0] ?? "" : ""));
+        setTagsStr(Array.isArray(combo.tags) ? combo.tags.join(", ") : "");
+        setIncludesStr(Array.isArray(combo.includes) ? combo.includes.map((i: any) => i.label ?? i).join(", ") : "");
+        setIsActive(combo.isActive !== false); setSortOrder(String(combo.sortOrder ?? 0));
+      } else {
+        setName(""); setDescription(""); setFullDescription(""); setDiscountedPrice(""); setOriginalPrice("");
+        setServes(""); setWeight(""); setImageUrl(""); setTagsStr(""); setIncludesStr(""); setIsActive(true); setSortOrder("0");
+      }
     }
   }, [isOpen, combo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
-    const p = Number(price) || 0; const op = Number(originalPrice) || 0;
-    const payload = { name, description, price: p, originalPrice: op, discount: op > p ? Math.round(((op - p) / op) * 100) : 0, images: imageUrl ? [imageUrl] : [], tags: tagsStr.split(",").map((t) => t.trim()).filter(Boolean), isActive, sortOrder: Number(sortOrder) || 0 };
+    const dp = Number(discountedPrice) || 0; const op = Number(originalPrice) || 0;
+    const includesParsed = includesStr.split(",").map((s) => s.trim()).filter(Boolean).map((label) => ({ label }));
+    const payload = {
+      name, description, fullDescription, serves, weight,
+      discountedPrice: dp, originalPrice: op,
+      discount: op > dp ? Math.round(((op - dp) / op) * 100) : 0,
+      imageUrl, includes: includesParsed,
+      tags: tagsStr.split(",").map((t) => t.trim()).filter(Boolean),
+      isActive, sortOrder: Number(sortOrder) || 0,
+    };
     try {
       if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/combos/${combo._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Combo updated" }); }
       else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/combos`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Combo added" }); }
@@ -1824,16 +1866,22 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Combo" : "Add Combo"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 pt-1">
           <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Combo Name *</Label><Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Family Fish Combo" className="h-9" /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" className="h-9" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Short Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief tagline" className="h-9" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Full Description</Label><Input value={fullDescription} onChange={(e) => setFullDescription(e.target.value)} placeholder="Detailed description" className="h-9" /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sale Price (₹) *</Label><Input required type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" className="h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Discounted Price (₹) *</Label><Input required type="number" min="0" value={discountedPrice} onChange={(e) => setDiscountedPrice(e.target.value)} placeholder="0" className="h-9" /></div>
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Original Price (₹)</Label><Input type="number" min="0" value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} placeholder="0" className="h-9" /></div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Serves</Label><Input value={serves} onChange={(e) => setServes(e.target.value)} placeholder="e.g. 2-3 persons" className="h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Weight</Label><Input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g. 500g" className="h-9" /></div>
+          </div>
           <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Image URL</Label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Includes <span className="font-normal text-gray-400">(comma-separated labels)</span></Label><Input value={includesStr} onChange={(e) => setIncludesStr(e.target.value)} placeholder="Rohu Fillet, Prawn Masala, Hilsa" className="h-9" /></div>
           <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Tags <span className="font-normal text-gray-400">(comma-separated)</span></Label><Input value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} placeholder="Family Size, Value" className="h-9" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sort Order</Label><Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" /></div>
@@ -1849,22 +1897,40 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
 function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
   const { toast } = useToast();
   const isEditing = !!coupon;
-  const [code, setCode] = useState(""); const [type, setType] = useState("percentage");
+  const [code, setCode] = useState(""); const [title, setTitle] = useState("");
+  const [description, setDescription] = useState(""); const [color, setColor] = useState("");
+  const [type, setType] = useState("percentage");
   const [discountValue, setDiscountValue] = useState(""); const [minOrderAmount, setMinOrderAmount] = useState("");
   const [maxUsage, setMaxUsage] = useState(""); const [isFirstTimeOnly, setIsFirstTimeOnly] = useState(false);
   const [isActive, setIsActive] = useState(true); const [expiresAt, setExpiresAt] = useState("");
+  const [applicableCategoriesStr, setApplicableCategoriesStr] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      if (coupon) { setCode(coupon.code ?? ""); setType(coupon.type ?? "percentage"); setDiscountValue(String(coupon.discountValue ?? "")); setMinOrderAmount(String(coupon.minOrderAmount ?? "")); setMaxUsage(coupon.maxUsage ? String(coupon.maxUsage) : ""); setIsFirstTimeOnly(coupon.isFirstTimeOnly === true); setIsActive(coupon.isActive !== false); setExpiresAt(coupon.expiresAt ? new Date(coupon.expiresAt).toISOString().split("T")[0] : ""); }
-      else { setCode(""); setType("percentage"); setDiscountValue(""); setMinOrderAmount(""); setMaxUsage(""); setIsFirstTimeOnly(false); setIsActive(true); setExpiresAt(""); }
+      if (coupon) {
+        setCode(coupon.code ?? ""); setTitle(coupon.title ?? ""); setDescription(coupon.description ?? ""); setColor(coupon.color ?? "");
+        setType(coupon.type ?? "percentage"); setDiscountValue(String(coupon.discountValue ?? ""));
+        setMinOrderAmount(String(coupon.minOrderAmount ?? "")); setMaxUsage(coupon.maxUsage ? String(coupon.maxUsage) : "");
+        setIsFirstTimeOnly(coupon.isFirstTimeOnly === true); setIsActive(coupon.isActive !== false);
+        setExpiresAt(coupon.expiresAt ? new Date(coupon.expiresAt).toISOString().split("T")[0] : "");
+        setApplicableCategoriesStr(Array.isArray(coupon.applicableCategories) ? coupon.applicableCategories.join(", ") : "");
+      } else {
+        setCode(""); setTitle(""); setDescription(""); setColor(""); setType("percentage");
+        setDiscountValue(""); setMinOrderAmount(""); setMaxUsage(""); setIsFirstTimeOnly(false);
+        setIsActive(true); setExpiresAt(""); setApplicableCategoriesStr("");
+      }
     }
   }, [isOpen, coupon]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
-    const payload: any = { code, type, discountValue: Number(discountValue) || 0, minOrderAmount: Number(minOrderAmount) || 0, isFirstTimeOnly, isActive };
+    const payload: any = {
+      code, title, description, color, type,
+      discountValue: Number(discountValue) || 0, minOrderAmount: Number(minOrderAmount) || 0,
+      applicableCategories: applicableCategoriesStr.split(",").map((s) => s.trim()).filter(Boolean),
+      isFirstTimeOnly, isActive,
+    };
     if (maxUsage) payload.maxUsage = Number(maxUsage);
     if (expiresAt) payload.expiresAt = expiresAt;
     try {
@@ -1877,10 +1943,14 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Coupon" : "Add Coupon"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Coupon Code *</Label><Input required value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. FISH10" className="h-9 font-mono" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Coupon Code *</Label><Input required value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. FISH10" className="h-9 font-mono" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Display Title</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Weekend Deal" className="h-9" /></div>
+          </div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short coupon description" className="h-9" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Discount Type</Label><Select value={type} onValueChange={setType}><SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="percentage">Percentage (%)</SelectItem><SelectItem value="flat">Flat (₹)</SelectItem></SelectContent></Select></div>
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Discount Value *</Label><Input required type="number" min="0" value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} placeholder={type === "percentage" ? "10" : "50"} className="h-9" /></div>
@@ -1889,7 +1959,11 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Min Order (₹)</Label><Input type="number" min="0" value={minOrderAmount} onChange={(e) => setMinOrderAmount(e.target.value)} placeholder="0" className="h-9" /></div>
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Max Usage</Label><Input type="number" min="0" value={maxUsage} onChange={(e) => setMaxUsage(e.target.value)} placeholder="Unlimited" className="h-9" /></div>
           </div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Expiry Date</Label><Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="h-9" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Color Class</Label><Input value={color} onChange={(e) => setColor(e.target.value)} placeholder="e.g. bg-orange-400" className="h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Expiry Date</Label><Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="h-9" /></div>
+          </div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Applicable Categories <span className="font-normal text-gray-400">(comma-separated IDs)</span></Label><Input value={applicableCategoriesStr} onChange={(e) => setApplicableCategoriesStr(e.target.value)} placeholder="Leave empty for all categories" className="h-9" /></div>
           <div className="flex gap-3">
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1"><Label className="text-sm">First Time Only</Label><Switch checked={isFirstTimeOnly} onCheckedChange={setIsFirstTimeOnly} className="data-[state=checked]:bg-[#1A56DB]" /></div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
@@ -2023,6 +2097,151 @@ function PincodeModal({ isOpen, onClose, pincode, subHubId, onSaved }: any) {
           <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">City</Label><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Thane" className="h-9" /></div>
           <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
           <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Pincode"}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── TIME SLOTS TAB ────────────────────────────────────────────────────────────
+function TimeSlotsTab({ subHubId }: { subHubId: string }) {
+  const [timeslots, setTimeslots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/timeslots`);
+      setTimeslots(data.timeslots ?? []);
+    } catch { setTimeslots([]); } finally { setLoading(false); }
+  }, [subHubId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    try {
+      await apiFetch(`/api/sub-hubs/${subHubId}/menu/timeslots/${deleteId}`, { method: "DELETE" });
+      toast({ title: "Time slot deleted" });
+      load();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setDeleteId(null); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-[#162B4D]">Time Slots <span className="text-gray-400 font-normal text-sm">({timeslots.length})</span></h3>
+        <Button size="sm" className="bg-[#1A56DB] hover:bg-[#1447B4] h-8 gap-1.5" onClick={() => { setEditing(null); setModalOpen(true); }}>
+          <Plus className="w-3.5 h-3.5" /> Add Slot
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-16 rounded-xl" />)}</div>
+      ) : timeslots.length === 0 ? (
+        <div className="py-16 text-center border border-dashed border-gray-200 rounded-xl">
+          <Clock className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">No time slots yet.</p>
+          <button onClick={() => { setEditing(null); setModalOpen(true); }} className="mt-2 text-sm text-[#1A56DB] font-semibold hover:underline">Add your first slot</button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {timeslots.map((s) => (
+            <div key={String(s._id)} className="flex items-center gap-4 p-3.5 bg-white border border-gray-100 rounded-xl hover:shadow-sm transition-shadow">
+              <div className="w-10 h-10 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0">
+                <Clock className="w-5 h-5 text-cyan-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold text-[#162B4D] text-sm">{s.label}</p>
+                  {s.isInstant && <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>}
+                  <StatusBadge active={s.isActive !== false} />
+                </div>
+                <p className="text-xs text-gray-400">{s.startTime} – {s.endTime}{s.extraCharge > 0 ? ` · +₹${s.extraCharge}` : ""}</p>
+              </div>
+              <ActionButtons onEdit={() => { setEditing(s); setModalOpen(true); }} onDelete={() => setDeleteId(String(s._id))} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <TimeslotModal isOpen={modalOpen} onClose={() => setModalOpen(false)} timeslot={editing} subHubId={subHubId} onSaved={load} />
+
+      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Time Slot?</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-500 hover:bg-red-600">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function TimeslotModal({ isOpen, onClose, timeslot, subHubId, onSaved }: any) {
+  const { toast } = useToast();
+  const isEditing = !!timeslot;
+  const [label, setLabel] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [isInstant, setIsInstant] = useState(false);
+  const [extraCharge, setExtraCharge] = useState("0");
+  const [isActive, setIsActive] = useState(true);
+  const [sortOrder, setSortOrder] = useState("0");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (timeslot) {
+        setLabel(timeslot.label ?? ""); setStartTime(timeslot.startTime ?? ""); setEndTime(timeslot.endTime ?? "");
+        setIsInstant(timeslot.isInstant === true); setExtraCharge(String(timeslot.extraCharge ?? 0));
+        setIsActive(timeslot.isActive !== false); setSortOrder(String(timeslot.sortOrder ?? 0));
+      } else {
+        setLabel(""); setStartTime(""); setEndTime(""); setIsInstant(false); setExtraCharge("0"); setIsActive(true); setSortOrder("0");
+      }
+    }
+  }, [isOpen, timeslot]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setSaving(true);
+    const payload = { label, startTime, endTime, isInstant, extraCharge: Number(extraCharge) || 0, isActive, sortOrder: Number(sortOrder) || 0 };
+    try {
+      if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/timeslots/${timeslot._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Time slot updated" }); }
+      else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/timeslots`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Time slot added" }); }
+      onSaved(); onClose();
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Time Slot" : "Add Time Slot"}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Label *</Label><Input required value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Morning Delivery" className="h-9" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Start Time *</Label><Input required type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">End Time *</Label><Input required type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="h-9" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Extra Charge (₹)</Label><Input type="number" min="0" value={extraCharge} onChange={(e) => setExtraCharge(e.target.value)} className="h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sort Order</Label><Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" /></div>
+          </div>
+          <div className="flex gap-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1"><Label className="text-sm">Instant Delivery</Label><Switch checked={isInstant} onCheckedChange={setIsInstant} className="data-[state=checked]:bg-orange-500" /></div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
+          </div>
+          <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Slot"}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
