@@ -1265,8 +1265,8 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     }
   };
 
-  const selectedSuperHub = superHubs.find(h => h._id === superHubId);
-  const selectedSubHub = subHubs.find(s => s._id === subHubId);
+  const selectedSuperHub = superHubs.find(h => h.id === superHubId);
+  const selectedSubHub = subHubs.find(s => s.id === subHubId);
 
   return (
     <div className="space-y-6">
@@ -1311,7 +1311,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                 >
                   <option value="">Select super hub...</option>
                   {superHubs.map((h: any) => (
-                    <option key={h._id} value={h._id}>{h.name}</option>
+                    <option key={h.id} value={h.id}>{h.name}</option>
                   ))}
                 </select>
               )}
@@ -1330,7 +1330,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
               >
                 <option value="">{!superHubId ? "Select super hub first" : subHubs.length === 0 ? "No sub hubs found" : "Select sub hub..."}</option>
                 {subHubs.map((s: any) => (
-                  <option key={s._id} value={s._id}>{s.name}</option>
+                  <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
               {selectedSubHub && (
