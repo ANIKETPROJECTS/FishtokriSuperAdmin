@@ -71,18 +71,21 @@ interface Vendor {
 
 interface PurchaseItem {
   id?: string;
+  productMode: "existing" | "new";
+  existingProductId: string;
   productName: string;
   quantity: number | string;
   unit: string;
+  displayUnit: string;
   pricePerUnit: number | string;
   totalPrice: number;
   expiryDate: string;
-  // Product listing fields
   description: string;
   category: string;
   subCategory: string;
   sellingPrice: string;
   originalPrice: string;
+  discountPct: string;
   weight: string;
   grossWeight: string;
   netWeight: string;
@@ -90,6 +93,12 @@ interface PurchaseItem {
   serves: string;
   imageUrl: string;
   productStatus: string;
+  limitedStockNote: string;
+  shelfLifeDays: string;
+  recipesText: string;
+  sectionIdsText: string;
+  couponIdsText: string;
+  existingInventoryBatches: any[];
 }
 
 interface Purchase {
@@ -116,11 +125,13 @@ function parseCats(cat: string): string[] {
 }
 
 const emptyItem = (): PurchaseItem => ({
-  productName: "", quantity: "", unit: "kg", pricePerUnit: "", totalPrice: 0, expiryDate: "",
+  productMode: "new", existingProductId: "",
+  productName: "", quantity: "", unit: "kg", displayUnit: "per kg", pricePerUnit: "", totalPrice: 0, expiryDate: "",
   description: "", category: "", subCategory: "",
-  sellingPrice: "", originalPrice: "",
+  sellingPrice: "", originalPrice: "", discountPct: "",
   weight: "", grossWeight: "", netWeight: "",
   pieces: "", serves: "", imageUrl: "", productStatus: "available",
+  limitedStockNote: "", shelfLifeDays: "", recipesText: "", sectionIdsText: "", couponIdsText: "", existingInventoryBatches: [],
 });
 
 const PRODUCT_UNITS = ["per kg", "per piece", "per dozen", "per box", "per litre", "per pack", "per g", "per 500g"];
@@ -131,6 +142,108 @@ const emptyPurchase = () => ({
   items: [emptyItem()],
   notes: "",
 });
+
+function getDocId(doc: any) {
+  if (!doc) return "";
+  if (typeof doc._id === "string") return doc._id;
+  if (doc._id?.$oid) return doc._id.$oid;
+  if (doc._id) return String(doc._id);
+  return doc.id ? String(doc.id) : "";
+}
+
+function stringifyIdList(value: any) {
+  if (!Array.isArray(value)) return "";
+  return value.map((entry) => typeof entry === "string" ? entry : entry?.$oid ? entry.$oid : String(entry)).filter(Boolean).join(", ");
+}
+
+function parseIdList(value: string) {
+  return value.split(",").map((part) => part.trim()).filter(Boolean);
+}
+
+function safeJsonArray(value: string, fallback: any[] = []) {
+  if (!value.trim()) return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function dateOnly(value: string) {
+  return value ? new Date(value) : new Date();
+}
+
+function productToItem(product: any, current: PurchaseItem): PurchaseItem {
+  return {
+    ...current,
+    productMode: "existing",
+    existingProductId: getDocId(product),
+    productName: product.name ?? "",
+    description: product.description ?? "",
+    category: product.category ?? "",
+    subCategory: product.subCategory ?? "",
+    sellingPrice: product.price !== undefined ? String(product.price) : "",
+    originalPrice: product.originalPrice !== undefined ? String(product.originalPrice) : "",
+    discountPct: product.discountPct !== undefined ? String(product.discountPct) : "",
+    displayUnit: product.unit ?? "per kg",
+    weight: product.weight ?? "",
+    grossWeight: product.grossWeight ?? "",
+    netWeight: product.netWeight ?? "",
+    pieces: product.pieces ?? "",
+    serves: product.serves ?? "",
+    imageUrl: product.imageUrl ?? "",
+    productStatus: product.status ?? "available",
+    limitedStockNote: product.limitedStockNote ?? "",
+    recipesText: JSON.stringify(Array.isArray(product.recipes) ? product.recipes : [], null, 2),
+    sectionIdsText: stringifyIdList(product.sectionId),
+    couponIdsText: stringifyIdList(product.couponIds),
+    existingInventoryBatches: Array.isArray(product.inventoryBatches) ? product.inventoryBatches : [],
+  };
+}
+
+function buildInventoryBatch(item: PurchaseItem, purchaseDate: string) {
+  const entryDate = dateOnly(purchaseDate);
+  const shelfLifeDays = Number(item.shelfLifeDays) || 0;
+  const expiryDate = item.expiryDate ? dateOnly(item.expiryDate) : shelfLifeDays > 0 ? new Date(entryDate.getTime() + shelfLifeDays * 24 * 60 * 60 * 1000) : null;
+  const batch: any = {
+    quantity: Number(item.quantity) || 0,
+    shelfLifeDays,
+    entryDate,
+  };
+  if (expiryDate) batch.expiryDate = expiryDate;
+  return batch;
+}
+
+function productPayload(item: PurchaseItem, purchaseDate: string, existingBatches: any[] = []) {
+  const price = Number(item.sellingPrice) || 0;
+  const originalPrice = Number(item.originalPrice) || price;
+  const discountPct = item.discountPct !== "" ? Number(item.discountPct) || 0 : originalPrice > price && originalPrice > 0 ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
+  return {
+    name: item.productName,
+    description: item.description || "",
+    category: item.category || "",
+    subCategory: item.subCategory || "",
+    price,
+    originalPrice,
+    discountPct,
+    unit: item.displayUnit || "per kg",
+    weight: item.weight || "",
+    grossWeight: item.grossWeight || "",
+    netWeight: item.netWeight || "",
+    pieces: item.pieces || "",
+    serves: item.serves || "",
+    quantity: Number(item.quantity) || 0,
+    imageUrl: item.imageUrl || "",
+    status: item.productStatus || "available",
+    isArchived: false,
+    limitedStockNote: item.limitedStockNote || "",
+    recipes: safeJsonArray(item.recipesText, []),
+    sectionId: parseIdList(item.sectionIdsText),
+    couponIds: parseIdList(item.couponIdsText),
+    inventoryBatches: [...existingBatches, buildInventoryBatch(item, purchaseDate)],
+  };
+}
 
 // ─── BADGE COMPONENTS ─────────────────────────────────────────────────────────
 
@@ -639,6 +752,8 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!vendor) return;
+    const invalidExisting = form.items.some(i => i.productMode === "existing" && !i.existingProductId);
+    if (invalidExisting) { toast({ title: "Select the existing product for each existing-product item", variant: "destructive" }); return; }
     const validItems = form.items.filter(i => i.productName.trim() && Number(i.quantity) > 0);
     if (validItems.length === 0) {
       toast({ title: "Add at least one item", variant: "destructive" });
@@ -1173,6 +1288,9 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
   const [superHubId, setSuperHubId] = useState("");
   const [subHubId, setSubHubId] = useState("");
   const [hubsLoading, setHubsLoading] = useState(true);
+  const [hubProducts, setHubProducts] = useState<any[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productCategoryFilter, setProductCategoryFilter] = useState("all");
 
   useEffect(() => {
     apiFetch("/api/super-hubs")
@@ -1185,11 +1303,29 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     setSuperHubId(id);
     setSubHubId("");
     setSubHubs([]);
+    setHubProducts([]);
+    setProductCategoryFilter("all");
     if (!id) return;
     apiFetch(`/api/super-hubs/${id}`)
       .then(d => setSubHubs(d.subHubs || []))
       .catch(() => setSubHubs([]));
   };
+
+  useEffect(() => {
+    if (!subHubId) {
+      setHubProducts([]);
+      setProductCategoryFilter("all");
+      return;
+    }
+    setProductsLoading(true);
+    apiFetch(`/api/sub-hubs/${subHubId}/menu/products`)
+      .then(d => setHubProducts(d.products || []))
+      .catch(() => {
+        setHubProducts([]);
+        toast({ title: "Failed to load existing hub products", variant: "destructive" });
+      })
+      .finally(() => setProductsLoading(false));
+  }, [subHubId]);
 
   const setField = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
@@ -1197,6 +1333,19 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     setForm(f => {
       const items = [...f.items];
       items[idx] = { ...items[idx], [k]: v };
+      if (k === "productMode") {
+        const previous = items[idx];
+        items[idx] = {
+          ...emptyItem(),
+          productMode: v,
+          quantity: previous.quantity,
+          unit: previous.unit,
+          pricePerUnit: previous.pricePerUnit,
+          totalPrice: previous.totalPrice,
+          expiryDate: previous.expiryDate,
+          shelfLifeDays: previous.shelfLifeDays,
+        };
+      }
       if (k === "quantity" || k === "pricePerUnit") {
         const qty = k === "quantity" ? Number(v) : Number(items[idx].quantity);
         const price = k === "pricePerUnit" ? Number(v) : Number(items[idx].pricePerUnit);
@@ -1208,6 +1357,24 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
 
   const addItem = () => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }));
   const removeItem = (idx: number) => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+
+  const productCategories = useMemo(() => {
+    const values = hubProducts.map((p) => p.category).filter(Boolean);
+    return Array.from(new Set(values)).sort((a, b) => String(a).localeCompare(String(b)));
+  }, [hubProducts]);
+
+  const filteredHubProducts = useMemo(() => {
+    return productCategoryFilter === "all" ? hubProducts : hubProducts.filter((p) => p.category === productCategoryFilter);
+  }, [hubProducts, productCategoryFilter]);
+
+  const applyExistingProduct = (idx: number, productId: string) => {
+    const product = hubProducts.find((p) => getDocId(p) === productId);
+    setForm(f => {
+      const items = [...f.items];
+      items[idx] = product ? productToItem(product, { ...items[idx], existingProductId: productId }) : { ...items[idx], existingProductId: productId };
+      return { ...f, items };
+    });
+  };
 
   const totalAmount = useMemo(() =>
     form.items.reduce((s, i) => s + (Number(i.quantity) * Number(i.pricePerUnit)), 0),
@@ -1229,26 +1396,22 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
       const errors: string[] = [];
       for (const item of validItems) {
         try {
-          await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, {
-            method: "POST",
-            body: JSON.stringify({
-              name: item.productName,
-              description: item.description || "",
-              category: item.category || "",
-              subCategory: item.subCategory || "",
-              price: Number(item.sellingPrice) || 0,
-              originalPrice: Number(item.originalPrice) || 0,
-              unit: item.unit,
-              weight: item.weight || "",
-              grossWeight: item.grossWeight || "",
-              netWeight: item.netWeight || "",
-              pieces: item.pieces || "",
-              serves: item.serves || "",
-              quantity: Number(item.quantity) || 0,
-              imageUrl: item.imageUrl || "",
-              status: item.productStatus || "available",
-            }),
-          });
+          const existingProduct = item.productMode === "existing" ? hubProducts.find((p) => getDocId(p) === item.existingProductId) : null;
+          if (item.productMode === "existing" && item.existingProductId && existingProduct) {
+            const payload = productPayload(item, form.purchaseDate, Array.isArray(existingProduct.inventoryBatches) ? existingProduct.inventoryBatches : []);
+            await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/${item.existingProductId}`, {
+              method: "PUT",
+              body: JSON.stringify({
+                ...payload,
+                quantity: (Number(existingProduct.quantity) || 0) + (Number(item.quantity) || 0),
+              }),
+            });
+          } else {
+            await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, {
+              method: "POST",
+              body: JSON.stringify(productPayload(item, form.purchaseDate)),
+            });
+          }
         } catch { errors.push(item.productName); }
       }
       if (errors.length > 0) {
@@ -1338,6 +1501,11 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
               )}
             </div>
           </div>
+          {subHubId && (
+            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+              {productsLoading ? "Loading existing products from this sub hub..." : `${hubProducts.length} existing product${hubProducts.length === 1 ? "" : "s"} loaded from this sub hub. You can buy against any category or add a new product.`}
+            </div>
+          )}
         </div>
 
         {/* ─── Purchase Info ──────────────────────────────────── */}
@@ -1390,10 +1558,59 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                       <span className="w-4 h-px bg-indigo-300 inline-block" />Product Information
                     </p>
                     <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3 rounded-lg border border-indigo-100 bg-indigo-50 p-3">
+                        <button
+                          type="button"
+                          onClick={() => setItem(idx, "productMode", "existing")}
+                          className={`rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${item.productMode === "existing" ? "border-[#162B4D] bg-white text-[#162B4D] shadow-sm" : "border-transparent bg-transparent text-gray-500 hover:bg-white/70"}`}
+                        >
+                          Select existing product
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setItem(idx, "productMode", "new")}
+                          className={`rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${item.productMode === "new" ? "border-[#162B4D] bg-white text-[#162B4D] shadow-sm" : "border-transparent bg-transparent text-gray-500 hover:bg-white/70"}`}
+                        >
+                          Enter new product
+                        </button>
+                      </div>
+                      {item.productMode === "existing" && (
+                        <div className="grid grid-cols-[180px_1fr] gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                          <div>
+                            <FieldLabel>Filter Category</FieldLabel>
+                            <select
+                              value={productCategoryFilter}
+                              onChange={e => setProductCategoryFilter(e.target.value)}
+                              disabled={!subHubId || productsLoading}
+                              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                            >
+                              <option value="all">All categories</option>
+                              {productCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <FieldLabel required>Existing Product</FieldLabel>
+                            <select
+                              value={item.existingProductId}
+                              onChange={e => applyExistingProduct(idx, e.target.value)}
+                              disabled={!subHubId || productsLoading || filteredHubProducts.length === 0}
+                              required={item.productMode === "existing"}
+                              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                            >
+                              <option value="">{!subHubId ? "Select sub hub first" : productsLoading ? "Loading products..." : filteredHubProducts.length === 0 ? "No products found" : "Choose product..."}</option>
+                              {filteredHubProducts.map((product) => (
+                                <option key={getDocId(product)} value={getDocId(product)}>
+                                  {product.category ? `${product.category} / ` : ""}{product.subCategory ? `${product.subCategory} / ` : ""}{product.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
                       <div>
                         <FieldLabel required>Product Name</FieldLabel>
                         <Input value={item.productName} onChange={e => setItem(idx, "productName", e.target.value)}
-                          placeholder="e.g. Rohu Fish, King Prawns" required />
+                          placeholder="e.g. Rohu Fish, King Prawns" required readOnly={item.productMode === "existing"} />
                       </div>
                       <div className="grid grid-cols-3 gap-4">
                         <div>
@@ -1426,7 +1643,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                     <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                       <span className="w-4 h-px bg-amber-300 inline-block" />Purchase Details <span className="text-gray-400 font-normal normal-case">(from vendor)</span>
                     </p>
-                    <div className="grid grid-cols-4 gap-4">
+                    <div className="grid grid-cols-5 gap-4">
                       <div>
                         <FieldLabel required>Quantity</FieldLabel>
                         <Input type="text" inputMode="decimal"
@@ -1454,6 +1671,10 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                       <div>
                         <FieldLabel>Expiry Date</FieldLabel>
                         <Input type="date" value={item.expiryDate} onChange={e => setItem(idx, "expiryDate", e.target.value)} />
+                      </div>
+                      <div>
+                        <FieldLabel>Shelf Life Days</FieldLabel>
+                        <Input type="text" inputMode="decimal" value={item.shelfLifeDays} onChange={e => setItem(idx, "shelfLifeDays", numOnly(e.target.value))} placeholder="e.g. 3" />
                       </div>
                     </div>
                     <div className="mt-2 flex items-center gap-1.5 text-sm text-gray-500">
@@ -1490,7 +1711,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                         </div>
                         <div>
                           <FieldLabel>Display Unit</FieldLabel>
-                          <select value={item.unit} onChange={e => setItem(idx, "unit", e.target.value)}
+                          <select value={item.displayUnit} onChange={e => setItem(idx, "displayUnit", e.target.value)}
                             className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
                             {PRODUCT_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                           </select>
@@ -1527,6 +1748,30 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                         label="Product Image (optional)"
                         previewClassName="w-14 h-14 rounded-lg"
                       />
+                      <div>
+                        <FieldLabel>Limited Stock Note</FieldLabel>
+                        <Input value={item.limitedStockNote} onChange={e => setItem(idx, "limitedStockNote", e.target.value)} placeholder="e.g. Only a few left today" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <FieldLabel>Section IDs</FieldLabel>
+                          <Input value={item.sectionIdsText} onChange={e => setItem(idx, "sectionIdsText", e.target.value)} placeholder="Comma-separated section IDs" />
+                        </div>
+                        <div>
+                          <FieldLabel>Coupon IDs</FieldLabel>
+                          <Input value={item.couponIdsText} onChange={e => setItem(idx, "couponIdsText", e.target.value)} placeholder="Comma-separated coupon IDs" />
+                        </div>
+                      </div>
+                      <div>
+                        <FieldLabel>Recipes JSON</FieldLabel>
+                        <textarea
+                          value={item.recipesText}
+                          onChange={e => setItem(idx, "recipesText", e.target.value)}
+                          placeholder='[{"title":"Recipe name","ingredients":[],"method":[]}]'
+                          className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                        <p className="mt-1 text-[11px] text-gray-400">Existing products keep their recipes automatically. Edit this JSON only when you need to change recipes.</p>
+                      </div>
                     </div>
                   </div>
                 </div>

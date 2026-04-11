@@ -25,6 +25,32 @@ function toId(id: string) {
   try { return new mongoose.Types.ObjectId(id); } catch { return null; }
 }
 
+function normalizeIdList(values: any) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((value) => {
+      const raw = typeof value === "string" ? value : value?.$oid ? value.$oid : value?._id ? String(value._id) : "";
+      return toId(raw);
+    })
+    .filter(Boolean);
+}
+
+function normalizeInventoryBatches(values: any) {
+  if (!Array.isArray(values)) return [];
+  return values.map((batch) => {
+    const rawId = typeof batch?._id === "string" ? batch._id : batch?._id?.$oid ? batch._id.$oid : "";
+    const normalized: any = {
+      ...batch,
+      _id: toId(rawId) ?? new mongoose.Types.ObjectId(),
+      quantity: Number(batch?.quantity) || 0,
+      shelfLifeDays: Number(batch?.shelfLifeDays) || 0,
+    };
+    if (batch?.entryDate) normalized.entryDate = new Date(batch.entryDate);
+    if (batch?.expiryDate) normalized.expiryDate = new Date(batch.expiryDate);
+    return normalized;
+  });
+}
+
 // ─── STATS ────────────────────────────────────────────────────────────────────
 router.get("/stats", async (req, res) => {
   try {
@@ -96,9 +122,9 @@ router.post("/products", async (req, res) => {
       imageUrl: imageUrl ?? "",
       limitedStockNote: limitedStockNote ?? "",
       recipes: Array.isArray(recipes) ? recipes : [],
-      sectionId: Array.isArray(sectionId) ? sectionId : [],
-      couponIds: Array.isArray(couponIds) ? couponIds : [],
-      inventoryBatches: Array.isArray(inventoryBatches) ? inventoryBatches : [],
+      sectionId: normalizeIdList(sectionId),
+      couponIds: normalizeIdList(couponIds),
+      inventoryBatches: normalizeInventoryBatches(inventoryBatches),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -142,9 +168,9 @@ router.put("/products/:productId", async (req, res) => {
     if (imageUrl !== undefined) update.imageUrl = imageUrl;
     if (limitedStockNote !== undefined) update.limitedStockNote = limitedStockNote;
     if (recipes !== undefined) update.recipes = Array.isArray(recipes) ? recipes : [];
-    if (sectionId !== undefined) update.sectionId = Array.isArray(sectionId) ? sectionId : [];
-    if (couponIds !== undefined) update.couponIds = Array.isArray(couponIds) ? couponIds : [];
-    if (inventoryBatches !== undefined) update.inventoryBatches = Array.isArray(inventoryBatches) ? inventoryBatches : [];
+    if (sectionId !== undefined) update.sectionId = normalizeIdList(sectionId);
+    if (couponIds !== undefined) update.couponIds = normalizeIdList(couponIds);
+    if (inventoryBatches !== undefined) update.inventoryBatches = normalizeInventoryBatches(inventoryBatches);
     const result = await ctx.conn.db.collection("products").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
     if (!result) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
     res.json({ product: result });

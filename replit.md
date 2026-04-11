@@ -102,6 +102,14 @@ scripts/
 - **Sub Hubs** — locality level under a super hub (e.g. Thane, Airoli, Vashi)
 - Sub hubs store pincodes as a string array field
 
+## Vendor Purchases
+
+- Vendor "Buy" opens a full-page purchase entry flow in `artifacts/fishtokri-admin/src/pages/vendors.tsx`.
+- The purchase flow requires selecting a destination Super Hub and Sub Hub, then loads that sub-hub database's existing `products` collection.
+- Each purchased item can either select an existing product from any loaded category in that selected sub hub, or enter a new product.
+- Existing product purchases update the product quantity and append a new `inventoryBatches` entry instead of creating a duplicate product.
+- Product payloads include the richer menu fields used by sub-hub DB products: `description`, `category`, `subCategory`, `price`, `originalPrice`, `discountPct`, `unit`, `weight`, `grossWeight`, `netWeight`, `pieces`, `serves`, `imageUrl`, `limitedStockNote`, `recipes`, `sectionId`, `couponIds`, and `inventoryBatches`.
+
 ---
 
 ## Sub-Hub DB Schema (per sub-hub MongoDB DB e.g. "Thane")
