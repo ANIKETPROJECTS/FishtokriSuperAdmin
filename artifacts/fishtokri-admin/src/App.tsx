@@ -21,6 +21,7 @@ import Orders from "@/pages/orders";
 import ComingSoon from "@/pages/coming-soon";
 import MyHubs from "@/pages/my-hubs";
 import SubHubMenuAdmin from "@/pages/sub-hub-menu-admin";
+import Vendors from "@/pages/vendors";
 import { Layout } from "@/components/layout";
 
 const queryClient = new QueryClient({
@@ -115,6 +116,9 @@ function App() {
             </Route>
             <Route path="/orders">
               <ProtectedRoute component={Orders} requiredRole="master_admin" />
+            </Route>
+            <Route path="/vendors">
+              <ProtectedRoute component={Vendors} requiredRole="master_admin" />
             </Route>
             <Route path="/coupons">
               <ProtectedRoute component={ComingSoon} requiredRole="master_admin" />
