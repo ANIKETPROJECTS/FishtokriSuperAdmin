@@ -255,6 +255,21 @@ function VendorRow({ vendor, onEdit, onDelete, onView, onAddPurchase }: {
 
 // ─── VENDOR FORM MODAL ────────────────────────────────────────────────────────
 
+function validatePhone(phone: string) {
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length !== 10) return "Phone must be exactly 10 digits";
+  if (!/^\d{10}$/.test(digits)) return "Phone must contain digits only";
+  return "";
+}
+
+function validateEmail(email: string) {
+  if (!email) return "";
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) return "Enter a valid email address (e.g. name@example.com)";
+  return "";
+}
+
 function VendorFormModal({ open, onClose, onSave, initial }: {
   open: boolean;
   onClose: () => void;
@@ -263,9 +278,11 @@ function VendorFormModal({ open, onClose, onSave, initial }: {
 }) {
   const [form, setForm] = useState(emptyVendor());
   const [saving, setSaving] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (open) {
+      setTouched({});
       setForm(initial ? {
         name: initial.name, phone: initial.phone, email: initial.email,
         address: initial.address, category: initial.category, status: initial.status, notes: initial.notes,
@@ -274,10 +291,21 @@ function VendorFormModal({ open, onClose, onSave, initial }: {
   }, [open, initial]);
 
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
+  const touch = (k: string) => setTouched(t => ({ ...t, [k]: true }));
+
+  const phoneError = touched.phone ? validatePhone(form.phone) : "";
+  const emailError = touched.email ? validateEmail(form.email) : "";
+  const hasErrors = !!validatePhone(form.phone) || !!validateEmail(form.email);
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digitsOnly = e.target.value.replace(/\D/g, "").slice(0, 10);
+    set("phone", digitsOnly);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) return;
+    setTouched({ phone: true, email: true });
+    if (!form.name.trim() || hasErrors) return;
     setSaving(true);
     try { await onSave(form); onClose(); }
     finally { setSaving(false); }
@@ -297,11 +325,44 @@ function VendorFormModal({ open, onClose, onSave, initial }: {
             </div>
             <div>
               <Label>Phone</Label>
-              <Input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="+91 9876543210" className="mt-1" />
+              <Input
+                value={form.phone}
+                onChange={handlePhoneChange}
+                onBlur={() => touch("phone")}
+                placeholder="10-digit number"
+                inputMode="numeric"
+                maxLength={10}
+                className={`mt-1 ${phoneError ? "border-red-400 focus-visible:ring-red-300" : ""}`}
+              />
+              {phoneError && (
+                <p className="text-[11px] text-red-500 mt-1 flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center font-bold leading-none">!</span>
+                  {phoneError}
+                </p>
+              )}
+              {!phoneError && touched.phone && form.phone.length === 10 && (
+                <p className="text-[11px] text-green-600 mt-1">✓ Valid phone number</p>
+              )}
             </div>
             <div>
               <Label>Email</Label>
-              <Input value={form.email} onChange={e => set("email", e.target.value)} placeholder="vendor@example.com" className="mt-1" />
+              <Input
+                value={form.email}
+                onChange={e => set("email", e.target.value)}
+                onBlur={() => touch("email")}
+                placeholder="vendor@example.com"
+                type="text"
+                className={`mt-1 ${emailError ? "border-red-400 focus-visible:ring-red-300" : ""}`}
+              />
+              {emailError && (
+                <p className="text-[11px] text-red-500 mt-1 flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center font-bold leading-none">!</span>
+                  {emailError}
+                </p>
+              )}
+              {!emailError && touched.email && form.email && (
+                <p className="text-[11px] text-green-600 mt-1">✓ Valid email address</p>
+              )}
             </div>
             <div className="col-span-2">
               <Label>Address</Label>
