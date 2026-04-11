@@ -15,7 +15,7 @@ paths = [ "/" ]
 localPort = 5000
 
 [services.development]
-run = "cd /home/runner/workspace && bash scripts/dev.sh"
+run = "bash /home/runner/workspace/scripts/dev.sh"
 
 [services.production]
 build = [ "pnpm", "--filter", "@workspace/fishtokri-admin", "run", "build" ]
