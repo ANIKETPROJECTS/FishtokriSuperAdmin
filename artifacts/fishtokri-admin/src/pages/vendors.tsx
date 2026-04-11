@@ -72,11 +72,24 @@ interface Vendor {
 interface PurchaseItem {
   id?: string;
   productName: string;
-  quantity: number;
+  quantity: number | string;
   unit: string;
-  pricePerUnit: number;
+  pricePerUnit: number | string;
   totalPrice: number;
   expiryDate: string;
+  // Product listing fields
+  description: string;
+  category: string;
+  subCategory: string;
+  sellingPrice: string;
+  originalPrice: string;
+  weight: string;
+  grossWeight: string;
+  netWeight: string;
+  pieces: string;
+  serves: string;
+  imageUrl: string;
+  productStatus: string;
 }
 
 interface Purchase {
@@ -103,8 +116,14 @@ function parseCats(cat: string): string[] {
 }
 
 const emptyItem = (): PurchaseItem => ({
-  productName: "", quantity: 1, unit: "kg", pricePerUnit: 0, totalPrice: 0, expiryDate: "",
+  productName: "", quantity: "", unit: "kg", pricePerUnit: "", totalPrice: 0, expiryDate: "",
+  description: "", category: "", subCategory: "",
+  sellingPrice: "", originalPrice: "",
+  weight: "", grossWeight: "", netWeight: "",
+  pieces: "", serves: "", imageUrl: "", productStatus: "available",
 });
+
+const PRODUCT_UNITS = ["per kg", "per piece", "per dozen", "per box", "per litre", "per pack", "per g", "per 500g"];
 
 const emptyPurchase = () => ({
   invoiceNumber: "",
@@ -552,6 +571,10 @@ function VendorFormModal({ open, onClose, onSave, initial }: {
 
 // ─── ADD PURCHASE MODAL ───────────────────────────────────────────────────────
 
+function numOnly(v: string) {
+  return v.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+}
+
 function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
   open: boolean;
   onClose: () => void;
@@ -562,9 +585,33 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
+  // Hub selection
+  const [superHubs, setSuperHubs] = useState<any[]>([]);
+  const [subHubs, setSubHubs] = useState<any[]>([]);
+  const [superHubId, setSuperHubId] = useState("");
+  const [subHubId, setSubHubId] = useState("");
+  const [hubsLoading, setHubsLoading] = useState(false);
+
   useEffect(() => {
-    if (open) setForm(emptyPurchase());
+    if (open) {
+      setForm(emptyPurchase());
+      setSuperHubId(""); setSubHubId(""); setSubHubs([]);
+      setHubsLoading(true);
+      apiFetch("/api/super-hubs")
+        .then(d => setSuperHubs(d.superHubs || []))
+        .catch(() => setSuperHubs([]))
+        .finally(() => setHubsLoading(false));
+    }
   }, [open]);
+
+  const handleSuperHubChange = async (id: string) => {
+    setSuperHubId(id); setSubHubId(""); setSubHubs([]);
+    if (!id) return;
+    try {
+      const d = await apiFetch(`/api/super-hubs/${id}`);
+      setSubHubs(d.subHubs || []);
+    } catch { setSubHubs([]); }
+  };
 
   const setField = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
@@ -599,11 +646,50 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
     }
     setSaving(true);
     try {
+      // 1. Record vendor purchase
       await apiFetch(`/api/vendors/${vendor.id}/purchases`, {
         method: "POST",
         body: JSON.stringify({ ...form, items: validItems }),
       });
-      toast({ title: "Purchase saved!", description: `${validItems.length} item(s) added to inventory.` });
+
+      // 2. If a sub hub is selected, add each item as a product there
+      if (subHubId) {
+        const errors: string[] = [];
+        for (const item of validItems) {
+          try {
+            await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, {
+              method: "POST",
+              body: JSON.stringify({
+                name: item.productName,
+                description: item.description || "",
+                category: item.category || "",
+                subCategory: item.subCategory || "",
+                price: Number(item.sellingPrice) || 0,
+                originalPrice: Number(item.originalPrice) || 0,
+                unit: item.unit,
+                weight: item.weight || "",
+                grossWeight: item.grossWeight || "",
+                netWeight: item.netWeight || "",
+                pieces: item.pieces || "",
+                serves: item.serves || "",
+                quantity: Number(item.quantity) || 0,
+                imageUrl: item.imageUrl || "",
+                status: item.productStatus || "available",
+              }),
+            });
+          } catch (err: any) {
+            errors.push(item.productName);
+          }
+        }
+        if (errors.length > 0) {
+          toast({ title: "Purchase saved, but some products failed to add to hub", description: errors.join(", "), variant: "destructive" });
+        } else {
+          toast({ title: "Purchase saved!", description: `${validItems.length} item(s) added to inventory and sub hub menu.` });
+        }
+      } else {
+        toast({ title: "Purchase saved!", description: `${validItems.length} item(s) recorded.` });
+      }
+
       onSaved();
       onClose();
     } catch (err: any) {
@@ -615,32 +701,58 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-[#162B4D]" />
             Add Purchase — {vendor?.name}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
+
+          {/* Destination Hub */}
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-3">
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Destination Hub (optional)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-gray-600">Super Hub</Label>
+                <Select value={superHubId} onValueChange={handleSuperHubChange} disabled={hubsLoading}>
+                  <SelectTrigger className="mt-1 h-8 text-sm">
+                    <SelectValue placeholder={hubsLoading ? "Loading..." : "Select super hub"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {superHubs.map((h: any) => (
+                      <SelectItem key={h._id} value={h._id}>{h.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs text-gray-600">Sub Hub</Label>
+                <Select value={subHubId} onValueChange={setSubHubId} disabled={!superHubId || subHubs.length === 0}>
+                  <SelectTrigger className="mt-1 h-8 text-sm">
+                    <SelectValue placeholder={!superHubId ? "Select super hub first" : "Select sub hub"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subHubs.map((s: any) => (
+                      <SelectItem key={s._id} value={s._id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {subHubId && <p className="text-[11px] text-blue-600">Items will be added to this sub hub's product menu.</p>}
+          </div>
+
+          {/* Invoice + Date */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Invoice / Bill No.</Label>
-              <Input
-                value={form.invoiceNumber}
-                onChange={e => setField("invoiceNumber", e.target.value)}
-                placeholder="INV-001 (optional)"
-                className="mt-1"
-              />
+              <Input value={form.invoiceNumber} onChange={e => setField("invoiceNumber", e.target.value)} placeholder="INV-001 (optional)" className="mt-1" />
             </div>
             <div>
               <Label>Purchase Date</Label>
-              <Input
-                type="date"
-                value={form.purchaseDate}
-                onChange={e => setField("purchaseDate", e.target.value)}
-                className="mt-1"
-              />
+              <Input type="date" value={form.purchaseDate} onChange={e => setField("purchaseDate", e.target.value)} className="mt-1" />
             </div>
           </div>
 
@@ -652,76 +764,118 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
                 <Plus className="w-3 h-3" /> Add Item
               </Button>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {form.items.map((item, idx) => (
-                <div key={idx} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-gray-500">Item #{idx + 1}</span>
+                <div key={idx} className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                  {/* Item header */}
+                  <div className="flex items-center justify-between bg-gray-100 px-3 py-1.5">
+                    <span className="text-xs font-semibold text-gray-500">Item #{idx + 1}</span>
                     {form.items.length > 1 && (
                       <button type="button" onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600">
                         <X className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="col-span-2">
-                      <Input
-                        value={item.productName}
-                        onChange={e => setItem(idx, "productName", e.target.value)}
-                        placeholder="Product name (e.g. Rohu Fish)"
-                        className="h-8 text-sm"
-                        required
-                      />
-                    </div>
-                    <div className="flex gap-1.5">
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        value={item.quantity}
-                        onChange={e => {
-                          const v = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
-                          setItem(idx, "quantity", v);
-                        }}
-                        placeholder="Qty"
-                        className="h-8 text-sm w-24"
-                      />
-                      <Select value={item.unit} onValueChange={v => setItem(idx, "unit", v)}>
-                        <SelectTrigger className="h-8 text-sm flex-1"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm text-gray-400">₹</span>
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        value={item.pricePerUnit}
-                        onChange={e => {
-                          const v = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
-                          setItem(idx, "pricePerUnit", v);
-                        }}
-                        placeholder="Price/unit"
-                        className="h-8 text-sm flex-1"
-                      />
-                      <span className="text-xs text-gray-400 whitespace-nowrap">/{item.unit}</span>
-                    </div>
+
+                  <div className="p-3 space-y-3">
+                    {/* ── Product Info ─────────────────────── */}
                     <div>
-                      <Input
-                        type="date"
-                        value={item.expiryDate}
-                        onChange={e => setItem(idx, "expiryDate", e.target.value)}
-                        className="h-8 text-sm"
-                        title="Expiry date (optional)"
-                      />
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Product Info</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-3">
+                          <Input value={item.productName} onChange={e => setItem(idx, "productName", e.target.value)}
+                            placeholder="Product name *" className="h-8 text-sm" required />
+                        </div>
+                        <Input value={item.category} onChange={e => setItem(idx, "category", e.target.value)}
+                          placeholder="Category" className="h-8 text-sm" />
+                        <Input value={item.subCategory} onChange={e => setItem(idx, "subCategory", e.target.value)}
+                          placeholder="Sub Category" className="h-8 text-sm" />
+                        <Select value={item.productStatus} onValueChange={v => setItem(idx, "productStatus", v)}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="available">Available</SelectItem>
+                            <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                            <SelectItem value="coming_soon">Coming Soon</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <div className="col-span-3">
+                          <Input value={item.description} onChange={e => setItem(idx, "description", e.target.value)}
+                            placeholder="Description (optional)" className="h-8 text-sm" />
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-gray-500 bg-white rounded border border-gray-100 px-2 h-8">
-                      <IndianRupee className="w-3 h-3" />
-                      <span className="font-semibold text-[#162B4D]">
-                        {(Number(item.quantity) * Number(item.pricePerUnit)).toLocaleString("en-IN")}
-                      </span>
-                      <span className="text-gray-400">total</span>
+
+                    {/* ── Purchase Details ─────────────────── */}
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Purchase Details (from vendor)</p>
+                      <div className="grid grid-cols-4 gap-2">
+                        <Input type="text" inputMode="decimal"
+                          value={item.quantity}
+                          onChange={e => setItem(idx, "quantity", numOnly(e.target.value))}
+                          placeholder="Qty" className="h-8 text-sm" />
+                        <Select value={item.unit} onValueChange={v => setItem(idx, "unit", v)}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <div className="flex items-center gap-1 col-span-1">
+                          <span className="text-xs text-gray-400 shrink-0">₹</span>
+                          <Input type="text" inputMode="decimal"
+                            value={item.pricePerUnit}
+                            onChange={e => setItem(idx, "pricePerUnit", numOnly(e.target.value))}
+                            placeholder="Cost/unit" className="h-8 text-sm" />
+                        </div>
+                        <Input type="date" value={item.expiryDate}
+                          onChange={e => setItem(idx, "expiryDate", e.target.value)}
+                          className="h-8 text-sm" title="Expiry date (optional)" />
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-1.5">
+                        <IndianRupee className="w-3 h-3" />
+                        <span className="font-semibold text-[#162B4D]">
+                          {(Number(item.quantity) * Number(item.pricePerUnit)).toLocaleString("en-IN")}
+                        </span>
+                        <span className="text-gray-400">purchase total</span>
+                      </div>
+                    </div>
+
+                    {/* ── Listing Details ──────────────────── */}
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Listing Details (for hub menu)</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400 shrink-0">₹</span>
+                          <Input type="text" inputMode="decimal"
+                            value={item.sellingPrice}
+                            onChange={e => setItem(idx, "sellingPrice", numOnly(e.target.value))}
+                            placeholder="Selling price" className="h-8 text-sm" />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400 shrink-0">₹</span>
+                          <Input type="text" inputMode="decimal"
+                            value={item.originalPrice}
+                            onChange={e => setItem(idx, "originalPrice", numOnly(e.target.value))}
+                            placeholder="MRP" className="h-8 text-sm" />
+                        </div>
+                        <Select value={item.unit} onValueChange={v => setItem(idx, "unit", v)}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Display unit" /></SelectTrigger>
+                          <SelectContent>
+                            {PRODUCT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Input value={item.weight} onChange={e => setItem(idx, "weight", e.target.value)}
+                          placeholder="Weight (e.g. 500g)" className="h-8 text-sm" />
+                        <Input value={item.grossWeight} onChange={e => setItem(idx, "grossWeight", e.target.value)}
+                          placeholder="Gross weight" className="h-8 text-sm" />
+                        <Input value={item.netWeight} onChange={e => setItem(idx, "netWeight", e.target.value)}
+                          placeholder="Net weight" className="h-8 text-sm" />
+                        <Input value={item.pieces} onChange={e => setItem(idx, "pieces", e.target.value)}
+                          placeholder="Pieces (e.g. 4-5)" className="h-8 text-sm" />
+                        <Input value={item.serves} onChange={e => setItem(idx, "serves", e.target.value)}
+                          placeholder="Serves (e.g. 2-3)" className="h-8 text-sm" />
+                        <Input value={item.imageUrl} onChange={e => setItem(idx, "imageUrl", e.target.value)}
+                          placeholder="Image URL" className="h-8 text-sm" />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -731,18 +885,14 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
 
           {/* Total */}
           <div className="bg-[#162B4D] text-white rounded-lg px-4 py-3 flex items-center justify-between">
-            <span className="text-sm font-medium">Total Amount</span>
+            <span className="text-sm font-medium">Total Purchase Amount</span>
             <span className="text-xl font-bold">{formatRupees(totalAmount)}</span>
           </div>
 
           <div>
             <Label>Notes</Label>
-            <Input
-              value={form.notes}
-              onChange={e => setField("notes", e.target.value)}
-              placeholder="Any notes for this purchase..."
-              className="mt-1"
-            />
+            <Input value={form.notes} onChange={e => setField("notes", e.target.value)}
+              placeholder="Any notes for this purchase..." className="mt-1" />
           </div>
 
           <DialogFooter>
