@@ -1140,6 +1140,423 @@ function DeleteModal({ open, onClose, vendor, onConfirm }: {
   );
 }
 
+// ─── ADD PURCHASE PAGE ────────────────────────────────────────────────────────
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 mb-4">
+      <span className="text-xs font-bold text-[#162B4D] uppercase tracking-wider">{children}</span>
+      <div className="flex-1 h-px bg-gray-200" />
+    </div>
+  );
+}
+
+function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
+  return (
+    <label className="block text-xs font-semibold text-gray-500 mb-1">
+      {children}{required && <span className="text-red-400 ml-0.5">*</span>}
+    </label>
+  );
+}
+
+function AddPurchasePage({ vendor, onBack, onSaved }: {
+  vendor: Vendor;
+  onBack: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState(emptyPurchase());
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  const [superHubs, setSuperHubs] = useState<any[]>([]);
+  const [subHubs, setSubHubs] = useState<any[]>([]);
+  const [superHubId, setSuperHubId] = useState("");
+  const [subHubId, setSubHubId] = useState("");
+  const [hubsLoading, setHubsLoading] = useState(true);
+
+  useEffect(() => {
+    apiFetch("/api/super-hubs")
+      .then(d => setSuperHubs(d.superHubs || []))
+      .catch(() => setSuperHubs([]))
+      .finally(() => setHubsLoading(false));
+  }, []);
+
+  const handleSuperHubChange = (id: string) => {
+    setSuperHubId(id);
+    setSubHubId("");
+    setSubHubs([]);
+    if (!id) return;
+    apiFetch(`/api/super-hubs/${id}`)
+      .then(d => setSubHubs(d.subHubs || []))
+      .catch(() => setSubHubs([]));
+  };
+
+  const setField = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
+
+  const setItem = (idx: number, k: keyof PurchaseItem, v: any) => {
+    setForm(f => {
+      const items = [...f.items];
+      items[idx] = { ...items[idx], [k]: v };
+      if (k === "quantity" || k === "pricePerUnit") {
+        const qty = k === "quantity" ? Number(v) : Number(items[idx].quantity);
+        const price = k === "pricePerUnit" ? Number(v) : Number(items[idx].pricePerUnit);
+        items[idx].totalPrice = qty * price;
+      }
+      return { ...f, items };
+    });
+  };
+
+  const addItem = () => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }));
+  const removeItem = (idx: number) => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+
+  const totalAmount = useMemo(() =>
+    form.items.reduce((s, i) => s + (Number(i.quantity) * Number(i.pricePerUnit)), 0),
+    [form.items]
+  );
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!superHubId) { toast({ title: "Please select a Super Hub", variant: "destructive" }); return; }
+    if (!subHubId) { toast({ title: "Please select a Sub Hub", variant: "destructive" }); return; }
+    const validItems = form.items.filter(i => i.productName.trim() && Number(i.quantity) > 0);
+    if (validItems.length === 0) { toast({ title: "Add at least one item with name and quantity", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      await apiFetch(`/api/vendors/${vendor.id}/purchases`, {
+        method: "POST",
+        body: JSON.stringify({ ...form, items: validItems }),
+      });
+      const errors: string[] = [];
+      for (const item of validItems) {
+        try {
+          await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, {
+            method: "POST",
+            body: JSON.stringify({
+              name: item.productName,
+              description: item.description || "",
+              category: item.category || "",
+              subCategory: item.subCategory || "",
+              price: Number(item.sellingPrice) || 0,
+              originalPrice: Number(item.originalPrice) || 0,
+              unit: item.unit,
+              weight: item.weight || "",
+              grossWeight: item.grossWeight || "",
+              netWeight: item.netWeight || "",
+              pieces: item.pieces || "",
+              serves: item.serves || "",
+              quantity: Number(item.quantity) || 0,
+              imageUrl: item.imageUrl || "",
+              status: item.productStatus || "available",
+            }),
+          });
+        } catch { errors.push(item.productName); }
+      }
+      if (errors.length > 0) {
+        toast({ title: "Purchase saved, some products failed to add", description: errors.join(", "), variant: "destructive" });
+      } else {
+        toast({ title: "Purchase saved!", description: `${validItems.length} product(s) added to sub hub menu.` });
+      }
+      onSaved();
+      onBack();
+    } catch (err: any) {
+      toast({ title: "Failed to save purchase", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectedSuperHub = superHubs.find(h => h._id === superHubId);
+  const selectedSubHub = subHubs.find(s => s._id === subHubId);
+
+  return (
+    <div className="space-y-6">
+      {/* Page header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#162B4D] transition-colors">
+            <ChevronLeft className="w-4 h-4" /> Back to Vendors
+          </button>
+          <span className="text-gray-300">|</span>
+          <div className="flex items-center gap-2">
+            {vendor.profileImageUrl
+              ? <img src={vendor.profileImageUrl} alt={vendor.name} className="w-7 h-7 rounded-full object-cover border border-gray-200" />
+              : <div className="w-7 h-7 rounded-full bg-[#162B4D]/10 flex items-center justify-center"><Building2 className="w-3.5 h-3.5 text-[#162B4D]" /></div>}
+            <div>
+              <h1 className="text-lg font-bold text-[#162B4D] leading-none">Add Purchase</h1>
+              <p className="text-xs text-gray-400 mt-0.5">{vendor.name}</p>
+            </div>
+          </div>
+        </div>
+        <Button onClick={handleSubmit as any} disabled={saving} className="bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5">
+          <ShoppingCart className="w-4 h-4" />
+          {saving ? "Saving..." : "Save Purchase"}
+        </Button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* ─── Destination Hub ─────────────────────────────────── */}
+        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+          <SectionHeading>Destination Hub</SectionHeading>
+          <div className="grid grid-cols-2 gap-5">
+            <div>
+              <FieldLabel required>Super Hub</FieldLabel>
+              {hubsLoading ? (
+                <div className="h-10 bg-gray-100 rounded-md animate-pulse" />
+              ) : (
+                <select
+                  value={superHubId}
+                  onChange={e => handleSuperHubChange(e.target.value)}
+                  required
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">Select super hub...</option>
+                  {superHubs.map((h: any) => (
+                    <option key={h._id} value={h._id}>{h.name}</option>
+                  ))}
+                </select>
+              )}
+              {selectedSuperHub && (
+                <p className="text-[11px] text-green-600 mt-1">✓ {selectedSuperHub.name} selected</p>
+              )}
+            </div>
+            <div>
+              <FieldLabel required>Sub Hub</FieldLabel>
+              <select
+                value={subHubId}
+                onChange={e => setSubHubId(e.target.value)}
+                required
+                disabled={!superHubId || subHubs.length === 0}
+                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">{!superHubId ? "Select super hub first" : subHubs.length === 0 ? "No sub hubs found" : "Select sub hub..."}</option>
+                {subHubs.map((s: any) => (
+                  <option key={s._id} value={s._id}>{s.name}</option>
+                ))}
+              </select>
+              {selectedSubHub && (
+                <p className="text-[11px] text-green-600 mt-1">✓ Products will be added to {selectedSubHub.name}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ─── Purchase Info ──────────────────────────────────── */}
+        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+          <SectionHeading>Purchase Info</SectionHeading>
+          <div className="grid grid-cols-2 gap-5">
+            <div>
+              <FieldLabel>Invoice / Bill No.</FieldLabel>
+              <Input value={form.invoiceNumber} onChange={e => setField("invoiceNumber", e.target.value)} placeholder="INV-001 (optional)" />
+            </div>
+            <div>
+              <FieldLabel>Purchase Date</FieldLabel>
+              <Input type="date" value={form.purchaseDate} onChange={e => setField("purchaseDate", e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        {/* ─── Items ──────────────────────────────────────────── */}
+        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-[#162B4D] uppercase tracking-wider">Items Purchased</span>
+              <div className="flex-1 h-px bg-gray-200 w-8" />
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={addItem} className="gap-1">
+              <Plus className="w-3.5 h-3.5" /> Add Item
+            </Button>
+          </div>
+
+          <div className="space-y-5">
+            {form.items.map((item, idx) => (
+              <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
+                {/* Item header */}
+                <div className="flex items-center justify-between bg-gray-50 px-4 py-2.5 border-b border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-[#162B4D] text-white text-[11px] font-bold flex items-center justify-center">{idx + 1}</div>
+                    <span className="text-sm font-semibold text-gray-600">Item #{idx + 1}</span>
+                  </div>
+                  {form.items.length > 1 && (
+                    <button type="button" onClick={() => removeItem(idx)} className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1">
+                      <X className="w-3.5 h-3.5" /> Remove
+                    </button>
+                  )}
+                </div>
+
+                <div className="p-4 space-y-5">
+                  {/* ── Product Information ── */}
+                  <div>
+                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                      <span className="w-4 h-px bg-indigo-300 inline-block" />Product Information
+                    </p>
+                    <div className="space-y-3">
+                      <div>
+                        <FieldLabel required>Product Name</FieldLabel>
+                        <Input value={item.productName} onChange={e => setItem(idx, "productName", e.target.value)}
+                          placeholder="e.g. Rohu Fish, King Prawns" required />
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <FieldLabel>Category</FieldLabel>
+                          <Input value={item.category} onChange={e => setItem(idx, "category", e.target.value)} placeholder="e.g. Fish" />
+                        </div>
+                        <div>
+                          <FieldLabel>Sub Category</FieldLabel>
+                          <Input value={item.subCategory} onChange={e => setItem(idx, "subCategory", e.target.value)} placeholder="e.g. Freshwater" />
+                        </div>
+                        <div>
+                          <FieldLabel>Status</FieldLabel>
+                          <select value={item.productStatus} onChange={e => setItem(idx, "productStatus", e.target.value)}
+                            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                            <option value="available">Available</option>
+                            <option value="out_of_stock">Out of Stock</option>
+                            <option value="coming_soon">Coming Soon</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <FieldLabel>Description</FieldLabel>
+                        <Input value={item.description} onChange={e => setItem(idx, "description", e.target.value)} placeholder="Short description (optional)" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Purchase Details ── */}
+                  <div>
+                    <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                      <span className="w-4 h-px bg-amber-300 inline-block" />Purchase Details <span className="text-gray-400 font-normal normal-case">(from vendor)</span>
+                    </p>
+                    <div className="grid grid-cols-4 gap-4">
+                      <div>
+                        <FieldLabel required>Quantity</FieldLabel>
+                        <Input type="text" inputMode="decimal"
+                          value={item.quantity}
+                          onChange={e => setItem(idx, "quantity", numOnly(e.target.value))}
+                          placeholder="0" />
+                      </div>
+                      <div>
+                        <FieldLabel>Unit</FieldLabel>
+                        <select value={item.unit} onChange={e => setItem(idx, "unit", e.target.value)}
+                          className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                          {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <FieldLabel required>Cost Price</FieldLabel>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+                          <Input type="text" inputMode="decimal"
+                            value={item.pricePerUnit}
+                            onChange={e => setItem(idx, "pricePerUnit", numOnly(e.target.value))}
+                            placeholder="0.00" className="pl-7" />
+                        </div>
+                      </div>
+                      <div>
+                        <FieldLabel>Expiry Date</FieldLabel>
+                        <Input type="date" value={item.expiryDate} onChange={e => setItem(idx, "expiryDate", e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center gap-1.5 text-sm text-gray-500">
+                      <IndianRupee className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Purchase total:</span>
+                      <span className="font-bold text-[#162B4D]">{formatRupees(Number(item.quantity) * Number(item.pricePerUnit))}</span>
+                    </div>
+                  </div>
+
+                  {/* ── Listing Details ── */}
+                  <div>
+                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                      <span className="w-4 h-px bg-emerald-300 inline-block" />Listing Details <span className="text-gray-400 font-normal normal-case">(for hub menu)</span>
+                    </p>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <FieldLabel>Selling Price</FieldLabel>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+                            <Input type="text" inputMode="decimal" value={item.sellingPrice}
+                              onChange={e => setItem(idx, "sellingPrice", numOnly(e.target.value))}
+                              placeholder="0.00" className="pl-7" />
+                          </div>
+                        </div>
+                        <div>
+                          <FieldLabel>MRP / Original Price</FieldLabel>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+                            <Input type="text" inputMode="decimal" value={item.originalPrice}
+                              onChange={e => setItem(idx, "originalPrice", numOnly(e.target.value))}
+                              placeholder="0.00" className="pl-7" />
+                          </div>
+                        </div>
+                        <div>
+                          <FieldLabel>Display Unit</FieldLabel>
+                          <select value={item.unit} onChange={e => setItem(idx, "unit", e.target.value)}
+                            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                            {PRODUCT_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <FieldLabel>Weight</FieldLabel>
+                          <Input value={item.weight} onChange={e => setItem(idx, "weight", e.target.value)} placeholder="e.g. 500g, 1kg" />
+                        </div>
+                        <div>
+                          <FieldLabel>Gross Weight</FieldLabel>
+                          <Input value={item.grossWeight} onChange={e => setItem(idx, "grossWeight", e.target.value)} placeholder="e.g. 550g" />
+                        </div>
+                        <div>
+                          <FieldLabel>Net Weight</FieldLabel>
+                          <Input value={item.netWeight} onChange={e => setItem(idx, "netWeight", e.target.value)} placeholder="e.g. 480g" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <FieldLabel>Pieces</FieldLabel>
+                          <Input value={item.pieces} onChange={e => setItem(idx, "pieces", e.target.value)} placeholder="e.g. 4-5 pcs" />
+                        </div>
+                        <div>
+                          <FieldLabel>Serves</FieldLabel>
+                          <Input value={item.serves} onChange={e => setItem(idx, "serves", e.target.value)} placeholder="e.g. 2-3 people" />
+                        </div>
+                        <div>
+                          <FieldLabel>Image URL</FieldLabel>
+                          <Input value={item.imageUrl} onChange={e => setItem(idx, "imageUrl", e.target.value)} placeholder="https://..." />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ─── Total ──────────────────────────────────────────── */}
+        <div className="bg-[#162B4D] text-white rounded-xl px-6 py-4 flex items-center justify-between">
+          <span className="font-semibold">Total Purchase Amount</span>
+          <span className="text-2xl font-bold">{formatRupees(totalAmount)}</span>
+        </div>
+
+        {/* ─── Notes ──────────────────────────────────────────── */}
+        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+          <FieldLabel>Notes</FieldLabel>
+          <Input value={form.notes} onChange={e => setField("notes", e.target.value)} placeholder="Any notes for this purchase..." />
+        </div>
+
+        {/* ─── Footer Actions ─────────────────────────────────── */}
+        <div className="flex items-center justify-between pb-4">
+          <Button type="button" variant="outline" onClick={onBack}>Cancel</Button>
+          <Button type="submit" disabled={saving} className="bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5">
+            <ShoppingCart className="w-4 h-4" />
+            {saving ? "Saving..." : "Save Purchase & Add to Hub"}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function Vendors() {
@@ -1219,6 +1636,16 @@ export default function Vendors() {
     loadVendors();
     if (viewVendor) setViewVendor(vendors.find(v => v.id === viewVendor.id) || viewVendor);
   };
+
+  if (purchaseVendor) {
+    return (
+      <AddPurchasePage
+        vendor={purchaseVendor}
+        onBack={() => setPurchaseVendor(null)}
+        onSaved={handlePurchaseSaved}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -1458,13 +1885,6 @@ export default function Vendors() {
         onClose={() => setViewVendor(null)}
         vendor={viewVendor}
         onAddPurchase={() => { setPurchaseVendor(viewVendor); setViewVendor(null); }}
-      />
-
-      <AddPurchaseModal
-        open={!!purchaseVendor}
-        onClose={() => setPurchaseVendor(null)}
-        vendor={purchaseVendor}
-        onSaved={handlePurchaseSaved}
       />
 
       <DeleteModal
