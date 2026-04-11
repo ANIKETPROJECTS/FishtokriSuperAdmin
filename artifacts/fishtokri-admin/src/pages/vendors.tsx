@@ -452,7 +452,7 @@ function VendorFormModal({ open, onClose, onSave, initial }: {
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{initial ? "Edit Vendor" : "Add New Vendor"}</DialogTitle>
         </DialogHeader>
@@ -464,7 +464,7 @@ function VendorFormModal({ open, onClose, onSave, initial }: {
             label="Profile Image"
             previewClassName="w-12 h-12 rounded-full"
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <Label>Vendor Name *</Label>
               <Input value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Mumbai Fish Market" required className="mt-1" />
