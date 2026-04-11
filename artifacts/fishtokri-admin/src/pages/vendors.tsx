@@ -1301,6 +1301,25 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
   const [hubProducts, setHubProducts] = useState<any[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
 
+  const [vendorHistory, setVendorHistory] = useState<Purchase[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyExpanded, setHistoryExpanded] = useState(true);
+  const HISTORY_LIMIT = 10;
+
+  const loadVendorHistory = useCallback(async (pg: number) => {
+    setHistoryLoading(true);
+    try {
+      const data = await apiFetch(`/api/vendors/${vendor.id}/purchases?page=${pg}&limit=${HISTORY_LIMIT}`);
+      setVendorHistory(data.purchases);
+      setHistoryTotal(data.total);
+    } catch { setVendorHistory([]); }
+    finally { setHistoryLoading(false); }
+  }, [vendor.id]);
+
+  useEffect(() => { loadVendorHistory(historyPage); }, [vendor.id, historyPage]);
+
   useEffect(() => {
     apiFetch("/api/super-hubs")
       .then(d => setSuperHubs(d.superHubs || []))
@@ -1476,7 +1495,9 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
         toast({ title: "Purchase saved!", description: `${validItems.length} product(s) added to sub hub menu.` });
       }
       onSaved();
-      onBack();
+      setForm(emptyPurchase());
+      setHistoryPage(1);
+      loadVendorHistory(1);
     } catch (err: any) {
       toast({ title: "Failed to save purchase", description: err.message, variant: "destructive" });
     } finally {
@@ -1916,13 +1937,261 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
 
         {/* ─── Footer Actions ─────────────────────────────────── */}
         <div className="flex items-center justify-between pb-4">
-          <Button type="button" variant="outline" onClick={onBack}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={onBack}>Back to Vendors</Button>
           <Button type="submit" disabled={saving} className="bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5">
             <ShoppingCart className="w-4 h-4" />
             {saving ? "Saving..." : "Save Purchase & Add to Hub"}
           </Button>
         </div>
       </form>
+
+      {/* ─── Vendor Purchase History ─────────────────────────── */}
+      <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setHistoryExpanded(e => !e)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-[#162B4D]" />
+            <span className="font-semibold text-[#162B4D] text-sm">
+              Purchase History — {vendor.name}
+            </span>
+            {historyTotal > 0 && (
+              <span className="text-[11px] bg-[#162B4D]/10 text-[#162B4D] font-bold px-2 py-0.5 rounded-full">
+                {historyTotal} record{historyTotal !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${historyExpanded ? "rotate-180" : ""}`} />
+        </button>
+
+        {historyExpanded && (
+          <div className="px-5 pb-5 border-t border-gray-100">
+            {historyLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="w-5 h-5 animate-spin text-gray-300" />
+              </div>
+            ) : vendorHistory.length === 0 ? (
+              <div className="text-center py-8">
+                <ShoppingCart className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                <p className="text-sm text-gray-400">No purchase records yet</p>
+              </div>
+            ) : (
+              <div className="space-y-3 mt-4">
+                {vendorHistory.map(p => (
+                  <div key={p.id} className="border border-gray-100 rounded-lg p-3.5 bg-gray-50 hover:bg-white transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-[#162B4D]">
+                          {p.invoiceNumber || "No Invoice #"}
+                        </span>
+                        <span className="text-[11px] text-gray-400">•</span>
+                        <span className="text-[11px] text-gray-500">{formatDate(p.purchaseDate)}</span>
+                      </div>
+                      <span className="text-sm font-bold text-amber-600">{formatRupees(p.totalAmount)}</span>
+                    </div>
+                    <div className="space-y-1">
+                      {p.items.map((item, i) => (
+                        <div key={i} className="flex items-center justify-between text-xs text-gray-600">
+                          <div className="flex items-center gap-1.5">
+                            <Package className="w-3 h-3 text-gray-300" />
+                            <span className="font-medium">{item.productName}</span>
+                            <span className="text-gray-400">({item.quantity} {item.unit})</span>
+                          </div>
+                          <span>{formatRupees(item.totalPrice)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {p.notes && (
+                      <p className="text-[11px] text-gray-400 mt-1.5 italic border-t border-gray-100 pt-1.5">{p.notes}</p>
+                    )}
+                  </div>
+                ))}
+
+                {Math.ceil(historyTotal / HISTORY_LIMIT) > 1 && (
+                  <div className="flex items-center justify-between pt-1">
+                    <Button size="sm" variant="outline" className="h-7"
+                      onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                      disabled={historyPage === 1}>
+                      <ChevronLeft className="w-3 h-3" />
+                    </Button>
+                    <span className="text-xs text-gray-500">
+                      Page {historyPage} of {Math.ceil(historyTotal / HISTORY_LIMIT)}
+                    </span>
+                    <Button size="sm" variant="outline" className="h-7"
+                      onClick={() => setHistoryPage(p => Math.min(Math.ceil(historyTotal / HISTORY_LIMIT), p + 1))}
+                      disabled={historyPage === Math.ceil(historyTotal / HISTORY_LIMIT)}>
+                      <ChevronRight className="w-3 h-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── ALL TRANSACTIONS PAGE ────────────────────────────────────────────────────
+
+function AllTransactionsPage({ onBack }: { onBack: () => void }) {
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const LIMIT = 20;
+
+  const loadPurchases = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
+      if (search) params.set("search", search);
+      const data = await apiFetch(`/api/vendors/all-purchases?${params}`);
+      setPurchases(data.purchases);
+      setTotal(data.total);
+    } catch { setPurchases([]); }
+    finally { setLoading(false); }
+  }, [page, search]);
+
+  useEffect(() => { loadPurchases(); }, [loadPurchases]);
+
+  useEffect(() => {
+    const t = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const totalPages = Math.ceil(total / LIMIT);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#162B4D] transition-colors">
+            <ChevronLeft className="w-4 h-4" /> Back to Vendors
+          </button>
+          <span className="text-gray-300">|</span>
+          <div>
+            <h1 className="text-xl font-bold text-[#162B4D] leading-none">Transaction History</h1>
+            <p className="text-xs text-gray-400 mt-0.5">All vendor purchases across all hubs</p>
+          </div>
+        </div>
+        <button onClick={loadPurchases} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-[#162B4D] transition-colors">
+          <RefreshCw className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Search + Stats */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            placeholder="Search by vendor or invoice..."
+            className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20 focus:border-[#162B4D]/40"
+          />
+        </div>
+        {!loading && (
+          <span className="text-sm text-gray-400">{total} transaction{total !== 1 ? "s" : ""}</span>
+        )}
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-100 h-28 animate-pulse" />
+          ))}
+        </div>
+      ) : purchases.length === 0 ? (
+        <div className="text-center py-20 bg-white rounded-xl border border-gray-100">
+          <ShoppingCart className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-500 font-medium">No transactions found</p>
+          <p className="text-gray-400 text-sm mt-1">{search ? "Try a different search term" : "Purchase records will appear here"}</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {purchases.map(p => (
+            <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+              {/* Purchase header */}
+              <div className="flex items-start justify-between mb-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-[#162B4D]/60" />
+                      <span className="text-sm font-bold text-[#162B4D]">{p.vendorName || "Unknown Vendor"}</span>
+                    </div>
+                    {p.invoiceNumber && (
+                      <>
+                        <span className="text-gray-300">·</span>
+                        <div className="flex items-center gap-1">
+                          <Hash className="w-3 h-3 text-gray-400" />
+                          <span className="text-xs text-gray-500 font-mono">{p.invoiceNumber}</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-gray-400">
+                    <Calendar className="w-3 h-3" />
+                    <span>{formatDate(p.purchaseDate)}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-bold text-amber-600">{formatRupees(p.totalAmount)}</p>
+                  <p className="text-[11px] text-gray-400">{p.items.length} item{p.items.length !== 1 ? "s" : ""}</p>
+                </div>
+              </div>
+
+              {/* Items */}
+              <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
+                {p.items.map((item, i) => (
+                  <div key={i} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Package className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                      <span className="font-medium text-gray-700">{item.productName}</span>
+                      <span className="text-xs text-gray-400 bg-gray-200/60 px-1.5 py-0.5 rounded">
+                        {item.quantity} {item.unit}
+                      </span>
+                      {item.expiryDate && (
+                        <span className="text-[11px] text-orange-500">exp: {formatDate(item.expiryDate)}</span>
+                      )}
+                    </div>
+                    <span className="text-gray-600 font-medium text-xs">{formatRupees(item.totalPrice)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Notes */}
+              {p.notes && (
+                <p className="text-xs text-gray-400 italic mt-2 flex items-start gap-1.5">
+                  <FileText className="w-3 h-3 mt-0.5 shrink-0" />
+                  {p.notes}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="h-8">
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="h-8">
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1946,12 +2215,13 @@ export default function Vendors() {
   const [sort, setSort] = useState("createdAt_desc");
   const [layout, setLayout] = useState<"grid" | "list">("grid");
 
-  // Modals
+  // Modals & Views
   const [addOpen, setAddOpen] = useState(false);
   const [editVendor, setEditVendor] = useState<Vendor | null>(null);
   const [viewVendor, setViewVendor] = useState<Vendor | null>(null);
   const [purchaseVendor, setPurchaseVendor] = useState<Vendor | null>(null);
   const [deleteVendor, setDeleteVendor] = useState<Vendor | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const loadVendors = useCallback(async () => {
     setLoading(true);
@@ -2007,6 +2277,10 @@ export default function Vendors() {
     if (viewVendor) setViewVendor(vendors.find(v => v.id === viewVendor.id) || viewVendor);
   };
 
+  if (showHistory) {
+    return <AllTransactionsPage onBack={() => setShowHistory(false)} />;
+  }
+
   if (purchaseVendor) {
     return (
       <AddPurchasePage
@@ -2025,9 +2299,14 @@ export default function Vendors() {
           <h1 className="text-2xl font-bold text-[#162B4D]">Vendors</h1>
           <p className="text-sm text-gray-400 mt-0.5">Manage your suppliers and track purchases</p>
         </div>
-        <Button className="bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5" onClick={() => setAddOpen(true)}>
-          <Plus className="w-4 h-4" /> Add Vendor
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-1.5 border-[#162B4D]/20 text-[#162B4D] hover:bg-[#162B4D]/5" onClick={() => setShowHistory(true)}>
+            <FileText className="w-4 h-4" /> Transaction History
+          </Button>
+          <Button className="bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5" onClick={() => setAddOpen(true)}>
+            <Plus className="w-4 h-4" /> Add Vendor
+          </Button>
+        </div>
       </div>
 
       {/* Stats Bar */}

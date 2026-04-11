@@ -256,6 +256,33 @@ router.delete("/:id", async (req, res) => {
 
 // ─── PURCHASE ROUTES ──────────────────────────────────────────────────────────
 
+router.get("/all-purchases", async (req, res) => {
+  try {
+    const Purchase = getPurchaseModel();
+    const { page = "1", limit = "30", search, vendorId } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
+    const skip = (pageNum - 1) * limitNum;
+
+    const filter: Record<string, any> = {};
+    if (vendorId) filter.vendorId = vendorId;
+    if (search) {
+      const regex = new RegExp(search, "i");
+      filter.$or = [{ vendorName: regex }, { invoiceNumber: regex }];
+    }
+
+    const [purchases, total] = await Promise.all([
+      Purchase.find(filter).sort({ purchaseDate: -1 }).skip(skip).limit(limitNum),
+      Purchase.countDocuments(filter),
+    ]);
+
+    res.json({ purchases: purchases.map(serializePurchase), total, page: pageNum, limit: limitNum });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get all purchases");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch all purchases" });
+  }
+});
+
 router.get("/:vendorId/purchases", async (req, res) => {
   try {
     const Purchase = getPurchaseModel();
