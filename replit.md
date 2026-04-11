@@ -20,11 +20,17 @@ Preview served at port **5000**. Vite proxies `/api/*` → `localhost:8080`.
 
 ---
 
-## Required Secret
+## Required Secrets
 
 | Name | Description |
 |------|-------------|
 | `MONGODB_URI` | MongoDB Atlas connection string. DB name overridden to `fishtokri_admin`. |
+| `SESSION_SECRET` | JWT signing secret used by the API authentication routes. |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name used by image uploads. |
+| `CLOUDINARY_API_KEY` | Cloudinary API key used by image uploads. |
+| `CLOUDINARY_API_SECRET` | Cloudinary API secret used by image uploads. |
+
+Sensitive runtime values are read from Replit Secrets/environment variables. Imported hardcoded service credentials were removed from the PM2 ecosystem config during migration.
 
 ---
 
