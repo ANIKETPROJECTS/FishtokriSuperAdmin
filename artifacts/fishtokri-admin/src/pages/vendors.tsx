@@ -69,10 +69,16 @@ interface Vendor {
   profileImageUrl?: string;
 }
 
+interface BatchEntry {
+  quantity: string;
+  shelfLifeDays: string;
+}
+
 interface PurchaseItem {
   id?: string;
   productMode: "existing" | "new";
   existingProductId: string;
+  existingCategory: string;
   productName: string;
   quantity: number | string;
   unit: string;
@@ -99,6 +105,7 @@ interface PurchaseItem {
   sectionIdsText: string;
   couponIdsText: string;
   existingInventoryBatches: any[];
+  batches: BatchEntry[];
 }
 
 interface Purchase {
@@ -124,14 +131,17 @@ function parseCats(cat: string): string[] {
   return cat ? cat.split(",").map(s => s.trim()).filter(Boolean) : [];
 }
 
+const emptyBatch = (): BatchEntry => ({ quantity: "", shelfLifeDays: "" });
+
 const emptyItem = (): PurchaseItem => ({
-  productMode: "new", existingProductId: "",
+  productMode: "new", existingProductId: "", existingCategory: "",
   productName: "", quantity: "", unit: "kg", displayUnit: "per kg", pricePerUnit: "", totalPrice: 0, expiryDate: "",
   description: "", category: "", subCategory: "",
   sellingPrice: "", originalPrice: "", discountPct: "",
   weight: "", grossWeight: "", netWeight: "",
   pieces: "", serves: "", imageUrl: "", productStatus: "available",
   limitedStockNote: "", shelfLifeDays: "", recipesText: "", sectionIdsText: "", couponIdsText: "", existingInventoryBatches: [],
+  batches: [emptyBatch()],
 });
 
 const PRODUCT_UNITS = ["per kg", "per piece", "per dozen", "per box", "per litre", "per pack", "per g", "per 500g"];
@@ -1290,7 +1300,6 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
   const [hubsLoading, setHubsLoading] = useState(true);
   const [hubProducts, setHubProducts] = useState<any[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
-  const [productCategoryFilter, setProductCategoryFilter] = useState("all");
 
   useEffect(() => {
     apiFetch("/api/super-hubs")
@@ -1304,7 +1313,6 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     setSubHubId("");
     setSubHubs([]);
     setHubProducts([]);
-    setProductCategoryFilter("all");
     if (!id) return;
     apiFetch(`/api/super-hubs/${id}`)
       .then(d => setSubHubs(d.subHubs || []))
@@ -1314,7 +1322,6 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
   useEffect(() => {
     if (!subHubId) {
       setHubProducts([]);
-      setProductCategoryFilter("all");
       return;
     }
     setProductsLoading(true);
@@ -1344,13 +1351,46 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
           totalPrice: previous.totalPrice,
           expiryDate: previous.expiryDate,
           shelfLifeDays: previous.shelfLifeDays,
+          batches: [emptyBatch()],
+          existingCategory: "",
         };
+      }
+      if (k === "existingCategory") {
+        items[idx].existingProductId = "";
+        items[idx].productName = "";
+        items[idx].existingInventoryBatches = [];
       }
       if (k === "quantity" || k === "pricePerUnit") {
         const qty = k === "quantity" ? Number(v) : Number(items[idx].quantity);
         const price = k === "pricePerUnit" ? Number(v) : Number(items[idx].pricePerUnit);
         items[idx].totalPrice = qty * price;
       }
+      return { ...f, items };
+    });
+  };
+
+  const setBatch = (itemIdx: number, batchIdx: number, k: keyof BatchEntry, v: string) => {
+    setForm(f => {
+      const items = [...f.items];
+      const batches = [...items[itemIdx].batches];
+      batches[batchIdx] = { ...batches[batchIdx], [k]: v };
+      items[itemIdx] = { ...items[itemIdx], batches };
+      return { ...f, items };
+    });
+  };
+
+  const addBatch = (itemIdx: number) => {
+    setForm(f => {
+      const items = [...f.items];
+      items[itemIdx] = { ...items[itemIdx], batches: [...items[itemIdx].batches, emptyBatch()] };
+      return { ...f, items };
+    });
+  };
+
+  const removeBatch = (itemIdx: number, batchIdx: number) => {
+    setForm(f => {
+      const items = [...f.items];
+      items[itemIdx] = { ...items[itemIdx], batches: items[itemIdx].batches.filter((_, i) => i !== batchIdx) };
       return { ...f, items };
     });
   };
@@ -1363,15 +1403,13 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     return Array.from(new Set(values)).sort((a, b) => String(a).localeCompare(String(b)));
   }, [hubProducts]);
 
-  const filteredHubProducts = useMemo(() => {
-    return productCategoryFilter === "all" ? hubProducts : hubProducts.filter((p) => p.category === productCategoryFilter);
-  }, [hubProducts, productCategoryFilter]);
-
   const applyExistingProduct = (idx: number, productId: string) => {
     const product = hubProducts.find((p) => getDocId(p) === productId);
     setForm(f => {
       const items = [...f.items];
-      items[idx] = product ? productToItem(product, { ...items[idx], existingProductId: productId }) : { ...items[idx], existingProductId: productId };
+      items[idx] = product
+        ? { ...productToItem(product, { ...items[idx], existingProductId: productId }), existingCategory: items[idx].existingCategory }
+        : { ...items[idx], existingProductId: productId };
       return { ...f, items };
     });
   };
@@ -1385,8 +1423,13 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     e.preventDefault();
     if (!superHubId) { toast({ title: "Please select a Super Hub", variant: "destructive" }); return; }
     if (!subHubId) { toast({ title: "Please select a Sub Hub", variant: "destructive" }); return; }
-    const validItems = form.items.filter(i => i.productName.trim() && Number(i.quantity) > 0);
-    if (validItems.length === 0) { toast({ title: "Add at least one item with name and quantity", variant: "destructive" }); return; }
+    const validItems = form.items.filter(i => {
+      if (i.productMode === "existing") {
+        return i.productName.trim() && i.existingProductId && i.batches.some(b => Number(b.quantity) > 0);
+      }
+      return i.productName.trim() && Number(i.quantity) > 0;
+    });
+    if (validItems.length === 0) { toast({ title: "Add at least one item with a product and batch quantity", variant: "destructive" }); return; }
     setSaving(true);
     try {
       await apiFetch(`/api/vendors/${vendor.id}/purchases`, {
@@ -1398,13 +1441,26 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
         try {
           const existingProduct = item.productMode === "existing" ? hubProducts.find((p) => getDocId(p) === item.existingProductId) : null;
           if (item.productMode === "existing" && item.existingProductId && existingProduct) {
-            const payload = productPayload(item, form.purchaseDate, Array.isArray(existingProduct.inventoryBatches) ? existingProduct.inventoryBatches : []);
+            const existingBatches = Array.isArray(existingProduct.inventoryBatches) ? existingProduct.inventoryBatches : [];
+            const newBatches = item.batches
+              .filter(b => Number(b.quantity) > 0)
+              .map(b => {
+                const entryDate = new Date(form.purchaseDate);
+                const shelfLifeDays = Number(b.shelfLifeDays) || 0;
+                const expiryDate = shelfLifeDays > 0 ? new Date(entryDate.getTime() + shelfLifeDays * 24 * 60 * 60 * 1000) : null;
+                const batch: any = { quantity: Number(b.quantity), shelfLifeDays, entryDate };
+                if (expiryDate) batch.expiryDate = expiryDate;
+                return batch;
+              });
+            const batchTotalQty = newBatches.reduce((s, b) => s + b.quantity, 0);
+            const payload = {
+              ...existingProduct,
+              inventoryBatches: [...existingBatches, ...newBatches],
+              quantity: (Number(existingProduct.quantity) || 0) + batchTotalQty,
+            };
             await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/${item.existingProductId}`, {
               method: "PUT",
-              body: JSON.stringify({
-                ...payload,
-                quantity: (Number(existingProduct.quantity) || 0) + (Number(item.quantity) || 0),
-              }),
+              body: JSON.stringify(payload),
             });
           } else {
             await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, {
@@ -1575,9 +1631,25 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                         </button>
                       </div>
                       {item.productMode === "existing" ? (
-                        <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                        <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 space-y-3">
+                          {/* Category dropdown */}
                           <div>
-                            <FieldLabel required>Existing Product</FieldLabel>
+                            <FieldLabel required>Category</FieldLabel>
+                            <select
+                              value={item.existingCategory}
+                              onChange={e => setItem(idx, "existingCategory", e.target.value)}
+                              disabled={!subHubId || productsLoading}
+                              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                            >
+                              <option value="">{!subHubId ? "Select sub hub first" : productsLoading ? "Loading..." : "All categories"}</option>
+                              {productCategories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </select>
+                          </div>
+                          {/* Product dropdown (filtered by selected category) */}
+                          <div>
+                            <FieldLabel required>Product</FieldLabel>
                             <select
                               value={item.existingProductId}
                               onChange={e => applyExistingProduct(idx, e.target.value)}
@@ -1586,13 +1658,69 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                               className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                             >
                               <option value="">{!subHubId ? "Select sub hub first" : productsLoading ? "Loading products..." : hubProducts.length === 0 ? "No products found" : "Choose product..."}</option>
-                              {hubProducts.map((product) => (
+                              {(item.existingCategory
+                                ? hubProducts.filter(p => p.category === item.existingCategory)
+                                : hubProducts
+                              ).map(product => (
                                 <option key={getDocId(product)} value={getDocId(product)}>
-                                  {product.category ? `${product.category} / ` : ""}{product.subCategory ? `${product.subCategory} / ` : ""}{product.name}
+                                  {product.name}{product.subCategory ? ` (${product.subCategory})` : ""}
                                 </option>
                               ))}
                             </select>
                           </div>
+                          {/* Batches */}
+                          {item.existingProductId && (
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <FieldLabel>Batches</FieldLabel>
+                                <button
+                                  type="button"
+                                  onClick={() => addBatch(idx)}
+                                  className="flex items-center gap-1 text-xs font-semibold text-[#162B4D] hover:text-[#162B4D]/70 transition-colors"
+                                >
+                                  <Plus className="w-3.5 h-3.5" /> Add Batch
+                                </button>
+                              </div>
+                              <div className="space-y-2">
+                                {item.batches.map((batch, bIdx) => (
+                                  <div key={bIdx} className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
+                                    <span className="text-xs text-gray-400 font-medium w-14 shrink-0">Batch {bIdx + 1}</span>
+                                    <div className="flex-1">
+                                      <label className="block text-[10px] text-gray-400 mb-0.5">Quantity</label>
+                                      <Input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={batch.quantity}
+                                        onChange={e => setBatch(idx, bIdx, "quantity", numOnly(e.target.value))}
+                                        placeholder="0"
+                                        className="h-8 text-sm"
+                                      />
+                                    </div>
+                                    <div className="flex-1">
+                                      <label className="block text-[10px] text-gray-400 mb-0.5">Shelf Life (days)</label>
+                                      <Input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={batch.shelfLifeDays}
+                                        onChange={e => setBatch(idx, bIdx, "shelfLifeDays", numOnly(e.target.value))}
+                                        placeholder="e.g. 3"
+                                        className="h-8 text-sm"
+                                      />
+                                    </div>
+                                    {item.batches.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => removeBatch(idx, bIdx)}
+                                        className="text-red-400 hover:text-red-600 transition-colors mt-4"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <>
@@ -1629,7 +1757,8 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                     </div>
                   </div>
 
-                  {/* ── Purchase Details ── */}
+                  {/* ── Purchase Details (new products only) ── */}
+                  {item.productMode === "new" && (
                   <div>
                     <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                       <span className="w-4 h-px bg-amber-300 inline-block" />Purchase Details <span className="text-gray-400 font-normal normal-case">(from vendor)</span>
@@ -1674,6 +1803,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                       <span className="font-bold text-[#162B4D]">{formatRupees(Number(item.quantity) * Number(item.pricePerUnit))}</span>
                     </div>
                   </div>
+                  )}
 
                   {item.productMode === "new" && (
                   <div>
