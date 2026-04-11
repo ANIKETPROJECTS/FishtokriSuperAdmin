@@ -1,7 +1,11 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "fishtokri-secret-key-change-in-prod";
+const JWT_SECRET = process.env.SESSION_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error("SESSION_SECRET must be set.");
+}
 
 export interface AuthenticatedRequest extends Request {
   admin?: {

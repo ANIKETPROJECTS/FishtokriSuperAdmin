@@ -8,7 +8,11 @@ const router: IRouter = Router();
 
 const ADMIN_EMAIL = "admin@fishtokri.com";
 const ADMIN_PASSWORD = "FishTokri@Admin2024";
-const JWT_SECRET = process.env.SESSION_SECRET || "fishtokri-secret-key-change-in-prod";
+const JWT_SECRET = process.env.SESSION_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error("SESSION_SECRET must be set.");
+}
 
 const loginSchema = z.object({
   email: z.string().min(1),
