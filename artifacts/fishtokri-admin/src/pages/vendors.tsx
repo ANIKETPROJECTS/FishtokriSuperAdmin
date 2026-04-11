@@ -16,6 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { ImageUpload } from "@/components/image-upload";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ interface Vendor {
   totalPurchases: number;
   totalSpent: number;
   createdAt: string;
+  profileImageUrl?: string;
 }
 
 interface PurchaseItem {
@@ -154,8 +156,10 @@ function VendorCard({ vendor, onEdit, onDelete, onView, onAddPurchase }: {
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow p-5 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-[#162B4D]/10 flex items-center justify-center flex-shrink-0">
-            <Building2 className="w-5 h-5 text-[#162B4D]" />
+          <div className="w-10 h-10 rounded-full bg-[#162B4D]/10 flex items-center justify-center flex-shrink-0 overflow-hidden border border-gray-100">
+            {vendor.profileImageUrl
+              ? <img src={vendor.profileImageUrl} alt={vendor.name} className="w-full h-full object-cover" />
+              : <Building2 className="w-5 h-5 text-[#162B4D]" />}
           </div>
           <div className="min-w-0">
             <p className="font-semibold text-[#162B4D] text-sm truncate">{vendor.name}</p>
@@ -228,8 +232,10 @@ function VendorRow({ vendor, onEdit, onDelete, onView, onAddPurchase }: {
 }) {
   return (
     <div className="bg-white rounded-lg border border-gray-100 px-4 py-3 flex items-center gap-4 hover:shadow-sm transition-shadow">
-      <div className="w-9 h-9 rounded-full bg-[#162B4D]/10 flex items-center justify-center flex-shrink-0">
-        <Building2 className="w-4 h-4 text-[#162B4D]" />
+      <div className="w-9 h-9 rounded-full bg-[#162B4D]/10 flex items-center justify-center flex-shrink-0 overflow-hidden border border-gray-100">
+        {vendor.profileImageUrl
+          ? <img src={vendor.profileImageUrl} alt={vendor.name} className="w-full h-full object-cover" />
+          : <Building2 className="w-4 h-4 text-[#162B4D]" />}
       </div>
       <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-4">
         <div className="min-w-0">
@@ -378,10 +384,13 @@ function VendorFormModal({ open, onClose, onSave, initial }: {
   // Multi-category state
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
   const [otherText, setOtherText] = useState("");
+  // Profile image
+  const [profileImageUrl, setProfileImageUrl] = useState("");
 
   useEffect(() => {
     if (open) {
       setTouched({});
+      setProfileImageUrl(initial?.profileImageUrl || "");
       const base = initial ? {
         name: initial.name, phone: initial.phone, email: initial.email,
         address: initial.address, category: initial.category, status: initial.status, notes: initial.notes,
@@ -435,7 +444,7 @@ function VendorFormModal({ open, onClose, onSave, initial }: {
       if (c === CATEGORY_OTHER) return otherText.trim() || CATEGORY_OTHER;
       return c;
     });
-    const payload = { ...form, category: finalCats.join(", ") };
+    const payload = { ...form, category: finalCats.join(", "), profileImageUrl };
     setSaving(true);
     try { await onSave(payload); onClose(); }
     finally { setSaving(false); }
@@ -448,6 +457,13 @@ function VendorFormModal({ open, onClose, onSave, initial }: {
           <DialogTitle>{initial ? "Edit Vendor" : "Add New Vendor"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <ImageUpload
+            value={profileImageUrl}
+            onChange={setProfileImageUrl}
+            folder="fishtokri/vendors"
+            label="Profile Image"
+            previewClassName="w-12 h-12 rounded-full"
+          />
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <Label>Vendor Name *</Label>
@@ -782,8 +798,10 @@ function VendorDetailModal({ open, onClose, vendor, onAddPurchase }: {
         <DialogHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#162B4D]/10 flex items-center justify-center">
-                <Building2 className="w-5 h-5 text-[#162B4D]" />
+              <div className="w-10 h-10 rounded-full bg-[#162B4D]/10 flex items-center justify-center overflow-hidden border border-gray-100">
+                {vendor.profileImageUrl
+                  ? <img src={vendor.profileImageUrl} alt={vendor.name} className="w-full h-full object-cover" />
+                  : <Building2 className="w-5 h-5 text-[#162B4D]" />}
               </div>
               <div>
                 <DialogTitle className="text-left">{vendor.name}</DialogTitle>
