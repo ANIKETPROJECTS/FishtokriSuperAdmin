@@ -259,7 +259,7 @@ router.delete("/:id", async (req, res) => {
 router.get("/all-purchases", async (req, res) => {
   try {
     const Purchase = getPurchaseModel();
-    const { page = "1", limit = "30", search, vendorId } = req.query as Record<string, string>;
+    const { page = "1", limit = "30", search, vendorId, sort = "date_desc", dateFrom, dateTo } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page, 10));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
     const skip = (pageNum - 1) * limitNum;
@@ -270,9 +270,24 @@ router.get("/all-purchases", async (req, res) => {
       const regex = new RegExp(search, "i");
       filter.$or = [{ vendorName: regex }, { invoiceNumber: regex }];
     }
+    if (dateFrom || dateTo) {
+      filter.purchaseDate = {};
+      if (dateFrom) filter.purchaseDate.$gte = new Date(dateFrom);
+      if (dateTo) { const d = new Date(dateTo); d.setHours(23, 59, 59, 999); filter.purchaseDate.$lte = d; }
+    }
+
+    const sortMap: Record<string, Record<string, 1 | -1>> = {
+      date_desc: { purchaseDate: -1 },
+      date_asc: { purchaseDate: 1 },
+      amount_desc: { totalAmount: -1 },
+      amount_asc: { totalAmount: 1 },
+      vendor_asc: { vendorName: 1 },
+      vendor_desc: { vendorName: -1 },
+    };
+    const sortObj = sortMap[sort] ?? { purchaseDate: -1 };
 
     const [purchases, total] = await Promise.all([
-      Purchase.find(filter).sort({ purchaseDate: -1 }).skip(skip).limit(limitNum),
+      Purchase.find(filter).sort(sortObj).skip(skip).limit(limitNum),
       Purchase.countDocuments(filter),
     ]);
 
@@ -280,6 +295,47 @@ router.get("/all-purchases", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to get all purchases");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch all purchases" });
+  }
+});
+
+router.put("/purchases/:purchaseId", async (req, res) => {
+  try {
+    const Purchase = getPurchaseModel();
+    const purchase = await Purchase.findById(req.params.purchaseId);
+    if (!purchase) { res.status(404).json({ error: "NotFound", message: "Purchase not found" }); return; }
+
+    const { invoiceNumber, purchaseDate, notes } = req.body;
+    if (invoiceNumber !== undefined) (purchase as any).invoiceNumber = invoiceNumber.trim();
+    if (purchaseDate) (purchase as any).purchaseDate = new Date(purchaseDate);
+    if (notes !== undefined) (purchase as any).notes = notes.trim();
+
+    await purchase.save();
+    res.json({ purchase: serializePurchase(purchase) });
+  } catch (err) {
+    req.log.error({ err }, "Failed to update purchase");
+    res.status(500).json({ error: "InternalError", message: "Failed to update purchase" });
+  }
+});
+
+router.delete("/purchases/:purchaseId", async (req, res) => {
+  try {
+    const Purchase = getPurchaseModel();
+    const Vendor = getVendorModel();
+    const purchase = await Purchase.findById(req.params.purchaseId);
+    if (!purchase) { res.status(404).json({ error: "NotFound", message: "Purchase not found" }); return; }
+
+    const vendor = await Vendor.findById((purchase as any).vendorId);
+    if (vendor) {
+      (vendor as any).totalPurchases = Math.max(0, ((vendor as any).totalPurchases || 1) - 1);
+      (vendor as any).totalSpent = Math.max(0, ((vendor as any).totalSpent || 0) - ((purchase as any).totalAmount || 0));
+      await vendor.save();
+    }
+
+    await Purchase.findByIdAndDelete(req.params.purchaseId);
+    res.json({ message: "Purchase deleted" });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete purchase");
+    res.status(500).json({ error: "InternalError", message: "Failed to delete purchase" });
   }
 });
 

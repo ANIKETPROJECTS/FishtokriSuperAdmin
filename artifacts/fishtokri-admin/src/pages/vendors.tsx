@@ -4,7 +4,7 @@ import {
   Building2, Phone, Mail, MapPin, Trash2, Edit2, Eye, Package,
   ShoppingCart, X, ChevronLeft, ChevronRight, RefreshCw, Tag,
   IndianRupee, TrendingUp, Calendar, FileText, ChevronDown, Check,
-  Boxes, Hash,
+  Boxes, Hash, History, Filter, LayoutList, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -287,12 +287,13 @@ function CategoryBadge({ category }: { category: string }) {
 
 // ─── VENDOR CARD (GRID) ───────────────────────────────────────────────────────
 
-function VendorCard({ vendor, onEdit, onDelete, onView, onAddPurchase }: {
+function VendorCard({ vendor, onEdit, onDelete, onView, onAddPurchase, onViewHistory }: {
   vendor: Vendor;
   onEdit: (v: Vendor) => void;
   onDelete: (v: Vendor) => void;
   onView: (v: Vendor) => void;
   onAddPurchase: (v: Vendor) => void;
+  onViewHistory: (v: Vendor) => void;
 }) {
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow p-5 flex flex-col gap-3">
@@ -352,6 +353,9 @@ function VendorCard({ vendor, onEdit, onDelete, onView, onAddPurchase }: {
         <Button size="sm" className="flex-1 h-7 text-xs bg-[#162B4D] hover:bg-[#1e3a6e] text-white" onClick={() => onAddPurchase(vendor)}>
           <ShoppingCart className="w-3 h-3 mr-1" /> Buy
         </Button>
+        <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => onViewHistory(vendor)}>
+          <History className="w-3 h-3 mr-1" /> History
+        </Button>
         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600" onClick={() => onEdit(vendor)}>
           <Edit2 className="w-3.5 h-3.5" />
         </Button>
@@ -365,12 +369,13 @@ function VendorCard({ vendor, onEdit, onDelete, onView, onAddPurchase }: {
 
 // ─── VENDOR ROW (LIST) ────────────────────────────────────────────────────────
 
-function VendorRow({ vendor, onEdit, onDelete, onView, onAddPurchase }: {
+function VendorRow({ vendor, onEdit, onDelete, onView, onAddPurchase, onViewHistory }: {
   vendor: Vendor;
   onEdit: (v: Vendor) => void;
   onDelete: (v: Vendor) => void;
   onView: (v: Vendor) => void;
   onAddPurchase: (v: Vendor) => void;
+  onViewHistory: (v: Vendor) => void;
 }) {
   return (
     <div className="bg-white rounded-lg border border-gray-100 px-4 py-3 flex items-center gap-4 hover:shadow-sm transition-shadow">
@@ -400,6 +405,9 @@ function VendorRow({ vendor, onEdit, onDelete, onView, onAddPurchase }: {
           </Button>
           <Button size="sm" className="h-7 text-xs px-2 bg-[#162B4D] hover:bg-[#1e3a6e] text-white" onClick={() => onAddPurchase(vendor)}>
             <ShoppingCart className="w-3 h-3 mr-1" /> Buy
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs px-2 text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => onViewHistory(vendor)}>
+            <History className="w-3 h-3 mr-1" /> History
           </Button>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600" onClick={() => onEdit(vendor)}>
             <Edit2 className="w-3.5 h-3.5" />
@@ -2037,26 +2045,52 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
 
 // ─── ALL TRANSACTIONS PAGE ────────────────────────────────────────────────────
 
-function AllTransactionsPage({ onBack }: { onBack: () => void }) {
+function AllTransactionsPage({
+  onBack,
+  initialVendorId,
+  initialVendorName,
+}: {
+  onBack: () => void;
+  initialVendorId?: string;
+  initialVendorName?: string;
+}) {
+  const { toast } = useToast();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const LIMIT = 20;
+
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const LIMIT = 20;
+  const [sort, setSort] = useState("date_desc");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [layout, setLayout] = useState<"list" | "grid">("list");
+  const [showFilters, setShowFilters] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<Purchase | null>(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [editTarget, setEditTarget] = useState<Purchase | null>(null);
+  const [editForm, setEditForm] = useState({ invoiceNumber: "", purchaseDate: "", notes: "" });
+  const [editSaving, setEditSaving] = useState(false);
+
+  const hasFilters = !!(dateFrom || dateTo || (sort !== "date_desc") || initialVendorId);
 
   const loadPurchases = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
+      const params = new URLSearchParams({ page: String(page), limit: String(LIMIT), sort });
       if (search) params.set("search", search);
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+      if (initialVendorId) params.set("vendorId", initialVendorId);
       const data = await apiFetch(`/api/vendors/all-purchases?${params}`);
       setPurchases(data.purchases);
       setTotal(data.total);
     } catch { setPurchases([]); }
     finally { setLoading(false); }
-  }, [page, search]);
+  }, [page, search, sort, dateFrom, dateTo, initialVendorId]);
 
   useEffect(() => { loadPurchases(); }, [loadPurchases]);
 
@@ -2065,118 +2099,400 @@ function AllTransactionsPage({ onBack }: { onBack: () => void }) {
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  const openEdit = (p: Purchase) => {
+    setEditTarget(p);
+    const d = p.purchaseDate ? new Date(p.purchaseDate).toISOString().slice(0, 10) : "";
+    setEditForm({ invoiceNumber: p.invoiceNumber || "", purchaseDate: d, notes: p.notes || "" });
+  };
+
+  const handleEditSave = async () => {
+    if (!editTarget) return;
+    setEditSaving(true);
+    try {
+      await apiFetch(`/api/vendors/purchases/${editTarget.id}`, {
+        method: "PUT",
+        body: JSON.stringify(editForm),
+      });
+      toast({ title: "Transaction updated!" });
+      setEditTarget(null);
+      loadPurchases();
+    } catch (e: any) {
+      toast({ title: "Update failed", description: e.message, variant: "destructive" });
+    } finally { setEditSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteSaving(true);
+    try {
+      await apiFetch(`/api/vendors/purchases/${deleteTarget.id}`, { method: "DELETE" });
+      toast({ title: "Transaction deleted" });
+      setDeleteTarget(null);
+      loadPurchases();
+    } catch (e: any) {
+      toast({ title: "Delete failed", description: e.message, variant: "destructive" });
+    } finally { setDeleteSaving(false); }
+  };
+
+  const clearFilters = () => { setDateFrom(""); setDateTo(""); setSort("date_desc"); setPage(1); };
+
   const totalPages = Math.ceil(total / LIMIT);
 
+  const TransactionCard = ({ p }: { p: Purchase }) => (
+    <div className="bg-white border border-gray-100 rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className="space-y-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <div className="w-7 h-7 rounded-full bg-[#162B4D]/10 flex items-center justify-center flex-shrink-0">
+                  <Building2 className="w-3.5 h-3.5 text-[#162B4D]" />
+                </div>
+                <span className="text-sm font-bold text-[#162B4D] truncate">{p.vendorName || "Unknown Vendor"}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              {p.invoiceNumber && (
+                <div className="flex items-center gap-1">
+                  <Hash className="w-3 h-3 text-gray-400" />
+                  <span className="text-xs text-gray-500 font-mono">{p.invoiceNumber}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1 text-xs text-gray-400">
+                <Calendar className="w-3 h-3" />
+                <span>{formatDate(p.purchaseDate)}</span>
+              </div>
+            </div>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="text-lg font-bold text-amber-600">{formatRupees(p.totalAmount)}</p>
+            <p className="text-[11px] text-gray-400">{p.items.length} item{p.items.length !== 1 ? "s" : ""}</p>
+          </div>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="text-left px-3 py-1.5 text-gray-400 font-medium">Product</th>
+                <th className="text-right px-3 py-1.5 text-gray-400 font-medium">Qty</th>
+                <th className="text-right px-3 py-1.5 text-gray-400 font-medium hidden sm:table-cell">Rate</th>
+                <th className="text-right px-3 py-1.5 text-gray-400 font-medium">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {p.items.map((item, i) => (
+                <tr key={i} className={i > 0 ? "border-t border-gray-100" : ""}>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <Package className="w-3 h-3 text-gray-300 shrink-0" />
+                      <span className="font-medium text-gray-700">{item.productName}</span>
+                    </div>
+                    {item.expiryDate && (
+                      <div className="text-[10px] text-orange-500 mt-0.5 ml-4.5">Exp: {formatDate(item.expiryDate)}</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">{item.quantity} {item.unit}</td>
+                  <td className="px-3 py-2 text-right text-gray-400 hidden sm:table-cell">{formatRupees(item.pricePerUnit)}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-gray-700">{formatRupees(item.totalPrice)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-gray-200 bg-gray-100/60">
+                <td colSpan={2} className="px-3 py-1.5 text-xs font-semibold text-gray-500">Total</td>
+                <td className="hidden sm:table-cell"></td>
+                <td className="px-3 py-1.5 text-right text-sm font-bold text-amber-600">{formatRupees(p.totalAmount)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {p.notes && (
+          <div className="flex items-start gap-1.5 mt-2.5 px-1">
+            <FileText className="w-3 h-3 text-gray-300 mt-0.5 shrink-0" />
+            <p className="text-xs text-gray-400 italic">{p.notes}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-end gap-1 px-4 py-2 bg-gray-50 border-t border-gray-100">
+        <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-blue-600 hover:bg-blue-50" onClick={() => openEdit(p)}>
+          <Edit2 className="w-3 h-3 mr-1" /> Edit
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-red-500 hover:bg-red-50" onClick={() => setDeleteTarget(p)}>
+          <Trash2 className="w-3 h-3 mr-1" /> Delete
+        </Button>
+      </div>
+    </div>
+  );
+
+  const TransactionRow = ({ p }: { p: Purchase }) => (
+    <div className="bg-white border border-gray-100 rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+      <div className="flex items-start gap-4 p-4">
+        <div className="w-9 h-9 rounded-full bg-[#162B4D]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <Building2 className="w-4 h-4 text-[#162B4D]" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-[#162B4D] text-sm">{p.vendorName || "Unknown Vendor"}</span>
+                {p.invoiceNumber && (
+                  <span className="flex items-center gap-0.5 text-xs text-gray-400 font-mono bg-gray-100 px-1.5 py-0.5 rounded">
+                    <Hash className="w-2.5 h-2.5" />{p.invoiceNumber}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                <span className="flex items-center gap-1 text-xs text-gray-400">
+                  <Calendar className="w-3 h-3" />{formatDate(p.purchaseDate)}
+                </span>
+                <span className="text-xs text-gray-400">{p.items.length} item{p.items.length !== 1 ? "s" : ""}</span>
+              </div>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <p className="text-xl font-bold text-amber-600">{formatRupees(p.totalAmount)}</p>
+            </div>
+          </div>
+
+          <div className="mt-3 bg-gray-50 rounded-lg overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left px-3 py-1.5 text-gray-400 font-medium">Product</th>
+                  <th className="text-right px-3 py-1.5 text-gray-400 font-medium">Qty</th>
+                  <th className="text-right px-3 py-1.5 text-gray-400 font-medium hidden md:table-cell">Rate</th>
+                  <th className="text-right px-3 py-1.5 text-gray-400 font-medium">Amount</th>
+                  <th className="text-right px-3 py-1.5 text-gray-400 font-medium hidden lg:table-cell">Expiry</th>
+                </tr>
+              </thead>
+              <tbody>
+                {p.items.map((item, i) => (
+                  <tr key={i} className={i > 0 ? "border-t border-gray-100" : ""}>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <Package className="w-3 h-3 text-gray-300 shrink-0" />
+                        <span className="font-medium text-gray-700">{item.productName}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">{item.quantity} {item.unit}</td>
+                    <td className="px-3 py-2 text-right text-gray-400 hidden md:table-cell">{formatRupees(item.pricePerUnit)}/unit</td>
+                    <td className="px-3 py-2 text-right font-semibold text-gray-700">{formatRupees(item.totalPrice)}</td>
+                    <td className="px-3 py-2 text-right text-orange-400 hidden lg:table-cell">
+                      {item.expiryDate ? formatDate(item.expiryDate) : <span className="text-gray-300">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-gray-200 bg-gray-100/60">
+                  <td colSpan={3} className="px-3 py-1.5 font-semibold text-gray-500">Total</td>
+                  <td className="px-3 py-1.5 text-right text-sm font-bold text-amber-600">{formatRupees(p.totalAmount)}</td>
+                  <td className="hidden lg:table-cell"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {p.notes && (
+            <div className="flex items-start gap-1.5 mt-2.5">
+              <FileText className="w-3 h-3 text-gray-300 mt-0.5 shrink-0" />
+              <p className="text-xs text-gray-400 italic">{p.notes}</p>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1 flex-shrink-0">
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500 hover:bg-blue-50" onClick={() => openEdit(p)}>
+            <Edit2 className="w-3.5 h-3.5" />
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:bg-red-50" onClick={() => setDeleteTarget(p)}>
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#162B4D] transition-colors">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#162B4D] transition-colors shrink-0">
             <ChevronLeft className="w-4 h-4" /> Back to Vendors
           </button>
           <span className="text-gray-300">|</span>
-          <div>
-            <h1 className="text-xl font-bold text-[#162B4D] leading-none">Transaction History</h1>
-            <p className="text-xs text-gray-400 mt-0.5">All vendor purchases across all hubs</p>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-[#162B4D] leading-none">
+              {initialVendorName ? `${initialVendorName} — History` : "Transaction History"}
+            </h1>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {initialVendorName ? `All purchases from ${initialVendorName}` : "All vendor purchases across all hubs"}
+            </p>
           </div>
         </div>
-        <button onClick={loadPurchases} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-[#162B4D] transition-colors">
+        <button onClick={loadPurchases} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-[#162B4D] transition-colors flex-shrink-0">
           <RefreshCw className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Search + Stats */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            placeholder="Search by vendor or invoice..."
-            className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20 focus:border-[#162B4D]/40"
-          />
+      {/* Toolbar */}
+      <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              placeholder={initialVendorId ? "Search by invoice..." : "Search by vendor or invoice..."}
+              className="w-full h-9 pl-9 pr-8 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20 focus:border-[#162B4D]/40"
+            />
+            {searchInput && (
+              <button onClick={() => setSearchInput("")} className="absolute right-2 top-1/2 -translate-y-1/2">
+                <X className="w-3.5 h-3.5 text-gray-300 hover:text-gray-500" />
+              </button>
+            )}
+          </div>
+
+          {/* Sort */}
+          <Select value={sort} onValueChange={v => { setSort(v); setPage(1); }}>
+            <SelectTrigger className="h-9 text-sm w-[160px] gap-1">
+              <ArrowUpDown className="w-3 h-3 text-gray-400" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date_desc">Newest First</SelectItem>
+              <SelectItem value="date_asc">Oldest First</SelectItem>
+              <SelectItem value="amount_desc">Highest Amount</SelectItem>
+              <SelectItem value="amount_asc">Lowest Amount</SelectItem>
+              {!initialVendorId && <SelectItem value="vendor_asc">Vendor A–Z</SelectItem>}
+              {!initialVendorId && <SelectItem value="vendor_desc">Vendor Z–A</SelectItem>}
+            </SelectContent>
+          </Select>
+
+          {/* Filter toggle */}
+          <Button
+            size="sm"
+            variant={showFilters ? "default" : "outline"}
+            className={`h-9 px-3 gap-1.5 ${showFilters ? "bg-[#162B4D] text-white" : "text-gray-600"}`}
+            onClick={() => setShowFilters(f => !f)}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Filter
+            {(dateFrom || dateTo) && (
+              <span className="ml-1 bg-amber-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">!</span>
+            )}
+          </Button>
+
+          {/* Layout toggle */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+            <button
+              onClick={() => setLayout("list")}
+              className={`p-1.5 rounded-md transition-colors ${layout === "list" ? "bg-white shadow-sm text-[#162B4D]" : "text-gray-400 hover:text-gray-600"}`}
+              title="List view"
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setLayout("grid")}
+              className={`p-1.5 rounded-md transition-colors ${layout === "grid" ? "bg-white shadow-sm text-[#162B4D]" : "text-gray-400 hover:text-gray-600"}`}
+              title="Grid view"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Count */}
+          {!loading && (
+            <span className="text-sm text-gray-400 ml-auto whitespace-nowrap">{total} transaction{total !== 1 ? "s" : ""}</span>
+          )}
         </div>
-        {!loading && (
-          <span className="text-sm text-gray-400">{total} transaction{total !== 1 ? "s" : ""}</span>
+
+        {/* Filter panel */}
+        {showFilters && (
+          <div className="border-t border-gray-100 pt-3 flex items-end gap-3 flex-wrap">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">From date</label>
+              <input
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+                className="h-8 px-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">To date</label>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={e => { setDateTo(e.target.value); setPage(1); }}
+                className="h-8 px-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20"
+              />
+            </div>
+            {(dateFrom || dateTo) && (
+              <Button size="sm" variant="ghost" className="h-8 text-xs text-gray-400 hover:text-red-500" onClick={clearFilters}>
+                <X className="w-3 h-3 mr-1" /> Clear dates
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
+      {/* Active filter chips */}
+      {hasFilters && (
+        <div className="flex items-center gap-2 flex-wrap -mt-1">
+          {initialVendorName && (
+            <span className="flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+              <Building2 className="w-3 h-3" /> {initialVendorName}
+            </span>
+          )}
+          {dateFrom && (
+            <span className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+              <Calendar className="w-3 h-3" /> From: {dateFrom}
+              <button onClick={() => setDateFrom("")} className="ml-1 hover:text-blue-900"><X className="w-2.5 h-2.5" /></button>
+            </span>
+          )}
+          {dateTo && (
+            <span className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+              <Calendar className="w-3 h-3" /> To: {dateTo}
+              <button onClick={() => setDateTo("")} className="ml-1 hover:text-blue-900"><X className="w-2.5 h-2.5" /></button>
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Content */}
       {loading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-100 h-28 animate-pulse" />
+        <div className={layout === "grid" ? "grid grid-cols-1 md:grid-cols-2 gap-4" : "space-y-3"}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-100 h-44 animate-pulse" />
           ))}
         </div>
       ) : purchases.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-xl border border-gray-100">
           <ShoppingCart className="w-12 h-12 text-gray-200 mx-auto mb-3" />
           <p className="text-gray-500 font-medium">No transactions found</p>
-          <p className="text-gray-400 text-sm mt-1">{search ? "Try a different search term" : "Purchase records will appear here"}</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {search || dateFrom || dateTo ? "Try adjusting your search or filters" : "Purchase records will appear here"}
+          </p>
+          {(search || dateFrom || dateTo) && (
+            <Button size="sm" variant="outline" className="mt-3" onClick={() => { setSearchInput(""); setSearch(""); clearFilters(); }}>
+              Clear all filters
+            </Button>
+          )}
+        </div>
+      ) : layout === "grid" ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {purchases.map(p => <TransactionCard key={p.id} p={p} />)}
         </div>
       ) : (
         <div className="space-y-3">
-          {purchases.map(p => (
-            <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-              {/* Purchase header */}
-              <div className="flex items-start justify-between mb-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-[#162B4D]/60" />
-                      <span className="text-sm font-bold text-[#162B4D]">{p.vendorName || "Unknown Vendor"}</span>
-                    </div>
-                    {p.invoiceNumber && (
-                      <>
-                        <span className="text-gray-300">·</span>
-                        <div className="flex items-center gap-1">
-                          <Hash className="w-3 h-3 text-gray-400" />
-                          <span className="text-xs text-gray-500 font-mono">{p.invoiceNumber}</span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 text-xs text-gray-400">
-                    <Calendar className="w-3 h-3" />
-                    <span>{formatDate(p.purchaseDate)}</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-bold text-amber-600">{formatRupees(p.totalAmount)}</p>
-                  <p className="text-[11px] text-gray-400">{p.items.length} item{p.items.length !== 1 ? "s" : ""}</p>
-                </div>
-              </div>
-
-              {/* Items */}
-              <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
-                {p.items.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <Package className="w-3.5 h-3.5 text-gray-300 shrink-0" />
-                      <span className="font-medium text-gray-700">{item.productName}</span>
-                      <span className="text-xs text-gray-400 bg-gray-200/60 px-1.5 py-0.5 rounded">
-                        {item.quantity} {item.unit}
-                      </span>
-                      {item.expiryDate && (
-                        <span className="text-[11px] text-orange-500">exp: {formatDate(item.expiryDate)}</span>
-                      )}
-                    </div>
-                    <span className="text-gray-600 font-medium text-xs">{formatRupees(item.totalPrice)}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Notes */}
-              {p.notes && (
-                <p className="text-xs text-gray-400 italic mt-2 flex items-start gap-1.5">
-                  <FileText className="w-3 h-3 mt-0.5 shrink-0" />
-                  {p.notes}
-                </p>
-              )}
-            </div>
-          ))}
+          {purchases.map(p => <TransactionRow key={p.id} p={p} />)}
         </div>
       )}
 
@@ -2192,6 +2508,73 @@ function AllTransactionsPage({ onBack }: { onBack: () => void }) {
           </Button>
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editTarget} onOpenChange={open => !open && setEditTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Transaction</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Invoice Number</Label>
+              <Input
+                value={editForm.invoiceNumber}
+                onChange={e => setEditForm(f => ({ ...f, invoiceNumber: e.target.value }))}
+                placeholder="e.g. INV-001"
+                className="h-9"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Purchase Date</Label>
+              <Input
+                type="date"
+                value={editForm.purchaseDate}
+                onChange={e => setEditForm(f => ({ ...f, purchaseDate: e.target.value }))}
+                className="h-9"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Notes</Label>
+              <textarea
+                value={editForm.notes}
+                onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                rows={3}
+                placeholder="Add any notes..."
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20 resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTarget(null)} disabled={editSaving}>Cancel</Button>
+            <Button onClick={handleEditSave} disabled={editSaving} className="bg-[#162B4D] hover:bg-[#1e3a6e] text-white">
+              {editSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="w-5 h-5" /> Delete Transaction
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600 py-2">
+            Are you sure you want to delete this purchase from <strong>{deleteTarget?.vendorName}</strong>
+            {deleteTarget?.invoiceNumber ? ` (Invoice: ${deleteTarget.invoiceNumber})` : ""}?
+            This action cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteSaving}>Cancel</Button>
+            <Button onClick={handleDelete} disabled={deleteSaving} className="bg-red-600 hover:bg-red-700 text-white">
+              {deleteSaving ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -2221,7 +2604,7 @@ export default function Vendors() {
   const [viewVendor, setViewVendor] = useState<Vendor | null>(null);
   const [purchaseVendor, setPurchaseVendor] = useState<Vendor | null>(null);
   const [deleteVendor, setDeleteVendor] = useState<Vendor | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState<{ vendorId?: string; vendorName?: string } | null>(null);
 
   const loadVendors = useCallback(async () => {
     setLoading(true);
@@ -2277,8 +2660,14 @@ export default function Vendors() {
     if (viewVendor) setViewVendor(vendors.find(v => v.id === viewVendor.id) || viewVendor);
   };
 
-  if (showHistory) {
-    return <AllTransactionsPage onBack={() => setShowHistory(false)} />;
+  if (historyTarget !== null) {
+    return (
+      <AllTransactionsPage
+        onBack={() => setHistoryTarget(null)}
+        initialVendorId={historyTarget.vendorId}
+        initialVendorName={historyTarget.vendorName}
+      />
+    );
   }
 
   if (purchaseVendor) {
@@ -2300,7 +2689,7 @@ export default function Vendors() {
           <p className="text-sm text-gray-400 mt-0.5">Manage your suppliers and track purchases</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-1.5 border-[#162B4D]/20 text-[#162B4D] hover:bg-[#162B4D]/5" onClick={() => setShowHistory(true)}>
+          <Button variant="outline" className="gap-1.5 border-[#162B4D]/20 text-[#162B4D] hover:bg-[#162B4D]/5" onClick={() => setHistoryTarget({})}>
             <FileText className="w-4 h-4" /> Transaction History
           </Button>
           <Button className="bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5" onClick={() => setAddOpen(true)}>
@@ -2469,6 +2858,7 @@ export default function Vendors() {
               onDelete={setDeleteVendor}
               onView={setViewVendor}
               onAddPurchase={vendor => { setPurchaseVendor(vendor); }}
+              onViewHistory={vendor => setHistoryTarget({ vendorId: vendor.id, vendorName: vendor.name })}
             />
           ))}
         </div>
@@ -2482,6 +2872,7 @@ export default function Vendors() {
               onDelete={setDeleteVendor}
               onView={setViewVendor}
               onAddPurchase={vendor => { setPurchaseVendor(vendor); }}
+              onViewHistory={vendor => setHistoryTarget({ vendorId: vendor.id, vendorName: vendor.name })}
             />
           ))}
         </div>
