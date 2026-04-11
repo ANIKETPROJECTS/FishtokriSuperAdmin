@@ -1574,31 +1574,19 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                           Enter new product
                         </button>
                       </div>
-                      {item.productMode === "existing" && (
-                        <div className="grid grid-cols-[180px_1fr] gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
-                          <div>
-                            <FieldLabel>Filter Category</FieldLabel>
-                            <select
-                              value={productCategoryFilter}
-                              onChange={e => setProductCategoryFilter(e.target.value)}
-                              disabled={!subHubId || productsLoading}
-                              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                            >
-                              <option value="all">All categories</option>
-                              {productCategories.map((category) => <option key={category} value={category}>{category}</option>)}
-                            </select>
-                          </div>
+                      {item.productMode === "existing" ? (
+                        <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                           <div>
                             <FieldLabel required>Existing Product</FieldLabel>
                             <select
                               value={item.existingProductId}
                               onChange={e => applyExistingProduct(idx, e.target.value)}
-                              disabled={!subHubId || productsLoading || filteredHubProducts.length === 0}
+                              disabled={!subHubId || productsLoading || hubProducts.length === 0}
                               required={item.productMode === "existing"}
                               className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                             >
-                              <option value="">{!subHubId ? "Select sub hub first" : productsLoading ? "Loading products..." : filteredHubProducts.length === 0 ? "No products found" : "Choose product..."}</option>
-                              {filteredHubProducts.map((product) => (
+                              <option value="">{!subHubId ? "Select sub hub first" : productsLoading ? "Loading products..." : hubProducts.length === 0 ? "No products found" : "Choose product..."}</option>
+                              {hubProducts.map((product) => (
                                 <option key={getDocId(product)} value={getDocId(product)}>
                                   {product.category ? `${product.category} / ` : ""}{product.subCategory ? `${product.subCategory} / ` : ""}{product.name}
                                 </option>
@@ -1606,35 +1594,38 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                             </select>
                           </div>
                         </div>
+                      ) : (
+                        <>
+                          <div>
+                            <FieldLabel required>Product Name</FieldLabel>
+                            <Input value={item.productName} onChange={e => setItem(idx, "productName", e.target.value)}
+                              placeholder="e.g. Rohu Fish, King Prawns" required />
+                          </div>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div>
+                              <FieldLabel>Category</FieldLabel>
+                              <Input value={item.category} onChange={e => setItem(idx, "category", e.target.value)} placeholder="e.g. Fish" />
+                            </div>
+                            <div>
+                              <FieldLabel>Sub Category</FieldLabel>
+                              <Input value={item.subCategory} onChange={e => setItem(idx, "subCategory", e.target.value)} placeholder="e.g. Freshwater" />
+                            </div>
+                            <div>
+                              <FieldLabel>Status</FieldLabel>
+                              <select value={item.productStatus} onChange={e => setItem(idx, "productStatus", e.target.value)}
+                                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                <option value="available">Available</option>
+                                <option value="out_of_stock">Out of Stock</option>
+                                <option value="coming_soon">Coming Soon</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div>
+                            <FieldLabel>Description</FieldLabel>
+                            <Input value={item.description} onChange={e => setItem(idx, "description", e.target.value)} placeholder="Short description (optional)" />
+                          </div>
+                        </>
                       )}
-                      <div>
-                        <FieldLabel required>Product Name</FieldLabel>
-                        <Input value={item.productName} onChange={e => setItem(idx, "productName", e.target.value)}
-                          placeholder="e.g. Rohu Fish, King Prawns" required readOnly={item.productMode === "existing"} />
-                      </div>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <FieldLabel>Category</FieldLabel>
-                          <Input value={item.category} onChange={e => setItem(idx, "category", e.target.value)} placeholder="e.g. Fish" />
-                        </div>
-                        <div>
-                          <FieldLabel>Sub Category</FieldLabel>
-                          <Input value={item.subCategory} onChange={e => setItem(idx, "subCategory", e.target.value)} placeholder="e.g. Freshwater" />
-                        </div>
-                        <div>
-                          <FieldLabel>Status</FieldLabel>
-                          <select value={item.productStatus} onChange={e => setItem(idx, "productStatus", e.target.value)}
-                            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                            <option value="available">Available</option>
-                            <option value="out_of_stock">Out of Stock</option>
-                            <option value="coming_soon">Coming Soon</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div>
-                        <FieldLabel>Description</FieldLabel>
-                        <Input value={item.description} onChange={e => setItem(idx, "description", e.target.value)} placeholder="Short description (optional)" />
-                      </div>
                     </div>
                   </div>
 
@@ -1684,7 +1675,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                     </div>
                   </div>
 
-                  {/* ── Listing Details ── */}
+                  {item.productMode === "new" && (
                   <div>
                     <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                       <span className="w-4 h-px bg-emerald-300 inline-block" />Listing Details <span className="text-gray-400 font-normal normal-case">(for hub menu)</span>
@@ -1774,6 +1765,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                       </div>
                     </div>
                   </div>
+                  )}
                 </div>
               </div>
             ))}
