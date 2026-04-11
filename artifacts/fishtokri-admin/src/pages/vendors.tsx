@@ -1510,7 +1510,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                           <Input value={item.netWeight} onChange={e => setItem(idx, "netWeight", e.target.value)} placeholder="e.g. 480g" />
                         </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
                           <FieldLabel>Pieces</FieldLabel>
                           <Input value={item.pieces} onChange={e => setItem(idx, "pieces", e.target.value)} placeholder="e.g. 4-5 pcs" />
@@ -1519,11 +1519,14 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                           <FieldLabel>Serves</FieldLabel>
                           <Input value={item.serves} onChange={e => setItem(idx, "serves", e.target.value)} placeholder="e.g. 2-3 people" />
                         </div>
-                        <div>
-                          <FieldLabel>Image URL</FieldLabel>
-                          <Input value={item.imageUrl} onChange={e => setItem(idx, "imageUrl", e.target.value)} placeholder="https://..." />
-                        </div>
                       </div>
+                      <ImageUpload
+                        value={item.imageUrl}
+                        onChange={v => setItem(idx, "imageUrl", v)}
+                        folder="fishtokri/products"
+                        label="Product Image (optional)"
+                        previewClassName="w-14 h-14 rounded-lg"
+                      />
                     </div>
                   </div>
                 </div>
