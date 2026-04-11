@@ -675,12 +675,14 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
                     </div>
                     <div className="flex gap-1.5">
                       <Input
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         value={item.quantity}
-                        onChange={e => setItem(idx, "quantity", e.target.value)}
+                        onChange={e => {
+                          const v = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                          setItem(idx, "quantity", v);
+                        }}
                         placeholder="Qty"
-                        min="0"
-                        step="0.01"
                         className="h-8 text-sm w-24"
                       />
                       <Select value={item.unit} onValueChange={v => setItem(idx, "unit", v)}>
@@ -693,12 +695,14 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm text-gray-400">₹</span>
                       <Input
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         value={item.pricePerUnit}
-                        onChange={e => setItem(idx, "pricePerUnit", e.target.value)}
+                        onChange={e => {
+                          const v = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                          setItem(idx, "pricePerUnit", v);
+                        }}
                         placeholder="Price/unit"
-                        min="0"
-                        step="0.01"
                         className="h-8 text-sm flex-1"
                       />
                       <span className="text-xs text-gray-400 whitespace-nowrap">/{item.unit}</span>
