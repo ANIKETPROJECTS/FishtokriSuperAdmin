@@ -1117,6 +1117,17 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
     finally { setDeleteId(null); }
   };
 
+  const toggleStatus = async (c: any) => {
+    const newActive = !(c.isActive !== false);
+    setCarousels((prev) => prev.map((x) => String(x._id) === String(c._id) ? { ...x, isActive: newActive } : x));
+    try {
+      await apiFetch(`/api/sub-hubs/${subHubId}/menu/carousels/${c._id}`, { method: "PUT", body: JSON.stringify({ isActive: newActive }) });
+    } catch (err: any) {
+      setCarousels((prev) => prev.map((x) => String(x._id) === String(c._id) ? { ...x, isActive: !newActive } : x));
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
   return (
     <div className="space-y-4">
       <TabToolbar
@@ -1137,7 +1148,9 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
               <div className="relative h-36 bg-gray-100">
                 {c.imageUrl ? <img src={c.imageUrl} alt={c.title ?? "Banner"} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Image className="w-8 h-8 text-gray-300" /></div>}
                 <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full font-semibold">#{c.order}</div>
-                <div className="absolute top-2 right-2"><StatusBadge active={c.isActive !== false} /></div>
+                <div className="absolute top-2 right-2" onClick={(e) => e.stopPropagation()}>
+                  <Switch checked={c.isActive !== false} onCheckedChange={() => toggleStatus(c)} className="data-[state=checked]:bg-[#1A56DB] data-[state=unchecked]:bg-gray-400 scale-90" />
+                </div>
               </div>
               <div className="p-3 space-y-1.5">
                 <p className="font-semibold text-[#162B4D] text-sm">{c.title || <span className="text-gray-400 font-normal italic">No title</span>}</p>
@@ -1165,7 +1178,7 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
                 <p className="font-semibold text-[#162B4D] text-sm">{c.title || <span className="text-gray-400 font-normal italic">No title</span>}</p>
                 {c.linkUrl && <p className="text-xs text-gray-400 truncate">{c.linkUrl}</p>}
               </div>
-              <StatusBadge active={c.isActive !== false} />
+              <Switch checked={c.isActive !== false} onCheckedChange={() => toggleStatus(c)} className="data-[state=checked]:bg-[#1A56DB] data-[state=unchecked]:bg-gray-400 flex-shrink-0" />
               <ActionButtons onEdit={() => { setEditing(c); setModalOpen(true); }} onDelete={() => setDeleteId(String(c._id))} />
             </div>
           ))}
