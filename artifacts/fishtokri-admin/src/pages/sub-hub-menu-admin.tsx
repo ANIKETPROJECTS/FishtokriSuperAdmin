@@ -2284,9 +2284,20 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
     !categorySearch || c.name?.toLowerCase().includes(categorySearch.toLowerCase())
   );
 
-  const productCategoryNames = Array.from(new Set(availableProducts.map((p) => p.category).filter(Boolean)));
+  const selectedCategoryNames = selectedCategoryIds
+    .map((id) => availableCategories.find((c) => String(c._id) === id)?.name)
+    .filter(Boolean) as string[];
+
+  const restrictedByCategory = selectedCategoryIds.length > 0;
+
+  const productCategoryNames = restrictedByCategory
+    ? selectedCategoryNames
+    : Array.from(new Set(availableProducts.map((p) => p.category).filter(Boolean)));
+
   const filteredProducts = availableProducts.filter((p) => {
-    const matchCat = productCatFilter === "all" || p.category === productCatFilter;
+    const matchCat = restrictedByCategory
+      ? selectedCategoryNames.includes(p.category)
+      : productCatFilter === "all" || p.category === productCatFilter;
     const matchSearch = !productSearch || p.name?.toLowerCase().includes(productSearch.toLowerCase());
     return matchCat && matchSearch;
   });
@@ -2385,7 +2396,11 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
             <Label className="text-xs font-semibold text-gray-600">
               Applicable Products
               <span className="font-normal text-gray-400 ml-1">
-                {selectedProductIds.length > 0 ? `(${selectedProductIds.length} selected)` : "(all products)"}
+                {selectedProductIds.length > 0
+                  ? `(${selectedProductIds.length} selected)`
+                  : restrictedByCategory
+                    ? `(from selected categories)`
+                    : "(all products)"}
               </span>
             </Label>
             {selectedProductIds.length > 0 && (
@@ -2404,7 +2419,7 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <div className="flex gap-1 p-1.5 border-b border-gray-100 bg-gray-50">
                 <Input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Search products..." className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-1 flex-1" />
-                {productCategoryNames.length > 0 && (
+                {!restrictedByCategory && productCategoryNames.length > 0 && (
                   <select value={productCatFilter} onChange={(e) => setProductCatFilter(e.target.value)} className="h-7 text-xs border border-gray-200 rounded px-1 bg-white text-gray-600">
                     <option value="all">All</option>
                     {productCategoryNames.map((n) => <option key={n} value={n}>{n}</option>)}
@@ -2415,7 +2430,9 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
                 {availableProducts.length === 0 ? (
                   <p className="text-xs text-gray-400 text-center py-3">Loading products…</p>
                 ) : filteredProducts.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-3">No products found</p>
+                  <p className="text-xs text-gray-400 text-center py-3">
+                    {restrictedByCategory ? "No products in selected categories" : "No products found"}
+                  </p>
                 ) : (
                   filteredProducts.map((prod) => {
                     const id = String(prod._id);
