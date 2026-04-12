@@ -2001,92 +2001,6 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
         </div>
       </form>
 
-      {/* ─── Vendor Purchase History ─────────────────────────── */}
-      <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setHistoryExpanded(e => !e)}
-          className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-[#162B4D]" />
-            <span className="font-semibold text-[#162B4D] text-sm">
-              Purchase History — {vendor.name}
-            </span>
-            {historyTotal > 0 && (
-              <span className="text-[11px] bg-[#162B4D]/10 text-[#162B4D] font-bold px-2 py-0.5 rounded-full">
-                {historyTotal} record{historyTotal !== 1 ? "s" : ""}
-              </span>
-            )}
-          </div>
-          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${historyExpanded ? "rotate-180" : ""}`} />
-        </button>
-
-        {historyExpanded && (
-          <div className="px-5 pb-5 border-t border-gray-100">
-            {historyLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <RefreshCw className="w-5 h-5 animate-spin text-gray-300" />
-              </div>
-            ) : vendorHistory.length === 0 ? (
-              <div className="text-center py-8">
-                <ShoppingCart className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">No purchase records yet</p>
-              </div>
-            ) : (
-              <div className="space-y-3 mt-4">
-                {vendorHistory.map(p => (
-                  <div key={p.id} className="border border-gray-100 rounded-lg p-3.5 bg-gray-50 hover:bg-white transition-colors">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-bold text-[#162B4D]">
-                          {p.invoiceNumber || "No Invoice #"}
-                        </span>
-                        <span className="text-[11px] text-gray-400">•</span>
-                        <span className="text-[11px] text-gray-500">{formatDate(p.purchaseDate)}</span>
-                      </div>
-                      <span className="text-sm font-bold text-amber-600">{formatRupees(p.totalAmount)}</span>
-                    </div>
-                    <div className="space-y-1">
-                      {p.items.map((item, i) => (
-                        <div key={i} className="flex items-center justify-between text-xs text-gray-600">
-                          <div className="flex items-center gap-1.5">
-                            <Package className="w-3 h-3 text-gray-300" />
-                            <span className="font-medium">{item.productName}</span>
-                            <span className="text-gray-400">({item.quantity} {item.unit})</span>
-                          </div>
-                          <span>{formatRupees(item.totalPrice)}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {p.notes && (
-                      <p className="text-[11px] text-gray-400 mt-1.5 italic border-t border-gray-100 pt-1.5">{p.notes}</p>
-                    )}
-                  </div>
-                ))}
-
-                {Math.ceil(historyTotal / HISTORY_LIMIT) > 1 && (
-                  <div className="flex items-center justify-between pt-1">
-                    <Button size="sm" variant="outline" className="h-7"
-                      onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
-                      disabled={historyPage === 1}>
-                      <ChevronLeft className="w-3 h-3" />
-                    </Button>
-                    <span className="text-xs text-gray-500">
-                      Page {historyPage} of {Math.ceil(historyTotal / HISTORY_LIMIT)}
-                    </span>
-                    <Button size="sm" variant="outline" className="h-7"
-                      onClick={() => setHistoryPage(p => Math.min(Math.ceil(historyTotal / HISTORY_LIMIT), p + 1))}
-                      disabled={historyPage === Math.ceil(historyTotal / HISTORY_LIMIT)}>
-                      <ChevronRight className="w-3 h-3" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -2245,7 +2159,7 @@ function AllTransactionsPage({
                   {(item as any).batches.map((b: PurchaseDisplayBatch, bi: number) => (
                     <div key={bi} className="flex items-center gap-2 text-[11px] text-gray-500">
                       <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-medium">Batch {bi + 1}</span>
-                      <span>{b.quantity}</span>
+                      <span className="text-gray-400">Qty:</span><span>{b.quantity}</span>
                       {b.shelfLifeDays > 0 && <span className="text-orange-500">{b.shelfLifeDays}d shelf life</span>}
                     </div>
                   ))}
@@ -2335,7 +2249,7 @@ function AllTransactionsPage({
                     {(item as any).batches.map((b: PurchaseDisplayBatch, bi: number) => (
                       <div key={bi} className="flex items-center gap-1.5 text-[11px]">
                         <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-medium">Batch {bi + 1}</span>
-                        <span className="text-gray-600">{b.quantity}</span>
+                        <span className="text-gray-400">Qty:</span><span className="text-gray-600">{b.quantity}</span>
                         {b.shelfLifeDays > 0 && <span className="text-orange-500">{b.shelfLifeDays}d shelf life</span>}
                       </div>
                     ))}
