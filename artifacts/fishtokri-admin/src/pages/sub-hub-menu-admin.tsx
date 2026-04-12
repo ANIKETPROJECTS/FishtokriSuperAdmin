@@ -2366,8 +2366,20 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
               </div>
             )}
             <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="p-1.5 border-b border-gray-100 bg-gray-50">
-                <Input value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} placeholder="Search categories..." className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-1" />
+              <div className="flex items-center gap-1.5 p-1.5 border-b border-gray-100 bg-gray-50">
+                <input
+                  type="checkbox"
+                  title="Select all"
+                  checked={filteredCategories.length > 0 && filteredCategories.every((c) => selectedCategoryIds.includes(String(c._id)))}
+                  ref={(el) => { if (el) el.indeterminate = filteredCategories.some((c) => selectedCategoryIds.includes(String(c._id))) && !filteredCategories.every((c) => selectedCategoryIds.includes(String(c._id))); }}
+                  onChange={() => {
+                    const allIds = filteredCategories.map((c) => String(c._id));
+                    const allChecked = allIds.every((id) => selectedCategoryIds.includes(id));
+                    setSelectedCategoryIds(allChecked ? selectedCategoryIds.filter((id) => !allIds.includes(id)) : Array.from(new Set([...selectedCategoryIds, ...allIds])));
+                  }}
+                  className="rounded text-[#1A56DB] ml-1"
+                />
+                <Input value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} placeholder="Search categories..." className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-1 flex-1" />
               </div>
               <div className="max-h-32 overflow-y-auto">
                 {availableCategories.length === 0 ? (
@@ -2417,7 +2429,19 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
               </div>
             )}
             <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="flex gap-1 p-1.5 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center gap-1.5 p-1.5 border-b border-gray-100 bg-gray-50">
+                <input
+                  type="checkbox"
+                  title="Select all"
+                  checked={filteredProducts.length > 0 && filteredProducts.every((p) => selectedProductIds.includes(String(p._id)))}
+                  ref={(el) => { if (el) el.indeterminate = filteredProducts.some((p) => selectedProductIds.includes(String(p._id))) && !filteredProducts.every((p) => selectedProductIds.includes(String(p._id))); }}
+                  onChange={() => {
+                    const allIds = filteredProducts.map((p) => String(p._id));
+                    const allChecked = allIds.every((id) => selectedProductIds.includes(id));
+                    setSelectedProductIds(allChecked ? selectedProductIds.filter((id) => !allIds.includes(id)) : Array.from(new Set([...selectedProductIds, ...allIds])));
+                  }}
+                  className="rounded text-[#1A56DB] ml-1"
+                />
                 <Input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Search products..." className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-1 flex-1" />
                 {!restrictedByCategory && productCategoryNames.length > 0 && (
                   <select value={productCatFilter} onChange={(e) => setProductCatFilter(e.target.value)} className="h-7 text-xs border border-gray-200 rounded px-1 bg-white text-gray-600">
