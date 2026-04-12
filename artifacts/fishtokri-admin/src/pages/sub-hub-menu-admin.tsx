@@ -1637,18 +1637,11 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
             <div className="space-y-3">
               <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Product Name *</Label><Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Chicken Curry Cut" className="h-9" /></div>
               <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Description</Label><textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe this product..." className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-16" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Category</Label>
-                  <Select value={category} onValueChange={(v) => { setCategory(v); setSubCategory(""); }}>
-                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select category..." /></SelectTrigger>
-                    <SelectContent>{categories?.map((c: any) => <SelectItem key={String(c._id)} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sub-Category</Label>
-                  {subCats.length > 0
-                    ? <Select value={subCategory} onValueChange={setSubCategory}><SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select..." /></SelectTrigger><SelectContent>{subCats.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
-                    : <Input value={subCategory} onChange={(e) => setSubCategory(e.target.value)} placeholder="e.g. Chicken Curry Cut" className="h-9" />}
-                </div>
+              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Category</Label>
+                <Select value={category} onValueChange={setCategory}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select category..." /></SelectTrigger>
+                  <SelectContent>{categories?.map((c: any) => <SelectItem key={String(c._id)} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
+                </Select>
               </div>
             </div>
           </section>
