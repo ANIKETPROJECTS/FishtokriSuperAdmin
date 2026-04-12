@@ -2245,13 +2245,13 @@ function AllTransactionsPage({
                   {(item as any).batches.map((b: PurchaseDisplayBatch, bi: number) => (
                     <div key={bi} className="flex items-center gap-2 text-[11px] text-gray-500">
                       <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-medium">Batch {bi + 1}</span>
-                      <span>{b.quantity} {item.unit}</span>
+                      <span>{b.quantity}</span>
                       {b.shelfLifeDays > 0 && <span className="text-orange-500">{b.shelfLifeDays}d shelf life</span>}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="ml-4.5 text-[11px] text-gray-500">{item.quantity} {item.unit}</div>
+                <div className="ml-4.5 text-[11px] text-gray-500">{item.quantity}</div>
               )}
             </div>
           ))}
@@ -2335,13 +2335,13 @@ function AllTransactionsPage({
                     {(item as any).batches.map((b: PurchaseDisplayBatch, bi: number) => (
                       <div key={bi} className="flex items-center gap-1.5 text-[11px]">
                         <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-medium">Batch {bi + 1}</span>
-                        <span className="text-gray-600">{b.quantity} {item.unit}</span>
+                        <span className="text-gray-600">{b.quantity}</span>
                         {b.shelfLifeDays > 0 && <span className="text-orange-500">{b.shelfLifeDays}d shelf life</span>}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="ml-4.5 text-[11px] text-gray-500">{item.quantity} {item.unit}</div>
+                  <div className="ml-4.5 text-[11px] text-gray-500">{item.quantity}</div>
                 )}
               </div>
             ))}
