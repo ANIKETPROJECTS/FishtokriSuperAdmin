@@ -1583,6 +1583,8 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const [status, setStatus] = useState("available");
   const [isArchived, setIsArchived] = useState(false);
   const [imageUrl, setProductImageUrl] = useState("");
+  const [productImageMode, setProductImageMode] = useState<"url" | "upload">("url");
+  const [productImageUploading, setProductImageUploading] = useState(false);
   const [recipes, setRecipes] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -1621,12 +1623,32 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setName(""); setDescription(""); setCategory(""); setSubCategory("");
       setPrice(""); setOriginalPrice(""); setUnit("per kg"); setWeight("");
       setGrossWeight(""); setNetWeight(""); setPieces(""); setServes(""); setQuantity("0"); setStatus("available");
-      setIsArchived(false); setProductImageUrl(""); setRecipes([]);
+      setIsArchived(false); setProductImageUrl(""); setProductImageMode("url"); setRecipes([]);
     }
   }, [isOpen, product]);
 
   const selectedCat = categories?.find((c: any) => c.name === category);
   const subCats: string[] = selectedCat?.subCategories?.map((s: any) => s.name ?? s) ?? [];
+
+  const handleProductImageFile = async (file: File) => {
+    setProductImageUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch("/api/upload?folder=fishtokri/products", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? "Upload failed");
+      setProductImageUrl(data.url);
+    } catch (err: any) {
+      alert(err.message ?? "Upload failed");
+    } finally {
+      setProductImageUploading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1731,7 +1753,27 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
           <section>
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Status & Media</p>
             <div className="space-y-3">
-              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Product Image URL</Label><Input value={imageUrl} onChange={(e) => setProductImageUrl(e.target.value)} placeholder="https://..." className="h-9" /></div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-600">Product Image</Label>
+                <div className="flex gap-1 p-0.5 bg-gray-100 rounded-lg w-fit mb-1.5">
+                  <button type="button" onClick={() => setProductImageMode("url")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${productImageMode === "url" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>URL</button>
+                  <button type="button" onClick={() => setProductImageMode("upload")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${productImageMode === "upload" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Upload</button>
+                </div>
+                {productImageMode === "url" ? (
+                  <div className="space-y-1.5">
+                    <Input value={imageUrl} onChange={(e) => setProductImageUrl(e.target.value)} placeholder="https://..." className="h-9" />
+                    {imageUrl && <img src={imageUrl} alt="Preview" className="w-full h-28 object-cover rounded-lg border border-gray-100" onError={(e) => { (e.target as any).style.display = "none"; }} />}
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label className={`flex items-center justify-center gap-2 h-10 px-3 rounded-lg border-2 border-dashed cursor-pointer text-sm transition-colors ${productImageUploading ? "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed" : "border-gray-200 hover:border-[#1A56DB] text-gray-500 hover:text-[#1A56DB]"}`}>
+                      {productImageUploading ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg> Uploading...</> : <><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 0L8 8m4-4l4 4" /></svg> Choose image from device</>}
+                      <input type="file" accept="image/*" className="hidden" disabled={productImageUploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleProductImageFile(f); e.target.value = ""; }} />
+                    </label>
+                    {imageUrl && <img src={imageUrl} alt="Preview" className="w-full h-28 object-cover rounded-lg border border-gray-100" onError={(e) => { (e.target as any).style.display = "none"; }} />}
+                  </div>
+                )}
+              </div>
               <div className="flex gap-3">
                 <div className="flex-1 space-y-1.5">
                   <Label className="text-xs font-semibold text-gray-600">Availability</Label>
