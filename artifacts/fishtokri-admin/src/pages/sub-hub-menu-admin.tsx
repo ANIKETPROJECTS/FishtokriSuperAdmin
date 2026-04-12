@@ -1996,43 +1996,70 @@ function CategoryModal({ isOpen, onClose, category, subHubId, onSaved }: any) {
 function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
   const { toast } = useToast();
   const isEditing = !!combo;
-  const [name, setName] = useState(""); const [description, setDescription] = useState("");
+
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [fullDescription, setFullDescription] = useState("");
-  const [discountedPrice, setDiscountedPrice] = useState(""); const [originalPrice, setOriginalPrice] = useState("");
-  const [serves, setServes] = useState(""); const [weight, setWeight] = useState("");
-  const [imageUrl, setImageUrl] = useState(""); const [tagsStr, setTagsStr] = useState("");
-  const [isActive, setIsActive] = useState(true); const [sortOrder, setSortOrder] = useState("0");
-  const [includesStr, setIncludesStr] = useState("");
+  const [discountedPrice, setDiscountedPrice] = useState("");
+  const [originalPrice, setOriginalPrice] = useState("");
+  const [serves, setServes] = useState("");
+  const [weight, setWeight] = useState("");
+  const [tagsStr, setTagsStr] = useState("");
+  const [isActive, setIsActive] = useState(true);
+  const [sortOrder, setSortOrder] = useState("0");
+  const [includes, setIncludes] = useState<{ productId: string; label: string }[]>([]);
+  const [nutrition, setNutrition] = useState<{ label: string; value: string; icon: string }[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<any[]>([]);
+  const [productSearch, setProductSearch] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      if (combo) {
-        setName(combo.name ?? ""); setDescription(combo.description ?? "");
-        setFullDescription(combo.fullDescription ?? "");
-        setDiscountedPrice(String(combo.discountedPrice ?? combo.price ?? ""));
-        setOriginalPrice(String(combo.originalPrice ?? ""));
-        setServes(combo.serves ?? ""); setWeight(combo.weight ?? "");
-        setImageUrl(combo.imageUrl ?? (Array.isArray(combo.images) ? combo.images[0] ?? "" : ""));
-        setTagsStr(Array.isArray(combo.tags) ? combo.tags.join(", ") : "");
-        setIncludesStr(Array.isArray(combo.includes) ? combo.includes.map((i: any) => i.label ?? i).join(", ") : "");
-        setIsActive(combo.isActive !== false); setSortOrder(String(combo.sortOrder ?? 0));
-      } else {
-        setName(""); setDescription(""); setFullDescription(""); setDiscountedPrice(""); setOriginalPrice("");
-        setServes(""); setWeight(""); setImageUrl(""); setTagsStr(""); setIncludesStr(""); setIsActive(true); setSortOrder("0");
-      }
+    if (!isOpen) return;
+    apiFetch(`/api/sub-hubs/${subHubId}/menu/products`).then((d) => setAvailableProducts(d.products ?? [])).catch(() => {});
+    if (combo) {
+      setName(combo.name ?? ""); setDescription(combo.description ?? "");
+      setFullDescription(combo.fullDescription ?? "");
+      setDiscountedPrice(String(combo.discountedPrice ?? combo.price ?? ""));
+      setOriginalPrice(String(combo.originalPrice ?? ""));
+      setServes(combo.serves ?? ""); setWeight(combo.weight ?? "");
+      setTagsStr(Array.isArray(combo.tags) ? combo.tags.join(", ") : "");
+      setIncludes(Array.isArray(combo.includes) ? combo.includes.map((i: any) => ({
+        productId: String(i.productId ?? ""),
+        label: i.label ?? "",
+      })) : []);
+      setNutrition(Array.isArray(combo.nutrition) ? combo.nutrition.map((n: any) => ({
+        label: n.label ?? "", value: n.value ?? "", icon: n.icon ?? "",
+      })) : []);
+      setIsActive(combo.isActive !== false); setSortOrder(String(combo.sortOrder ?? 0));
+    } else {
+      setName(""); setDescription(""); setFullDescription(""); setDiscountedPrice(""); setOriginalPrice("");
+      setServes(""); setWeight(""); setTagsStr(""); setIncludes([]); setNutrition([]); setIsActive(true); setSortOrder("0");
     }
+    setProductSearch("");
   }, [isOpen, combo]);
+
+  const toggleProduct = (product: any) => {
+    const id = String(product._id);
+    const exists = includes.find((i) => i.productId === id);
+    if (exists) {
+      setIncludes(includes.filter((i) => i.productId !== id));
+    } else {
+      setIncludes([...includes, { productId: id, label: product.name }]);
+    }
+  };
+
+  const filteredProducts = availableProducts.filter((p) =>
+    !productSearch || p.name?.toLowerCase().includes(productSearch.toLowerCase())
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     const dp = Number(discountedPrice) || 0; const op = Number(originalPrice) || 0;
-    const includesParsed = includesStr.split(",").map((s) => s.trim()).filter(Boolean).map((label) => ({ label }));
     const payload = {
       name, description, fullDescription, serves, weight,
       discountedPrice: dp, originalPrice: op,
-      discount: op > dp ? Math.round(((op - dp) / op) * 100) : 0,
-      imageUrl, includes: includesParsed,
+      discount: op > dp && dp > 0 ? Math.round(((op - dp) / op) * 100) : 0,
+      includes, nutrition,
       tags: tagsStr.split(",").map((t) => t.trim()).filter(Boolean),
       isActive, sortOrder: Number(sortOrder) || 0,
     };
@@ -2046,28 +2073,112 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[580px] max-h-[92vh] overflow-y-auto">
         <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Combo" : "Add Combo"}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Combo Name *</Label><Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Family Fish Combo" className="h-9" /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Short Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief tagline" className="h-9" /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Full Description</Label><Input value={fullDescription} onChange={(e) => setFullDescription(e.target.value)} placeholder="Detailed description" className="h-9" /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Discounted Price (₹) *</Label><Input required type="number" min="0" value={discountedPrice} onChange={(e) => setDiscountedPrice(e.target.value)} placeholder="0" className="h-9" /></div>
-            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Original Price (₹)</Label><Input type="number" min="0" value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} placeholder="0" className="h-9" /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Serves</Label><Input value={serves} onChange={(e) => setServes(e.target.value)} placeholder="e.g. 2-3 persons" className="h-9" /></div>
-            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Weight</Label><Input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g. 500g" className="h-9" /></div>
-          </div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Image URL</Label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Includes <span className="font-normal text-gray-400">(comma-separated labels)</span></Label><Input value={includesStr} onChange={(e) => setIncludesStr(e.target.value)} placeholder="Rohu Fillet, Prawn Masala, Hilsa" className="h-9" /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Tags <span className="font-normal text-gray-400">(comma-separated)</span></Label><Input value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} placeholder="Family Size, Value" className="h-9" /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sort Order</Label><Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" /></div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
-          </div>
-          <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Combo"}</Button></DialogFooter>
+        <form onSubmit={handleSubmit} className="space-y-4 pt-1">
+
+          {/* Basic info */}
+          <section className="space-y-3">
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Combo Name *</Label><Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Family Fish Combo" className="h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Short Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief tagline" className="h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Full Description</Label><textarea value={fullDescription} onChange={(e) => setFullDescription(e.target.value)} placeholder="Detailed description of the combo..." className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-16" /></div>
+          </section>
+
+          {/* Pricing & details */}
+          <section className="space-y-3">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Pricing & Details</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Discounted Price (₹) *</Label><Input required type="number" min="0" value={discountedPrice} onChange={(e) => setDiscountedPrice(e.target.value)} placeholder="0" className="h-9" /></div>
+              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Original Price (₹)</Label><Input type="number" min="0" value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} placeholder="0" className="h-9" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Serves</Label><Input value={serves} onChange={(e) => setServes(e.target.value)} placeholder="e.g. 2-3 persons" className="h-9" /></div>
+              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Weight</Label><Input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g. 500g" className="h-9" /></div>
+            </div>
+          </section>
+
+          {/* Product selection */}
+          <section>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Products in Combo ({includes.length})</p>
+            {includes.length > 0 && (
+              <div className="space-y-1.5 mb-3">
+                {includes.map((item, i) => (
+                  <div key={item.productId} className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-100 rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <Input
+                        value={item.label}
+                        onChange={(e) => setIncludes(includes.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))}
+                        placeholder="Label shown to customer"
+                        className="h-7 text-xs border-blue-200 bg-white"
+                      />
+                    </div>
+                    <button type="button" onClick={() => setIncludes(includes.filter((_, idx) => idx !== i))} className="text-blue-300 hover:text-red-500 flex-shrink-0 transition-colors"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <div className="p-2 border-b border-gray-100 bg-gray-50">
+                <Input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Search products..." className="h-7 text-xs" />
+              </div>
+              <div className="max-h-40 overflow-y-auto">
+                {filteredProducts.length === 0
+                  ? <p className="text-center text-xs text-gray-400 py-4">No products found</p>
+                  : filteredProducts.map((p) => {
+                    const id = String(p._id);
+                    const selected = includes.some((i) => i.productId === id);
+                    return (
+                      <label key={id} className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors border-b border-gray-50 last:border-0 ${selected ? "bg-blue-50" : "hover:bg-gray-50"}`}>
+                        <input type="checkbox" checked={selected} onChange={() => toggleProduct(p)} className="w-3.5 h-3.5 accent-[#1A56DB]" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-[#162B4D] truncate">{p.name}</p>
+                          {p.category && <p className="text-[10px] text-gray-400">{p.category}</p>}
+                        </div>
+                        {p.price > 0 && <span className="text-xs text-gray-500 flex-shrink-0">₹{p.price}</span>}
+                      </label>
+                    );
+                  })}
+              </div>
+            </div>
+          </section>
+
+          {/* Nutrition */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nutrition ({nutrition.length})</p>
+              <button type="button" onClick={() => setNutrition([...nutrition, { label: "", value: "", icon: "" }])} className="text-xs text-[#1A56DB] font-semibold flex items-center gap-1 hover:underline">
+                <Plus className="w-3 h-3" /> Add
+              </button>
+            </div>
+            {nutrition.length === 0
+              ? <div className="text-center py-4 border border-dashed border-gray-200 rounded-xl text-gray-400 text-xs">No nutrition info yet. Click "Add" to include.</div>
+              : <div className="space-y-2">
+                  {nutrition.map((n, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Input value={n.icon} onChange={(e) => setNutrition(nutrition.map((x, idx) => idx === i ? { ...x, icon: e.target.value } : x))} placeholder="🔥" className="h-8 text-sm w-14 text-center flex-shrink-0" />
+                      <Input value={n.label} onChange={(e) => setNutrition(nutrition.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))} placeholder="Calories" className="h-8 text-sm flex-1" />
+                      <Input value={n.value} onChange={(e) => setNutrition(nutrition.map((x, idx) => idx === i ? { ...x, value: e.target.value } : x))} placeholder="220 kcal" className="h-8 text-sm flex-1" />
+                      <button type="button" onClick={() => setNutrition(nutrition.filter((_, idx) => idx !== i))} className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-gray-400 pl-1">Icon · Label · Value</p>
+                </div>}
+          </section>
+
+          {/* Tags + meta */}
+          <section className="space-y-3">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Tags & Settings</p>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Tags <span className="font-normal text-gray-400">(comma-separated)</span></Label><Input value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} placeholder="Family Size, Value" className="h-9" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sort Order</Label><Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" /></div>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
+            </div>
+          </section>
+
+          <DialogFooter className="pt-1 border-t border-gray-100">
+            <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
+            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 px-6">{saving ? "Saving..." : isEditing ? "Save Changes" : "Add Combo"}</Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
