@@ -1586,6 +1586,9 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const [productImageMode, setProductImageMode] = useState<"url" | "upload">("url");
   const [productImageUploading, setProductImageUploading] = useState(false);
   const [recipes, setRecipes] = useState<any[]>([]);
+  const [couponIds, setCouponIds] = useState<string[]>([]);
+  const [inventoryBatches, setInventoryBatches] = useState<any[]>([]);
+  const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
   const discountPct = useMemo(() => {
@@ -1595,6 +1598,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
 
   useEffect(() => {
     if (!isOpen) return;
+    apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons`).then((d) => setAvailableCoupons(d.coupons ?? [])).catch(() => {});
     if (product) {
       setName(product.name ?? "");
       setDescription(product.description ?? "");
@@ -1619,11 +1623,20 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
         ingredients: Array.isArray(r.ingredients) && r.ingredients.length > 0 ? r.ingredients : [""],
         method: Array.isArray(r.method) && r.method.length > 0 ? r.method : [""],
       })) : []);
+      setCouponIds(Array.isArray(product.couponIds) ? product.couponIds.map((id: any) => String(id?.$oid ?? id?._id ?? id)) : []);
+      setInventoryBatches(Array.isArray(product.inventoryBatches) ? product.inventoryBatches.map((b: any) => ({
+        _id: String(b._id?.$oid ?? b._id ?? ""),
+        quantity: String(b.quantity ?? "0"),
+        shelfLifeDays: String(b.shelfLifeDays ?? ""),
+        entryDate: b.entryDate ? String(b.entryDate).substring(0, 10) : "",
+        expiryDate: b.expiryDate ? String(b.expiryDate).substring(0, 10) : "",
+      })) : []);
     } else {
       setName(""); setDescription(""); setCategory(""); setSubCategory("");
       setPrice(""); setOriginalPrice(""); setUnit("per kg"); setWeight("");
       setGrossWeight(""); setNetWeight(""); setPieces(""); setServes(""); setQuantity("0"); setStatus("available");
       setIsArchived(false); setProductImageUrl(""); setProductImageMode("url"); setRecipes([]);
+      setCouponIds([]); setInventoryBatches([]);
     }
   }, [isOpen, product]);
 
@@ -1667,6 +1680,14 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       quantity: Number(quantity) || 0,
       status, isArchived, imageUrl,
       recipes: cleanedRecipes,
+      couponIds,
+      inventoryBatches: inventoryBatches.map((b) => ({
+        ...b,
+        quantity: Number(b.quantity) || 0,
+        shelfLifeDays: Number(b.shelfLifeDays) || 0,
+        entryDate: b.entryDate || undefined,
+        expiryDate: b.expiryDate || undefined,
+      })),
     };
     try {
       if (isEditing) {
@@ -1818,6 +1839,60 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                     onRemove={() => setRecipes(recipes.filter((_, idx) => idx !== i))}
                   />
                 ))}</div>}
+          </section>
+
+          {/* ── INVENTORY BATCHES ───────────────────────────── */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Inventory Batches ({inventoryBatches.length})</p>
+              <button type="button" onClick={() => setInventoryBatches([...inventoryBatches, { _id: "", quantity: "0", shelfLifeDays: "", entryDate: "", expiryDate: "" }])} className="text-xs text-[#1A56DB] font-semibold flex items-center gap-1 hover:underline">
+                <Plus className="w-3 h-3" /> Add Batch
+              </button>
+            </div>
+            {inventoryBatches.length === 0
+              ? <div className="text-center py-5 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">No batches yet. Click "Add Batch" to record stock.</div>
+              : <div className="space-y-2">
+                  {inventoryBatches.map((b, i) => (
+                    <div key={i} className="border border-gray-200 rounded-xl p-3 space-y-2 bg-gray-50/40">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-gray-500">Batch {i + 1}</span>
+                        <button type="button" onClick={() => setInventoryBatches(inventoryBatches.filter((_, idx) => idx !== i))} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Qty</Label><Input type="number" min="0" value={b.quantity} onChange={(e) => setInventoryBatches(inventoryBatches.map((x, idx) => idx === i ? { ...x, quantity: e.target.value } : x))} className="h-8 text-sm" /></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Shelf Life (days)</Label><Input type="number" min="0" value={b.shelfLifeDays} onChange={(e) => setInventoryBatches(inventoryBatches.map((x, idx) => idx === i ? { ...x, shelfLifeDays: e.target.value } : x))} className="h-8 text-sm" /></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Entry Date</Label><Input type="date" value={b.entryDate} onChange={(e) => setInventoryBatches(inventoryBatches.map((x, idx) => idx === i ? { ...x, entryDate: e.target.value } : x))} className="h-8 text-sm" /></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Expiry Date</Label><Input type="date" value={b.expiryDate} onChange={(e) => setInventoryBatches(inventoryBatches.map((x, idx) => idx === i ? { ...x, expiryDate: e.target.value } : x))} className="h-8 text-sm" /></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>}
+          </section>
+
+          {/* ── COUPONS ─────────────────────────────────────── */}
+          <section>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Assigned Coupons</p>
+            {availableCoupons.length === 0
+              ? <div className="text-center py-5 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">No coupons found. Add coupons in the Coupons tab first.</div>
+              : <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {availableCoupons.map((c: any) => {
+                    const id = String(c._id);
+                    const checked = couponIds.includes(id);
+                    return (
+                      <label key={id} className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${checked ? "border-[#1A56DB] bg-blue-50/50" : "border-gray-200 hover:border-gray-300 bg-white"}`}>
+                        <input type="checkbox" checked={checked} onChange={() => setCouponIds(checked ? couponIds.filter((x) => x !== id) : [...couponIds, id])} className="w-4 h-4 accent-[#1A56DB]" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-[#162B4D] font-mono tracking-wide">{c.code}</span>
+                            {c.title && <span className="text-xs text-gray-500 truncate">{c.title}</span>}
+                          </div>
+                          <p className="text-[10px] text-gray-400">{c.type === "percentage" ? `${c.discountValue}% off` : `₹${c.discountValue} off`}{c.minOrderAmount ? ` · min ₹${c.minOrderAmount}` : ""}</p>
+                        </div>
+                        {!c.isActive && <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full flex-shrink-0">Inactive</span>}
+                      </label>
+                    );
+                  })}
+                </div>}
           </section>
 
           <DialogFooter className="pt-2 border-t border-gray-100">
