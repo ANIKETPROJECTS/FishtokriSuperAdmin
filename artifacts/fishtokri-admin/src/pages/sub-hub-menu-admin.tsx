@@ -2489,20 +2489,51 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
 function CarouselModal({ isOpen, onClose, carousel, subHubId, onSaved }: any) {
   const { toast } = useToast();
   const isEditing = !!carousel;
-  const [imageUrl, setImageUrl] = useState(""); const [title, setTitle] = useState("");
-  const [linkUrl, setLinkUrl] = useState(""); const [order, setOrder] = useState("0");
-  const [isActive, setIsActive] = useState(true); const [saving, setSaving] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
+  const [imageMode, setImageMode] = useState<"url" | "upload">("url");
+  const [imageUploading, setImageUploading] = useState(false);
+  const [title, setTitle] = useState("");
+  const [order, setOrder] = useState("0");
+  const [isActive, setIsActive] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      if (carousel) { setImageUrl(carousel.imageUrl ?? ""); setTitle(carousel.title ?? ""); setLinkUrl(carousel.linkUrl ?? ""); setOrder(String(carousel.order ?? 0)); setIsActive(carousel.isActive !== false); }
-      else { setImageUrl(""); setTitle(""); setLinkUrl(""); setOrder("0"); setIsActive(true); }
+      if (carousel) {
+        setImageUrl(carousel.imageUrl ?? ""); setTitle(carousel.title ?? "");
+        setOrder(String(carousel.order ?? 0)); setIsActive(carousel.isActive !== false);
+      } else {
+        setImageUrl(""); setTitle(""); setOrder("0"); setIsActive(true);
+      }
+      setImageMode("url"); setImageUploading(false);
     }
   }, [isOpen, carousel]);
 
+  const handleImageFile = async (file: File) => {
+    setImageUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch("/api/upload?folder=fishtokri/banners", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? "Upload failed");
+      setImageUrl(data.url);
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setSaving(true);
-    const payload = { imageUrl, title: title || null, linkUrl: linkUrl || null, order: Number(order) || 0, isActive };
+    e.preventDefault();
+    if (!imageUrl) { toast({ title: "Image required", description: "Please provide or upload a banner image.", variant: "destructive" }); return; }
+    setSaving(true);
+    const payload = { imageUrl, title: title || null, order: Number(order) || 0, isActive };
     try {
       if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/carousels/${carousel._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Banner updated" }); }
       else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/carousels`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Banner added" }); }
@@ -2516,14 +2547,44 @@ function CarouselModal({ isOpen, onClose, carousel, subHubId, onSaved }: any) {
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Banner" : "Add Banner"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Image URL *</Label><Input required value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" />{imageUrl && <img src={imageUrl} alt="Preview" className="w-full h-24 object-cover rounded-lg border border-gray-100 mt-1" onError={(e) => { (e.target as any).style.display = "none"; }} />}</div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Title</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Optional title" className="h-9" /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Link URL</Label><Input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://... (optional)" className="h-9" /></div>
+          {/* Image */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold text-gray-600">Image *</Label>
+              <div className="flex gap-0.5 p-0.5 bg-gray-100 rounded-lg">
+                <button type="button" onClick={() => setImageMode("url")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${imageMode === "url" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>URL</button>
+                <button type="button" onClick={() => setImageMode("upload")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${imageMode === "upload" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Upload</button>
+              </div>
+            </div>
+            {imageMode === "url" ? (
+              <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" />
+            ) : (
+              <label className={`flex items-center justify-center gap-2 h-10 px-3 rounded-lg border-2 border-dashed cursor-pointer text-sm transition-colors ${imageUploading ? "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed" : "border-gray-200 hover:border-[#1A56DB] text-gray-500 hover:text-[#1A56DB]"}`}>
+                {imageUploading
+                  ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg> Uploading…</>
+                  : <><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 0L8 8m4-4l4 4" /></svg> Choose image from device</>}
+                <input type="file" accept="image/*" className="hidden" disabled={imageUploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); e.target.value = ""; }} />
+              </label>
+            )}
+            {imageUrl && <img src={imageUrl} alt="Preview" className="w-full h-28 object-cover rounded-lg border border-gray-100 mt-1" onError={(e) => { (e.target as any).style.display = "none"; }} />}
+          </div>
+
+          {/* Title */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600">Title <span className="font-normal text-gray-400">(optional)</span></Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Weekend Special" className="h-9" />
+          </div>
+
+          {/* Order + Status */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Display Order</Label><Input type="number" min="0" value={order} onChange={(e) => setOrder(e.target.value)} className="h-9" /></div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
           </div>
-          <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Banner"}</Button></DialogFooter>
+
+          <DialogFooter className="pt-1">
+            <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
+            <Button type="submit" disabled={saving || imageUploading} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{saving ? "Saving…" : isEditing ? "Save Changes" : "Add Banner"}</Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
