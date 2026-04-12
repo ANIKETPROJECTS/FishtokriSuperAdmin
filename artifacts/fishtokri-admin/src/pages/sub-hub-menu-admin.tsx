@@ -1993,6 +1993,9 @@ function CategoryModal({ isOpen, onClose, category, subHubId, onSaved }: any) {
   );
 }
 
+type ComboNutrition = { icon: string; label: string; value: string; unit: string; percentage: string };
+type ComboInclude = { productId: string; label: string };
+
 function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
   const { toast } = useToast();
   const isEditing = !!combo;
@@ -2007,15 +2010,16 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
   const [tagsStr, setTagsStr] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [sortOrder, setSortOrder] = useState("0");
-  const [includes, setIncludes] = useState<{ productId: string; label: string }[]>([]);
-  const [nutrition, setNutrition] = useState<{ label: string; value: string; icon: string }[]>([]);
+  const [includes, setIncludes] = useState<ComboInclude[]>([]);
+  const [nutrition, setNutrition] = useState<ComboNutrition[]>([]);
   const [availableProducts, setAvailableProducts] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState("all");
   const [productSearch, setProductSearch] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
-    apiFetch(`/api/sub-hubs/${subHubId}/menu/products`).then((d) => setAvailableProducts(d.products ?? [])).catch(() => {});
+    apiFetch(`/api/sub-hubs/${subHubId}/menu/products`).then((pd) => setAvailableProducts(pd.products ?? [])).catch(() => {});
     if (combo) {
       setName(combo.name ?? ""); setDescription(combo.description ?? "");
       setFullDescription(combo.fullDescription ?? "");
@@ -2028,29 +2032,39 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
         label: i.label ?? "",
       })) : []);
       setNutrition(Array.isArray(combo.nutrition) ? combo.nutrition.map((n: any) => ({
-        label: n.label ?? "", value: n.value ?? "", icon: n.icon ?? "",
+        icon: n.icon ?? "",
+        label: n.label ?? "",
+        value: n.value ?? "",
+        unit: n.unit ?? "",
+        percentage: n.percentage ?? "",
       })) : []);
       setIsActive(combo.isActive !== false); setSortOrder(String(combo.sortOrder ?? 0));
     } else {
       setName(""); setDescription(""); setFullDescription(""); setDiscountedPrice(""); setOriginalPrice("");
       setServes(""); setWeight(""); setTagsStr(""); setIncludes([]); setNutrition([]); setIsActive(true); setSortOrder("0");
     }
-    setProductSearch("");
+    setProductSearch(""); setSelectedCategory("all");
   }, [isOpen, combo]);
 
   const toggleProduct = (product: any) => {
     const id = String(product._id);
-    const exists = includes.find((i) => i.productId === id);
-    if (exists) {
+    if (includes.find((i) => i.productId === id)) {
       setIncludes(includes.filter((i) => i.productId !== id));
     } else {
       setIncludes([...includes, { productId: id, label: product.name }]);
     }
   };
 
-  const filteredProducts = availableProducts.filter((p) =>
-    !productSearch || p.name?.toLowerCase().includes(productSearch.toLowerCase())
-  );
+  const updateNutrition = (i: number, field: keyof ComboNutrition, val: string) =>
+    setNutrition(nutrition.map((n, idx) => idx === i ? { ...n, [field]: val } : n));
+
+  const categoryNames = Array.from(new Set(availableProducts.map((p) => p.category).filter(Boolean)));
+
+  const filteredProducts = availableProducts.filter((p) => {
+    const matchCat = selectedCategory === "all" || p.category === selectedCategory;
+    const matchSearch = !productSearch || p.name?.toLowerCase().includes(productSearch.toLowerCase());
+    return matchCat && matchSearch;
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
@@ -2059,7 +2073,8 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
       name, description, fullDescription, serves, weight,
       discountedPrice: dp, originalPrice: op,
       discount: op > dp && dp > 0 ? Math.round(((op - dp) / op) * 100) : 0,
-      includes, nutrition,
+      includes,
+      nutrition: nutrition.map((n) => ({ icon: n.icon, label: n.label, value: n.value, unit: n.unit, percentage: n.percentage })),
       tags: tagsStr.split(",").map((t) => t.trim()).filter(Boolean),
       isActive, sortOrder: Number(sortOrder) || 0,
     };
@@ -2073,9 +2088,9 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[580px] max-h-[92vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px] max-h-[92vh] overflow-y-auto">
         <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Combo" : "Add Combo"}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-1">
+        <form onSubmit={handleSubmit} className="space-y-5 pt-1">
 
           {/* Basic info */}
           <section className="space-y-3">
@@ -2097,44 +2112,74 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
             </div>
           </section>
 
-          {/* Product selection */}
+          {/* Product selection — category filter then products */}
           <section>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Products in Combo ({includes.length})</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">
+              Select Products ({includes.length} selected)
+            </p>
+
+            {/* Selected products chips */}
             {includes.length > 0 && (
               <div className="space-y-1.5 mb-3">
-                {includes.map((item, i) => (
-                  <div key={item.productId} className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-100 rounded-lg">
-                    <div className="flex-1 min-w-0">
-                      <Input
-                        value={item.label}
-                        onChange={(e) => setIncludes(includes.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))}
-                        placeholder="Label shown to customer"
-                        className="h-7 text-xs border-blue-200 bg-white"
-                      />
+                {includes.map((item, i) => {
+                  const prod = availableProducts.find((p) => String(p._id) === item.productId);
+                  return (
+                    <div key={item.productId} className="flex items-center gap-2 p-2 bg-[#EEF3FB] border border-[#C5D5F5] rounded-lg">
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#1A56DB] flex-shrink-0" />
+                      <span className="text-[10px] text-gray-400 flex-shrink-0 w-20 truncate">{prod?.category ?? ""}</span>
+                      <div className="flex-1 min-w-0">
+                        <Input
+                          value={item.label}
+                          onChange={(e) => setIncludes(includes.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))}
+                          placeholder="Label shown to customer"
+                          className="h-7 text-xs border-[#C5D5F5] bg-white"
+                        />
+                      </div>
+                      <button type="button" onClick={() => setIncludes(includes.filter((_, idx) => idx !== i))} className="text-blue-200 hover:text-red-500 flex-shrink-0 transition-colors"><X className="w-3.5 h-3.5" /></button>
                     </div>
-                    <button type="button" onClick={() => setIncludes(includes.filter((_, idx) => idx !== i))} className="text-blue-300 hover:text-red-500 flex-shrink-0 transition-colors"><X className="w-3.5 h-3.5" /></button>
-                  </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Category filter chips */}
+            {categoryNames.length > 0 && (
+              <div className="flex gap-1.5 flex-wrap mb-2">
+                <button type="button" onClick={() => setSelectedCategory("all")}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-colors ${selectedCategory === "all" ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+                  All
+                </button>
+                {categoryNames.map((cat) => (
+                  <button key={cat} type="button" onClick={() => setSelectedCategory(cat)}
+                    className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-colors ${selectedCategory === cat ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+                    {cat}
+                  </button>
                 ))}
               </div>
             )}
+
+            {/* Product list */}
             <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <div className="p-2 border-b border-gray-100 bg-gray-50">
+              <div className="px-2 py-1.5 border-b border-gray-100 bg-gray-50">
                 <Input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Search products..." className="h-7 text-xs" />
               </div>
-              <div className="max-h-40 overflow-y-auto">
+              <div className="max-h-44 overflow-y-auto divide-y divide-gray-50">
                 {filteredProducts.length === 0
-                  ? <p className="text-center text-xs text-gray-400 py-4">No products found</p>
+                  ? <p className="text-center text-xs text-gray-400 py-5">No products found</p>
                   : filteredProducts.map((p) => {
                     const id = String(p._id);
                     const selected = includes.some((i) => i.productId === id);
                     return (
-                      <label key={id} className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors border-b border-gray-50 last:border-0 ${selected ? "bg-blue-50" : "hover:bg-gray-50"}`}>
-                        <input type="checkbox" checked={selected} onChange={() => toggleProduct(p)} className="w-3.5 h-3.5 accent-[#1A56DB]" />
+                      <label key={id} className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${selected ? "bg-[#EEF3FB]" : "hover:bg-gray-50"}`}>
+                        <input type="checkbox" checked={selected} onChange={() => toggleProduct(p)} className="w-4 h-4 accent-[#1A56DB] flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-[#162B4D] truncate">{p.name}</p>
-                          {p.category && <p className="text-[10px] text-gray-400">{p.category}</p>}
+                          <p className="text-[10px] text-gray-400">{p.category}{p.subCategory ? ` › ${p.subCategory}` : ""}</p>
                         </div>
-                        {p.price > 0 && <span className="text-xs text-gray-500 flex-shrink-0">₹{p.price}</span>}
+                        <div className="flex-shrink-0 text-right">
+                          {p.discountedPrice > 0 && <p className="text-xs font-semibold text-[#162B4D]">₹{p.discountedPrice}</p>}
+                          {p.originalPrice > p.discountedPrice && <p className="text-[10px] text-gray-400 line-through">₹{p.originalPrice}</p>}
+                        </div>
                       </label>
                     );
                   })}
@@ -2145,27 +2190,35 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
           {/* Nutrition */}
           <section>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nutrition ({nutrition.length})</p>
-              <button type="button" onClick={() => setNutrition([...nutrition, { label: "", value: "", icon: "" }])} className="text-xs text-[#1A56DB] font-semibold flex items-center gap-1 hover:underline">
-                <Plus className="w-3 h-3" /> Add
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nutrition Info ({nutrition.length})</p>
+              <button type="button" onClick={() => setNutrition([...nutrition, { icon: "", label: "", value: "", unit: "", percentage: "" }])}
+                className="text-xs text-[#1A56DB] font-semibold flex items-center gap-1 hover:underline">
+                <Plus className="w-3 h-3" /> Add Row
               </button>
             </div>
             {nutrition.length === 0
-              ? <div className="text-center py-4 border border-dashed border-gray-200 rounded-xl text-gray-400 text-xs">No nutrition info yet. Click "Add" to include.</div>
-              : <div className="space-y-2">
+              ? <div className="text-center py-5 border border-dashed border-gray-200 rounded-xl text-gray-400 text-xs">No nutrition info yet. Click "Add Row" to include.</div>
+              : (
+                <div className="space-y-2">
+                  {/* Header */}
+                  <div className="grid grid-cols-[40px_1fr_80px_60px_60px_24px] gap-1.5 px-1">
+                    {["Icon","Label","Value","Unit","% DV",""].map((h) => <span key={h} className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">{h}</span>)}
+                  </div>
                   {nutrition.map((n, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <Input value={n.icon} onChange={(e) => setNutrition(nutrition.map((x, idx) => idx === i ? { ...x, icon: e.target.value } : x))} placeholder="🔥" className="h-8 text-sm w-14 text-center flex-shrink-0" />
-                      <Input value={n.label} onChange={(e) => setNutrition(nutrition.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))} placeholder="Calories" className="h-8 text-sm flex-1" />
-                      <Input value={n.value} onChange={(e) => setNutrition(nutrition.map((x, idx) => idx === i ? { ...x, value: e.target.value } : x))} placeholder="220 kcal" className="h-8 text-sm flex-1" />
-                      <button type="button" onClick={() => setNutrition(nutrition.filter((_, idx) => idx !== i))} className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <div key={i} className="grid grid-cols-[40px_1fr_80px_60px_60px_24px] gap-1.5 items-center">
+                      <Input value={n.icon} onChange={(e) => updateNutrition(i, "icon", e.target.value)} placeholder="🔥" className="h-8 text-sm text-center px-1" />
+                      <Input value={n.label} onChange={(e) => updateNutrition(i, "label", e.target.value)} placeholder="Calories" className="h-8 text-xs" />
+                      <Input value={n.value} onChange={(e) => updateNutrition(i, "value", e.target.value)} placeholder="220" className="h-8 text-xs" />
+                      <Input value={n.unit} onChange={(e) => updateNutrition(i, "unit", e.target.value)} placeholder="kcal" className="h-8 text-xs" />
+                      <Input value={n.percentage} onChange={(e) => updateNutrition(i, "percentage", e.target.value)} placeholder="15%" className="h-8 text-xs" />
+                      <button type="button" onClick={() => setNutrition(nutrition.filter((_, idx) => idx !== i))} className="text-gray-300 hover:text-red-500 transition-colors flex justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
-                  <p className="text-[10px] text-gray-400 pl-1">Icon · Label · Value</p>
-                </div>}
+                </div>
+              )}
           </section>
 
-          {/* Tags + meta */}
+          {/* Tags + settings */}
           <section className="space-y-3">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Tags & Settings</p>
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Tags <span className="font-normal text-gray-400">(comma-separated)</span></Label><Input value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} placeholder="Family Size, Value" className="h-9" /></div>
@@ -2175,7 +2228,7 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved }: any) {
             </div>
           </section>
 
-          <DialogFooter className="pt-1 border-t border-gray-100">
+          <DialogFooter className="pt-2 border-t border-gray-100">
             <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
             <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 px-6">{saving ? "Saving..." : isEditing ? "Save Changes" : "Add Combo"}</Button>
           </DialogFooter>
