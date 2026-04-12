@@ -194,6 +194,63 @@ router.delete("/products/:productId", async (req, res) => {
   }
 });
 
+// ─── PRODUCTS BULK UPSERT ─────────────────────────────────────────────────────
+router.post("/products/bulk-upsert", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res);
+    if (!ctx) return;
+    const rows: any[] = Array.isArray(req.body.products) ? req.body.products : [];
+    if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No products provided" }); return; }
+
+    const created: number[] = [];
+    const updated: number[] = [];
+    const errors: string[] = [];
+
+    for (const row of rows) {
+      try {
+        const p = Number(row.price) || 0;
+        const op = Number(row.originalPrice ?? row.mrp) || p;
+        const fields = {
+          name: row.name ?? "",
+          description: row.description ?? "",
+          category: row.category ?? "",
+          subCategory: row.subCategory ?? "",
+          price: p,
+          originalPrice: op,
+          discountPct: Number(row.discountPct ?? row.discount_pct) || (op > p ? Math.round(((op - p) / op) * 100) : 0),
+          unit: row.unit ?? "per kg",
+          weight: row.weight ?? "",
+          pieces: row.pieces ?? "",
+          serves: row.serves ?? "",
+          quantity: Number(row.quantity ?? row.stock) || 0,
+          status: row.status ?? "available",
+          isArchived: String(row.isArchived ?? row.archived ?? "").toLowerCase() === "yes" || row.isArchived === true,
+          imageUrl: row.imageUrl ?? "",
+          limitedStockNote: row.limitedStockNote ?? "",
+          updatedAt: new Date(),
+        };
+        if (!fields.name) { errors.push(`Row skipped: missing name`); continue; }
+
+        const oid = row._id ? toId(String(row._id)) : null;
+        if (oid) {
+          await ctx.conn.db.collection("products").updateOne({ _id: oid }, { $set: fields });
+          updated.push(1);
+        } else {
+          await ctx.conn.db.collection("products").insertOne({ ...fields, createdAt: new Date() });
+          created.push(1);
+        }
+      } catch (rowErr: any) {
+        errors.push(rowErr.message);
+      }
+    }
+
+    res.json({ created: created.length, updated: updated.length, errors });
+  } catch (err) {
+    req.log.error({ err }, "Failed to bulk upsert products");
+    res.status(500).json({ error: "InternalError", message: "Failed to process bulk upsert" });
+  }
+});
+
 // ─── CATEGORIES ───────────────────────────────────────────────────────────────
 router.get("/categories", async (req, res) => {
   try {

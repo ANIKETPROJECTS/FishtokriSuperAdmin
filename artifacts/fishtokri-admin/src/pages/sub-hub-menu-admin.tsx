@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams } from "wouter";
 import {
   ArrowLeft, Plus, Edit2, Trash2, Search, X, Package, Tag, Ticket,
   RefreshCw, Database, AlertCircle, CheckCircle, XCircle, Image,
   LayoutList, MapPin, ShoppingBag, ChevronDown, ChevronUp, GripVertical,
   LayoutGrid, List, SlidersHorizontal, ArrowUpDown, Clock,
+  Download, Upload, FilePen,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -400,6 +402,26 @@ export default function SubHubMenuAdmin() {
 }
 
 // ─── PRODUCTS TAB ─────────────────────────────────────────────────────────────
+const PRODUCT_COLS = [
+  { key: "_id", header: "ID (do not edit)" },
+  { key: "name", header: "Name" },
+  { key: "description", header: "Description" },
+  { key: "category", header: "Category" },
+  { key: "subCategory", header: "Sub Category" },
+  { key: "price", header: "Price" },
+  { key: "originalPrice", header: "MRP" },
+  { key: "discountPct", header: "Discount %" },
+  { key: "unit", header: "Unit" },
+  { key: "weight", header: "Weight" },
+  { key: "pieces", header: "Pieces" },
+  { key: "serves", header: "Serves" },
+  { key: "quantity", header: "Stock" },
+  { key: "status", header: "Status (available/out_of_stock)" },
+  { key: "isArchived", header: "Archived (yes/no)" },
+  { key: "imageUrl", header: "Image URL" },
+  { key: "limitedStockNote", header: "Limited Stock Note" },
+];
+
 function ProductsTab({ subHubId }: { subHubId: string }) {
   const { toast } = useToast();
   const [products, setProducts] = useState<any[]>([]);
@@ -412,6 +434,9 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [xlsxBusy, setXlsxBusy] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -472,6 +497,141 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
     finally { setDeleteId(null); }
   };
 
+  const handleExport = () => {
+    if (processed.length === 0) { toast({ title: "Nothing to export", description: "No products match the current filters." }); return; }
+    const rows = processed.map((p) => ({
+      "ID (do not edit)": String(p._id ?? ""),
+      "Name": p.name ?? "",
+      "Description": p.description ?? "",
+      "Category": p.category ?? "",
+      "Sub Category": p.subCategory ?? "",
+      "Price": p.price ?? 0,
+      "MRP": p.originalPrice ?? 0,
+      "Discount %": p.discountPct ?? 0,
+      "Unit": p.unit ?? "",
+      "Weight": p.weight ?? "",
+      "Pieces": p.pieces ?? "",
+      "Serves": p.serves ?? "",
+      "Stock": p.quantity ?? 0,
+      "Status (available/out_of_stock)": p.status ?? "available",
+      "Archived (yes/no)": p.isArchived ? "yes" : "no",
+      "Image URL": p.imageUrl ?? "",
+      "Limited Stock Note": p.limitedStockNote ?? "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 28 }, { wch: 28 }, { wch: 40 }, { wch: 18 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 40 }, { wch: 24 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Products");
+    XLSX.writeFile(wb, `products-export-${Date.now()}.xlsx`);
+    toast({ title: `Exported ${processed.length} products` });
+  };
+
+  const parseXlsx = (file: File): Promise<any[]> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target?.result as ArrayBuffer, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        resolve(rows as any[]);
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsArrayBuffer(file);
+  });
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setXlsxBusy(true);
+    try {
+      const rawRows = await parseXlsx(file);
+      const newRows = rawRows
+        .map((r: any) => ({
+          name: r["Name"] ?? r["name"] ?? "",
+          description: r["Description"] ?? r["description"] ?? "",
+          category: r["Category"] ?? r["category"] ?? "",
+          subCategory: r["Sub Category"] ?? r["subCategory"] ?? "",
+          price: r["Price"] ?? r["price"] ?? 0,
+          originalPrice: r["MRP"] ?? r["originalPrice"] ?? 0,
+          discountPct: r["Discount %"] ?? r["discountPct"] ?? 0,
+          unit: r["Unit"] ?? r["unit"] ?? "per kg",
+          weight: r["Weight"] ?? r["weight"] ?? "",
+          pieces: r["Pieces"] ?? r["pieces"] ?? "",
+          serves: r["Serves"] ?? r["serves"] ?? "",
+          quantity: r["Stock"] ?? r["quantity"] ?? 0,
+          status: r["Status (available/out_of_stock)"] ?? r["status"] ?? "available",
+          isArchived: r["Archived (yes/no)"] ?? r["isArchived"] ?? "no",
+          imageUrl: r["Image URL"] ?? r["imageUrl"] ?? "",
+          limitedStockNote: r["Limited Stock Note"] ?? r["limitedStockNote"] ?? "",
+        }))
+        .filter((r) => r.name);
+      if (newRows.length === 0) { toast({ title: "No valid rows found", description: "Make sure the file has a Name column.", variant: "destructive" }); return; }
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/bulk-upsert`, {
+        method: "POST", body: JSON.stringify({ products: newRows }),
+      });
+      toast({ title: `Import complete`, description: `${res.created} products added${res.errors?.length ? `, ${res.errors.length} skipped` : ""}.` });
+      load();
+    } catch (err: any) { toast({ title: "Import failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
+  const handleEditFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setXlsxBusy(true);
+    try {
+      const rawRows = await parseXlsx(file);
+      const productMap = new Map(products.map((p) => [String(p._id), p]));
+      const toUpdate = rawRows
+        .map((r: any) => {
+          const id = r["ID (do not edit)"] ?? r["_id"] ?? "";
+          const orig = id ? productMap.get(String(id)) : null;
+          const row = {
+            _id: id,
+            name: r["Name"] ?? r["name"] ?? orig?.name ?? "",
+            description: r["Description"] ?? r["description"] ?? orig?.description ?? "",
+            category: r["Category"] ?? r["category"] ?? orig?.category ?? "",
+            subCategory: r["Sub Category"] ?? r["subCategory"] ?? orig?.subCategory ?? "",
+            price: Number(r["Price"] ?? r["price"] ?? orig?.price ?? 0),
+            originalPrice: Number(r["MRP"] ?? r["originalPrice"] ?? orig?.originalPrice ?? 0),
+            discountPct: Number(r["Discount %"] ?? r["discountPct"] ?? orig?.discountPct ?? 0),
+            unit: r["Unit"] ?? r["unit"] ?? orig?.unit ?? "per kg",
+            weight: String(r["Weight"] ?? r["weight"] ?? orig?.weight ?? ""),
+            pieces: String(r["Pieces"] ?? r["pieces"] ?? orig?.pieces ?? ""),
+            serves: String(r["Serves"] ?? r["serves"] ?? orig?.serves ?? ""),
+            quantity: Number(r["Stock"] ?? r["quantity"] ?? orig?.quantity ?? 0),
+            status: r["Status (available/out_of_stock)"] ?? r["status"] ?? orig?.status ?? "available",
+            isArchived: r["Archived (yes/no)"] ?? r["isArchived"] ?? (orig?.isArchived ? "yes" : "no"),
+            imageUrl: r["Image URL"] ?? r["imageUrl"] ?? orig?.imageUrl ?? "",
+            limitedStockNote: r["Limited Stock Note"] ?? r["limitedStockNote"] ?? orig?.limitedStockNote ?? "",
+          };
+          if (!row._id || !orig) return null;
+          const changed =
+            row.name !== orig.name || row.description !== (orig.description ?? "") ||
+            row.category !== (orig.category ?? "") || row.subCategory !== (orig.subCategory ?? "") ||
+            row.price !== orig.price || row.originalPrice !== orig.originalPrice ||
+            row.discountPct !== (orig.discountPct ?? 0) || row.unit !== (orig.unit ?? "") ||
+            row.weight !== String(orig.weight ?? "") || row.pieces !== String(orig.pieces ?? "") ||
+            row.serves !== String(orig.serves ?? "") || row.quantity !== (orig.quantity ?? 0) ||
+            row.status !== (orig.status ?? "available") ||
+            (String(row.isArchived).toLowerCase() === "yes") !== (orig.isArchived === true) ||
+            row.imageUrl !== (orig.imageUrl ?? "") || row.limitedStockNote !== (orig.limitedStockNote ?? "");
+          return changed ? row : null;
+        })
+        .filter(Boolean);
+      if (toUpdate.length === 0) { toast({ title: "No changes detected", description: "The file matches the current product data." }); return; }
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/bulk-upsert`, {
+        method: "POST", body: JSON.stringify({ products: toUpdate }),
+      });
+      toast({ title: `Edit complete`, description: `${res.updated} products updated${res.errors?.length ? `, ${res.errors.length} skipped` : ""}.` });
+      load();
+    } catch (err: any) { toast({ title: "Edit failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
   const statusBadge = (p: any) => {
     if (p.isArchived) return <span className="inline-flex items-center gap-1 text-[10px] text-gray-400 font-semibold bg-gray-100 px-1.5 py-0.5 rounded-full"><XCircle className="w-2.5 h-2.5" /> Archived</span>;
     if (p.status === "out_of_stock") return <span className="inline-flex items-center gap-1 text-[10px] text-orange-500 font-semibold bg-orange-50 px-1.5 py-0.5 rounded-full"><AlertCircle className="w-2.5 h-2.5" /> Out of Stock</span>;
@@ -480,6 +640,25 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
 
   return (
     <div className="space-y-4">
+      {/* Excel action bar */}
+      <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-100 rounded-xl">
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide mr-1">Excel</span>
+        <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
+        <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleEditFile} />
+        <Button size="sm" variant="outline" disabled={xlsxBusy} onClick={() => importRef.current?.click()}
+          className="h-8 gap-1.5 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300">
+          <Upload className="w-3.5 h-3.5" /> Import New Products
+        </Button>
+        <Button size="sm" variant="outline" disabled={xlsxBusy} onClick={() => editRef.current?.click()}
+          className="h-8 gap-1.5 text-xs border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300">
+          <FilePen className="w-3.5 h-3.5" /> Edit Products
+        </Button>
+        <Button size="sm" variant="outline" disabled={xlsxBusy || processed.length === 0} onClick={handleExport}
+          className="h-8 gap-1.5 text-xs border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300 ml-auto">
+          <Download className="w-3.5 h-3.5" /> Export Products {processed.length < products.length ? `(${processed.length} filtered)` : `(${products.length})`}
+        </Button>
+      </div>
+
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
