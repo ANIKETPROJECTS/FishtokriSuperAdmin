@@ -22,13 +22,20 @@ const vendorSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const purchaseItemBatchSchema = new mongoose.Schema({
+  quantity: { type: Number, default: 0 },
+  shelfLifeDays: { type: Number, default: 0 },
+}, { _id: false });
+
 const purchaseItemSchema = new mongoose.Schema({
   productName: { type: String, required: true },
+  categoryName: { type: String, default: "" },
   quantity: { type: Number, required: true },
   unit: { type: String, default: "kg" },
   pricePerUnit: { type: Number, default: 0 },
   totalPrice: { type: Number, default: 0 },
   expiryDate: { type: String, default: "" },
+  batches: { type: [purchaseItemBatchSchema], default: [] },
 }, { _id: true });
 
 const purchaseSchema = new mongoose.Schema(
@@ -40,6 +47,12 @@ const purchaseSchema = new mongoose.Schema(
     items: [purchaseItemSchema],
     totalAmount: { type: Number, default: 0 },
     notes: { type: String, default: "" },
+    subHubId: { type: String, default: "" },
+    subHubName: { type: String, default: "" },
+    superHubId: { type: String, default: "" },
+    superHubName: { type: String, default: "" },
+    createdByName: { type: String, default: "" },
+    createdByEmail: { type: String, default: "" },
   },
   { timestamps: true }
 );
@@ -114,14 +127,25 @@ function serializePurchase(doc: any) {
     items: (doc.items ?? []).map((item: any) => ({
       id: String(item._id),
       productName: item.productName ?? "",
+      categoryName: item.categoryName ?? "",
       quantity: item.quantity ?? 0,
       unit: item.unit ?? "kg",
       pricePerUnit: item.pricePerUnit ?? 0,
       totalPrice: item.totalPrice ?? 0,
       expiryDate: item.expiryDate ?? "",
+      batches: (item.batches ?? []).map((b: any) => ({
+        quantity: b.quantity ?? 0,
+        shelfLifeDays: b.shelfLifeDays ?? 0,
+      })),
     })),
     totalAmount: doc.totalAmount ?? 0,
     notes: doc.notes ?? "",
+    subHubId: doc.subHubId ?? "",
+    subHubName: doc.subHubName ?? "",
+    superHubId: doc.superHubId ?? "",
+    superHubName: doc.superHubName ?? "",
+    createdByName: doc.createdByName ?? "",
+    createdByEmail: doc.createdByEmail ?? "",
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -368,23 +392,39 @@ router.post("/:vendorId/purchases", async (req, res) => {
     const vendor = await Vendor.findById(req.params.vendorId);
     if (!vendor) { res.status(404).json({ error: "NotFound", message: "Vendor not found" }); return; }
 
-    const { invoiceNumber, purchaseDate, items, notes } = req.body;
+    const { invoiceNumber, purchaseDate, items, notes, subHubId, subHubName, superHubId, superHubName, createdByName, createdByEmail } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: "ValidationError", message: "At least one item is required" });
       return;
     }
 
-    const processedItems = items.map((item: any) => ({
-      productName: item.productName?.trim(),
-      quantity: Number(item.quantity) || 0,
-      unit: item.unit || "kg",
-      pricePerUnit: Number(item.pricePerUnit) || 0,
-      totalPrice: (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0),
-      expiryDate: item.expiryDate || "",
-    }));
+    const processedItems = items.map((item: any) => {
+      const itemBatches = Array.isArray(item.batches)
+        ? item.batches.filter((b: any) => Number(b.quantity) > 0).map((b: any) => ({
+            quantity: Number(b.quantity) || 0,
+            shelfLifeDays: Number(b.shelfLifeDays) || 0,
+          }))
+        : [];
+      const totalQty = itemBatches.length > 0
+        ? itemBatches.reduce((s: number, b: any) => s + b.quantity, 0)
+        : (Number(item.quantity) || 0);
+      return {
+        productName: item.productName?.trim(),
+        categoryName: item.categoryName?.trim() || item.existingCategory?.trim() || "",
+        quantity: totalQty,
+        unit: item.unit || "kg",
+        pricePerUnit: Number(item.pricePerUnit) || 0,
+        totalPrice: totalQty * (Number(item.pricePerUnit) || 0),
+        expiryDate: item.expiryDate || "",
+        batches: itemBatches,
+      };
+    });
 
     const totalAmount = processedItems.reduce((sum: number, i: any) => sum + i.totalPrice, 0);
+
+    const adminEmail = (req as any).admin?.email || createdByEmail || "";
+    const adminName = createdByName || adminEmail;
 
     const purchase = await Purchase.create({
       vendorId: vendor._id,
@@ -394,6 +434,12 @@ router.post("/:vendorId/purchases", async (req, res) => {
       items: processedItems,
       totalAmount,
       notes: notes?.trim() || "",
+      subHubId: subHubId || "",
+      subHubName: subHubName?.trim() || "",
+      superHubId: superHubId || "",
+      superHubName: superHubName?.trim() || "",
+      createdByName: adminName,
+      createdByEmail: adminEmail,
     });
 
     // Update vendor stats
