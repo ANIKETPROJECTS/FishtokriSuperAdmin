@@ -1912,22 +1912,18 @@ function CategoryModal({ isOpen, onClose, category, subHubId, onSaved }: any) {
   const isEditing = !!category;
   const [name, setName] = useState(""); const [imageUrl, setImageUrl] = useState("");
   const [isActive, setIsActive] = useState(true); const [sortOrder, setSortOrder] = useState("0");
-  const [subCatInput, setSubCatInput] = useState(""); const [subCategories, setSubCategories] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      if (category) { setName(category.name ?? ""); setImageUrl(category.imageUrl ?? ""); setIsActive(category.isActive !== false); setSortOrder(String(category.sortOrder ?? 0)); setSubCategories(Array.isArray(category.subCategories) ? category.subCategories.map((s: any) => s.name ?? s) : []); }
-      else { setName(""); setImageUrl(""); setIsActive(true); setSortOrder("0"); setSubCategories([]); }
-      setSubCatInput("");
+      if (category) { setName(category.name ?? ""); setImageUrl(category.imageUrl ?? ""); setIsActive(category.isActive !== false); setSortOrder(String(category.sortOrder ?? 0)); }
+      else { setName(""); setImageUrl(""); setIsActive(true); setSortOrder("0"); }
     }
   }, [isOpen, category]);
 
-  const addSubCat = () => { const v = subCatInput.trim(); if (v && !subCategories.includes(v)) setSubCategories([...subCategories, v]); setSubCatInput(""); };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
-    const payload = { name, imageUrl, isActive, sortOrder: Number(sortOrder) || 0, subCategories: subCategories.map((s) => ({ name: s, imageUrl: null })) };
+    const payload = { name, imageUrl, isActive, sortOrder: Number(sortOrder) || 0 };
     try {
       if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/categories/${category._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Category updated" }); }
       else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/categories`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Category added" }); }
@@ -1943,11 +1939,6 @@ function CategoryModal({ isOpen, onClose, category, subHubId, onSaved }: any) {
         <form onSubmit={handleSubmit} className="space-y-3 pt-1">
           <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Category Name *</Label><Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Fish" className="h-9" /></div>
           <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Image URL</Label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="h-9" /></div>
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold text-gray-600">Sub-Categories</Label>
-            <div className="flex gap-2"><Input value={subCatInput} onChange={(e) => setSubCatInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSubCat())} placeholder="Type and press Enter or Add" className="h-8 text-sm flex-1" /><Button type="button" onClick={addSubCat} variant="outline" className="h-8 px-3 text-xs">Add</Button></div>
-            {subCategories.length > 0 && <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 rounded-lg">{subCategories.map((s) => <span key={s} className="inline-flex items-center gap-1 text-xs bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded-full">{s}<button type="button" onClick={() => setSubCategories(subCategories.filter((x) => x !== s))} className="text-gray-400 hover:text-red-500"><X className="w-2.5 h-2.5" /></button></span>)}</div>}
-          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sort Order</Label><Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" /></div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
