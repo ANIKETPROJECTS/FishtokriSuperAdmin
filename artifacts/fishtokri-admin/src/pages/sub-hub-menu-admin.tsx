@@ -2690,12 +2690,16 @@ function PincodeModal({ isOpen, onClose, pincode, subHubId, onSaved }: any) {
 
 // ─── TIME SLOTS TAB ────────────────────────────────────────────────────────────
 function TimeSlotsTab({ subHubId }: { subHubId: string }) {
+  const { toast } = useToast();
   const [timeslots, setTimeslots] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [sortValue, setSortValue] = useState("sort_asc");
+  const [filters, setFilters] = useState<Record<string, string>>({ status: "all", type: "all" });
+  const [layout, setLayout] = useState<Layout>("list");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const { toast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2707,36 +2711,61 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const sortOptions: SortOption[] = [
+    { value: "sort_asc", label: "Sort Order" },
+    { value: "label_asc", label: "Label A→Z" },
+    { value: "time_asc", label: "Start Time" },
+    { value: "status", label: "Status" },
+  ];
+  const filterGroups: FilterGroup[] = [
+    { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+    { key: "type", label: "Type", options: [{ value: "all", label: "All" }, { value: "instant", label: "Instant" }, { value: "scheduled", label: "Scheduled" }] },
+  ];
+
+  const processed = useMemo(() => {
+    let items = [...timeslots];
+    if (search) items = items.filter((s) => s.label?.toLowerCase().includes(search.toLowerCase()));
+    if (filters.status === "active") items = items.filter((s) => s.isActive !== false);
+    if (filters.status === "inactive") items = items.filter((s) => s.isActive === false);
+    if (filters.type === "instant") items = items.filter((s) => s.isInstant === true);
+    if (filters.type === "scheduled") items = items.filter((s) => s.isInstant !== true);
+    items.sort((a, b) => {
+      if (sortValue === "sort_asc") return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      if (sortValue === "label_asc") return (a.label ?? "").localeCompare(b.label ?? "");
+      if (sortValue === "time_asc") return (a.startTime ?? "").localeCompare(b.startTime ?? "");
+      if (sortValue === "status") return (b.isActive === false ? -1 : 1) - (a.isActive === false ? -1 : 1);
+      return 0;
+    });
+    return items;
+  }, [timeslots, search, filters, sortValue]);
+
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
       await apiFetch(`/api/sub-hubs/${subHubId}/menu/timeslots/${deleteId}`, { method: "DELETE" });
-      toast({ title: "Time slot deleted" });
-      load();
+      toast({ title: "Time slot deleted" }); load();
     } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
     finally { setDeleteId(null); }
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-[#162B4D]">Time Slots <span className="text-gray-400 font-normal text-sm">({timeslots.length})</span></h3>
-        <Button size="sm" className="bg-[#1A56DB] hover:bg-[#1447B4] h-8 gap-1.5" onClick={() => { setEditing(null); setModalOpen(true); }}>
-          <Plus className="w-3.5 h-3.5" /> Add Slot
-        </Button>
-      </div>
+      <TabToolbar
+        search={search} onSearch={setSearch}
+        sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
+        filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
+        layout={layout} onLayout={setLayout}
+        addLabel="Add Slot" onAdd={() => { setEditing(null); setModalOpen(true); }}
+        resultCount={processed.length} totalCount={timeslots.length}
+      />
 
       {loading ? (
         <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-16 rounded-xl" />)}</div>
-      ) : timeslots.length === 0 ? (
-        <div className="py-16 text-center border border-dashed border-gray-200 rounded-xl">
-          <Clock className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">No time slots yet.</p>
-          <button onClick={() => { setEditing(null); setModalOpen(true); }} className="mt-2 text-sm text-[#1A56DB] font-semibold hover:underline">Add your first slot</button>
-        </div>
-      ) : (
+      ) : processed.length === 0 ? (
+        <EmptyState icon={Clock} message="No time slots found" sub="Try adjusting your search or filters" />
+      ) : layout === "list" ? (
         <div className="space-y-2">
-          {timeslots.map((s) => (
+          {processed.map((s) => (
             <div key={String(s._id)} className="flex items-center gap-4 p-3.5 bg-white border border-gray-100 rounded-xl hover:shadow-sm transition-shadow">
               <div className="w-10 h-10 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0">
                 <Clock className="w-5 h-5 text-cyan-500" />
@@ -2747,9 +2776,36 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
                   {s.isInstant && <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>}
                   <StatusBadge active={s.isActive !== false} />
                 </div>
-                <p className="text-xs text-gray-400">{s.startTime} – {s.endTime}{s.extraCharge > 0 ? ` · +₹${s.extraCharge}` : ""}</p>
+                <p className="text-xs text-gray-400">{s.startTime} – {s.endTime}{s.extraCharge > 0 ? ` · +₹${s.extraCharge} extra` : ""}</p>
               </div>
+              <span className="text-xs text-gray-300 font-mono hidden sm:block">#{s.sortOrder ?? 0}</span>
               <ActionButtons onEdit={() => { setEditing(s); setModalOpen(true); }} onDelete={() => setDeleteId(String(s._id))} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {processed.map((s) => (
+            <div key={String(s._id)} className="border border-gray-100 rounded-xl p-4 bg-white hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <div className="w-10 h-10 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0">
+                  <Clock className="w-5 h-5 text-cyan-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-[#162B4D] text-sm leading-tight">{s.label}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{s.startTime} – {s.endTime}</p>
+                </div>
+                <span className="text-xs text-gray-300 font-mono">#{s.sortOrder ?? 0}</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                <StatusBadge active={s.isActive !== false} />
+                {s.isInstant && <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>}
+                {s.extraCharge > 0 && <span className="text-[10px] bg-emerald-50 text-emerald-600 font-semibold px-1.5 py-0.5 rounded-full">+₹{s.extraCharge}</span>}
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => { setEditing(s); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
+                <button onClick={() => setDeleteId(String(s._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
+              </div>
             </div>
           ))}
         </div>
