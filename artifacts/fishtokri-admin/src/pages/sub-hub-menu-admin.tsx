@@ -1437,7 +1437,29 @@ const BLANK_RECIPE = () => ({
 
 function RecipeEditor({ recipe, onChange, onRemove }: { recipe: any; onChange: (r: any) => void; onRemove: () => void }) {
   const [open, setOpen] = useState(false);
+  const [imageMode, setImageMode] = useState<"url" | "upload">("url");
+  const [imageUploading, setImageUploading] = useState(false);
   const upd = (k: string, v: any) => onChange({ ...recipe, [k]: v });
+
+  const handleImageFile = async (file: File) => {
+    setImageUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch("/api/upload?folder=fishtokri/recipes", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? "Upload failed");
+      upd("image", data.url);
+    } catch (err: any) {
+      alert(err.message ?? "Upload failed");
+    } finally {
+      setImageUploading(false);
+    }
+  };
   const updList = (k: string, i: number, v: string) => onChange({ ...recipe, [k]: recipe[k].map((x: string, idx: number) => idx === i ? v : x) });
   const addItem = (k: string) => onChange({ ...recipe, [k]: [...recipe[k], ""] });
   const removeItem = (k: string, i: number) => onChange({ ...recipe, [k]: recipe[k].filter((_: any, idx: number) => idx !== i) });
@@ -1465,7 +1487,24 @@ function RecipeEditor({ recipe, onChange, onRemove }: { recipe: any; onChange: (
           <div className="space-y-2">
             <div className="space-y-1"><Label className="text-xs font-semibold text-gray-500">Recipe Title *</Label><Input value={recipe.title} onChange={(e) => upd("title", e.target.value)} placeholder="e.g. Classic Chicken Curry" className="h-8 text-sm" /></div>
             <div className="space-y-1"><Label className="text-xs font-semibold text-gray-500">Description</Label><textarea value={recipe.description} onChange={(e) => upd("description", e.target.value)} placeholder="Brief description of this recipe..." className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-16" /></div>
-            <div className="space-y-1"><Label className="text-xs font-semibold text-gray-500">Recipe Image URL</Label><Input value={recipe.image} onChange={(e) => upd("image", e.target.value)} placeholder="https://..." className="h-8 text-sm" /></div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-gray-500">Recipe Image</Label>
+              <div className="flex gap-1 p-0.5 bg-gray-100 rounded-lg w-fit mb-1.5">
+                <button type="button" onClick={() => setImageMode("url")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${imageMode === "url" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>URL</button>
+                <button type="button" onClick={() => setImageMode("upload")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${imageMode === "upload" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Upload</button>
+              </div>
+              {imageMode === "url" ? (
+                <Input value={recipe.image} onChange={(e) => upd("image", e.target.value)} placeholder="https://..." className="h-8 text-sm" />
+              ) : (
+                <div className="space-y-1.5">
+                  <label className={`flex items-center justify-center gap-2 h-9 px-3 rounded-lg border-2 border-dashed cursor-pointer text-sm transition-colors ${imageUploading ? "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed" : "border-gray-200 hover:border-[#1A56DB] text-gray-500 hover:text-[#1A56DB]"}`}>
+                    {imageUploading ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg> Uploading...</> : <><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 0L8 8m4-4l4 4" /></svg> Choose image from device</>}
+                    <input type="file" accept="image/*" className="hidden" disabled={imageUploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); e.target.value = ""; }} />
+                  </label>
+                  {recipe.image && <p className="text-[10px] text-green-600 truncate">Uploaded: {recipe.image}</p>}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Timing + Serving */}
@@ -1544,7 +1583,6 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const [status, setStatus] = useState("available");
   const [isArchived, setIsArchived] = useState(false);
   const [imageUrl, setProductImageUrl] = useState("");
-  const [limitedStockNote, setLimitedStockNote] = useState("");
   const [recipes, setRecipes] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -1572,7 +1610,6 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setStatus(product.status ?? "available");
       setIsArchived(product.isArchived === true);
       setProductImageUrl(product.imageUrl ?? "");
-      setLimitedStockNote(product.limitedStockNote ?? "");
       setRecipes(Array.isArray(product.recipes) ? product.recipes.map((r: any) => ({
         title: r.title ?? "", description: r.description ?? "", image: r.image ?? "",
         totalTime: r.totalTime ?? "", prepTime: r.prepTime ?? "", cookTime: r.cookTime ?? "",
@@ -1584,7 +1621,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setName(""); setDescription(""); setCategory(""); setSubCategory("");
       setPrice(""); setOriginalPrice(""); setUnit("per kg"); setWeight("");
       setGrossWeight(""); setNetWeight(""); setPieces(""); setServes(""); setQuantity("0"); setStatus("available");
-      setIsArchived(false); setProductImageUrl(""); setLimitedStockNote(""); setRecipes([]);
+      setIsArchived(false); setProductImageUrl(""); setRecipes([]);
     }
   }, [isOpen, product]);
 
@@ -1606,7 +1643,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       discountPct,
       unit, weight, grossWeight, netWeight, pieces, serves,
       quantity: Number(quantity) || 0,
-      status, isArchived, imageUrl, limitedStockNote,
+      status, isArchived, imageUrl,
       recipes: cleanedRecipes,
     };
     try {
@@ -1714,7 +1751,6 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                   </div>
                 </div>
               </div>
-              <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Limited Stock Note</Label><Input value={limitedStockNote} onChange={(e) => setLimitedStockNote(e.target.value)} placeholder="e.g. Only 5 left!" className="h-9" /></div>
             </div>
           </section>
 

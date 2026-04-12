@@ -1946,10 +1946,6 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                         label="Product Image (optional)"
                         previewClassName="w-14 h-14 rounded-lg"
                       />
-                      <div>
-                        <FieldLabel>Limited Stock Note</FieldLabel>
-                        <Input value={item.limitedStockNote} onChange={e => setItem(idx, "limitedStockNote", e.target.value)} placeholder="e.g. Only a few left today" />
-                      </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <FieldLabel>Section IDs</FieldLabel>
