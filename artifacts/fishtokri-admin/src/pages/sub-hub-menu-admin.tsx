@@ -2245,32 +2245,59 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
   const [discountValue, setDiscountValue] = useState(""); const [minOrderAmount, setMinOrderAmount] = useState("");
   const [maxUsage, setMaxUsage] = useState(""); const [isFirstTimeOnly, setIsFirstTimeOnly] = useState(false);
   const [isActive, setIsActive] = useState(true); const [expiresAt, setExpiresAt] = useState("");
-  const [applicableCategoriesStr, setApplicableCategoriesStr] = useState("");
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<any[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<any[]>([]);
+  const [categorySearch, setCategorySearch] = useState("");
+  const [productSearch, setProductSearch] = useState("");
+  const [productCatFilter, setProductCatFilter] = useState("all");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      if (coupon) {
-        setCode(coupon.code ?? ""); setTitle(coupon.title ?? ""); setDescription(coupon.description ?? ""); setColor(coupon.color ?? "");
-        setType(coupon.type ?? "percentage"); setDiscountValue(String(coupon.discountValue ?? ""));
-        setMinOrderAmount(String(coupon.minOrderAmount ?? "")); setMaxUsage(coupon.maxUsage ? String(coupon.maxUsage) : "");
-        setIsFirstTimeOnly(coupon.isFirstTimeOnly === true); setIsActive(coupon.isActive !== false);
-        setExpiresAt(coupon.expiresAt ? new Date(coupon.expiresAt).toISOString().split("T")[0] : "");
-        setApplicableCategoriesStr(Array.isArray(coupon.applicableCategories) ? coupon.applicableCategories.join(", ") : "");
-      } else {
-        setCode(""); setTitle(""); setDescription(""); setColor(""); setType("percentage");
-        setDiscountValue(""); setMinOrderAmount(""); setMaxUsage(""); setIsFirstTimeOnly(false);
-        setIsActive(true); setExpiresAt(""); setApplicableCategoriesStr("");
-      }
+    if (!isOpen) return;
+    apiFetch(`/api/sub-hubs/${subHubId}/menu/categories`).then((d) => setAvailableCategories(d.categories ?? [])).catch(() => {});
+    apiFetch(`/api/sub-hubs/${subHubId}/menu/products`).then((d) => setAvailableProducts(d.products ?? [])).catch(() => {});
+    if (coupon) {
+      setCode(coupon.code ?? ""); setTitle(coupon.title ?? ""); setDescription(coupon.description ?? ""); setColor(coupon.color ?? "");
+      setType(coupon.type ?? "percentage"); setDiscountValue(String(coupon.discountValue ?? ""));
+      setMinOrderAmount(String(coupon.minOrderAmount ?? "")); setMaxUsage(coupon.maxUsage ? String(coupon.maxUsage) : "");
+      setIsFirstTimeOnly(coupon.isFirstTimeOnly === true); setIsActive(coupon.isActive !== false);
+      setExpiresAt(coupon.expiresAt ? new Date(coupon.expiresAt).toISOString().split("T")[0] : "");
+      setSelectedCategoryIds(Array.isArray(coupon.applicableCategories) ? coupon.applicableCategories : []);
+      setSelectedProductIds(Array.isArray(coupon.applicableProducts) ? coupon.applicableProducts : []);
+    } else {
+      setCode(""); setTitle(""); setDescription(""); setColor(""); setType("percentage");
+      setDiscountValue(""); setMinOrderAmount(""); setMaxUsage(""); setIsFirstTimeOnly(false);
+      setIsActive(true); setExpiresAt(""); setSelectedCategoryIds([]); setSelectedProductIds([]);
     }
+    setCategorySearch(""); setProductSearch(""); setProductCatFilter("all");
   }, [isOpen, coupon]);
+
+  const toggleCategory = (id: string) =>
+    setSelectedCategoryIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+
+  const toggleProduct = (id: string) =>
+    setSelectedProductIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+
+  const filteredCategories = availableCategories.filter((c) =>
+    !categorySearch || c.name?.toLowerCase().includes(categorySearch.toLowerCase())
+  );
+
+  const productCategoryNames = Array.from(new Set(availableProducts.map((p) => p.category).filter(Boolean)));
+  const filteredProducts = availableProducts.filter((p) => {
+    const matchCat = productCatFilter === "all" || p.category === productCatFilter;
+    const matchSearch = !productSearch || p.name?.toLowerCase().includes(productSearch.toLowerCase());
+    return matchCat && matchSearch;
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     const payload: any = {
       code, title, description, color, type,
       discountValue: Number(discountValue) || 0, minOrderAmount: Number(minOrderAmount) || 0,
-      applicableCategories: applicableCategoriesStr.split(",").map((s) => s.trim()).filter(Boolean),
+      applicableCategories: selectedCategoryIds,
+      applicableProducts: selectedProductIds,
       isFirstTimeOnly, isActive,
     };
     if (maxUsage) payload.maxUsage = Number(maxUsage);
@@ -2285,7 +2312,7 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Coupon" : "Add Coupon"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 pt-1">
           <div className="grid grid-cols-2 gap-3">
@@ -2305,7 +2332,108 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Color Class</Label><Input value={color} onChange={(e) => setColor(e.target.value)} placeholder="e.g. bg-orange-400" className="h-9" /></div>
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Expiry Date</Label><Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="h-9" /></div>
           </div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Applicable Categories <span className="font-normal text-gray-400">(comma-separated IDs)</span></Label><Input value={applicableCategoriesStr} onChange={(e) => setApplicableCategoriesStr(e.target.value)} placeholder="Leave empty for all categories" className="h-9" /></div>
+
+          {/* Applicable Categories */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600">
+              Applicable Categories
+              <span className="font-normal text-gray-400 ml-1">
+                {selectedCategoryIds.length > 0 ? `(${selectedCategoryIds.length} selected)` : "(all categories)"}
+              </span>
+            </Label>
+            {selectedCategoryIds.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-1">
+                {selectedCategoryIds.map((id) => {
+                  const cat = availableCategories.find((c) => String(c._id) === id);
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-100 text-xs rounded-full px-2 py-0.5">
+                      {cat ? cat.name : id}
+                      <button type="button" onClick={() => toggleCategory(id)} className="hover:text-blue-900 ml-0.5">×</button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="p-1.5 border-b border-gray-100 bg-gray-50">
+                <Input value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} placeholder="Search categories..." className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-1" />
+              </div>
+              <div className="max-h-32 overflow-y-auto">
+                {availableCategories.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-3">Loading categories…</p>
+                ) : filteredCategories.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-3">No categories found</p>
+                ) : (
+                  filteredCategories.map((cat) => {
+                    const id = String(cat._id);
+                    const checked = selectedCategoryIds.includes(id);
+                    return (
+                      <label key={id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
+                        <input type="checkbox" checked={checked} onChange={() => toggleCategory(id)} className="rounded text-[#1A56DB]" />
+                        <span className="text-xs text-gray-700 flex-1">{cat.name}</span>
+                        {cat.subCategories?.length > 0 && <span className="text-xs text-gray-400">{cat.subCategories.length} sub</span>}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Applicable Products */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600">
+              Applicable Products
+              <span className="font-normal text-gray-400 ml-1">
+                {selectedProductIds.length > 0 ? `(${selectedProductIds.length} selected)` : "(all products)"}
+              </span>
+            </Label>
+            {selectedProductIds.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-1">
+                {selectedProductIds.map((id) => {
+                  const prod = availableProducts.find((p) => String(p._id) === id);
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 bg-green-50 text-green-700 border border-green-100 text-xs rounded-full px-2 py-0.5">
+                      {prod ? prod.name : id}
+                      <button type="button" onClick={() => toggleProduct(id)} className="hover:text-green-900 ml-0.5">×</button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="flex gap-1 p-1.5 border-b border-gray-100 bg-gray-50">
+                <Input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Search products..." className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-1 flex-1" />
+                {productCategoryNames.length > 0 && (
+                  <select value={productCatFilter} onChange={(e) => setProductCatFilter(e.target.value)} className="h-7 text-xs border border-gray-200 rounded px-1 bg-white text-gray-600">
+                    <option value="all">All</option>
+                    {productCategoryNames.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                )}
+              </div>
+              <div className="max-h-40 overflow-y-auto">
+                {availableProducts.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-3">Loading products…</p>
+                ) : filteredProducts.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-3">No products found</p>
+                ) : (
+                  filteredProducts.map((prod) => {
+                    const id = String(prod._id);
+                    const checked = selectedProductIds.includes(id);
+                    return (
+                      <label key={id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
+                        <input type="checkbox" checked={checked} onChange={() => toggleProduct(id)} className="rounded text-[#1A56DB]" />
+                        <span className="text-xs text-gray-700 flex-1">{prod.name}</span>
+                        {prod.category && <span className="text-xs text-gray-400">{prod.category}</span>}
+                        {prod.discountedPrice != null && <span className="text-xs font-medium text-gray-600">₹{prod.discountedPrice}</span>}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="flex gap-3">
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1"><Label className="text-sm">First Time Only</Label><Switch checked={isFirstTimeOnly} onCheckedChange={setIsFirstTimeOnly} className="data-[state=checked]:bg-[#1A56DB]" /></div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
