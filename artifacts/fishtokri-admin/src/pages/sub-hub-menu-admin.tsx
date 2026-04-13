@@ -8,6 +8,7 @@ import {
   Download, Upload, FilePen,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -494,32 +495,124 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
     finally { setDeleteId(null); }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (processed.length === 0) { toast({ title: "Nothing to export", description: "No products match the current filters." }); return; }
-    const rows = processed.map((p) => ({
-      "ID (do not edit)": String(p._id ?? ""),
-      "Name": p.name ?? "",
-      "Description": p.description ?? "",
-      "Category": p.category ?? "",
-      "Sub Category": p.subCategory ?? "",
-      "Price": p.price ?? 0,
-      "MRP": p.originalPrice ?? 0,
-      "Discount %": p.discountPct ?? 0,
-      "Unit": p.unit ?? "",
-      "Weight": p.weight ?? "",
-      "Pieces": p.pieces ?? "",
-      "Serves": p.serves ?? "",
-      "Stock": p.quantity ?? 0,
-      "Status (available/out_of_stock)": p.status ?? "available",
-      "Archived (yes/no)": p.isArchived ? "yes" : "no",
-      "Image URL": p.imageUrl ?? "",
-      "Limited Stock Note": p.limitedStockNote ?? "",
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [{ wch: 28 }, { wch: 28 }, { wch: 40 }, { wch: 18 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 40 }, { wch: 24 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Products");
-    XLSX.writeFile(wb, `products-export-${Date.now()}.xlsx`);
+
+    const wb = new ExcelJS.Workbook();
+
+    // Hidden sheet for category dropdown (avoids 255-char Excel inline limit)
+    const catNames: string[] = categories.map((c: any) => String(c.name ?? "")).filter(Boolean);
+    const listsSheet = wb.addWorksheet("_Lists", { state: "veryHidden" });
+    catNames.forEach((name, i) => { listsSheet.getCell(`A${i + 1}`).value = name; });
+
+    const ws = wb.addWorksheet("Products");
+
+    ws.columns = [
+      { header: "ID (do not edit)",               key: "id",               width: 28 },
+      { header: "Name",                            key: "name",             width: 28 },
+      { header: "Description",                     key: "description",      width: 40 },
+      { header: "Category",                        key: "category",         width: 18 },
+      { header: "Sub Category",                    key: "subCategory",      width: 18 },
+      { header: "Price",                           key: "price",            width: 10 },
+      { header: "MRP",                             key: "mrp",              width: 10 },
+      { header: "Discount %",                      key: "discount",         width: 12 },
+      { header: "Unit",                            key: "unit",             width: 16 },
+      { header: "Weight",                          key: "weight",           width: 12 },
+      { header: "Pieces",                          key: "pieces",           width: 12 },
+      { header: "Serves",                          key: "serves",           width: 12 },
+      { header: "Stock",                           key: "stock",            width: 10 },
+      { header: "Status (available/out_of_stock)", key: "status",           width: 30 },
+      { header: "Archived (yes/no)",               key: "archived",         width: 16 },
+      { header: "Image URL",                       key: "imageUrl",         width: 40 },
+      { header: "Limited Stock Note",              key: "limitedStockNote", width: 24 },
+    ];
+
+    // Style header row
+    const headerRow = ws.getRow(1);
+    headerRow.font = { bold: true };
+    headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD6EAF8" } };
+    headerRow.alignment = { vertical: "middle" };
+
+    // Add data rows
+    processed.forEach((p) => {
+      ws.addRow({
+        id: String(p._id ?? ""),
+        name: p.name ?? "",
+        description: p.description ?? "",
+        category: p.category ?? "",
+        subCategory: p.subCategory ?? "",
+        price: p.price ?? 0,
+        mrp: p.originalPrice ?? 0,
+        discount: p.discountPct ?? 0,
+        unit: p.unit ?? "",
+        weight: p.weight ?? "",
+        pieces: p.pieces ?? "",
+        serves: p.serves ?? "",
+        stock: p.quantity ?? 0,
+        status: p.status ?? "available",
+        archived: p.isArchived ? "yes" : "no",
+        imageUrl: p.imageUrl ?? "",
+        limitedStockNote: p.limitedStockNote ?? "",
+      });
+    });
+
+    // Apply dropdown validations to data rows + 200 blank rows for new additions
+    const lastDataRow = processed.length + 1;
+    const validationEndRow = lastDataRow + 200;
+
+    for (let row = 2; row <= validationEndRow; row++) {
+      // Unit dropdown — column I
+      ws.getCell(`I${row}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        showErrorMessage: true,
+        errorStyle: "warning",
+        errorTitle: "Invalid Unit",
+        error: "Please select a valid unit from the dropdown.",
+        formulae: ['"per kg,per 500g,per 250g,per 100g,per tray,per pack,per piece"'],
+      };
+
+      // Status dropdown — column N
+      ws.getCell(`N${row}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        showErrorMessage: true,
+        errorStyle: "warning",
+        errorTitle: "Invalid Status",
+        error: "Please select available or out_of_stock.",
+        formulae: ['"available,out_of_stock"'],
+      };
+
+      // Archived dropdown — column O
+      ws.getCell(`O${row}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        showErrorMessage: true,
+        errorStyle: "warning",
+        errorTitle: "Invalid Value",
+        error: "Please enter yes or no.",
+        formulae: ['"yes,no"'],
+      };
+
+      // Category dropdown — column D (uses hidden sheet reference to avoid 255-char limit)
+      if (catNames.length > 0) {
+        ws.getCell(`D${row}`).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          showErrorMessage: false,
+          formulae: [`_Lists!$A$1:$A$${catNames.length}`],
+        };
+      }
+    }
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `products-export-${Date.now()}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
     toast({ title: `Exported ${processed.length} products` });
   };
 
