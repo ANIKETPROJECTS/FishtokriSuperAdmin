@@ -512,7 +512,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
       { header: "Name",                            key: "name",             width: 28 },
       { header: "Description",                     key: "description",      width: 40 },
       { header: "Category",                        key: "category",         width: 18 },
-      { header: "Sub Category",                    key: "subCategory",      width: 18 },
       { header: "Price",                           key: "price",            width: 10 },
       { header: "MRP",                             key: "mrp",              width: 10 },
       { header: "Discount %",                      key: "discount",         width: 12 },
@@ -540,7 +539,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         name: p.name ?? "",
         description: p.description ?? "",
         category: p.category ?? "",
-        subCategory: p.subCategory ?? "",
         price: p.price ?? 0,
         mrp: p.originalPrice ?? 0,
         discount: p.discountPct ?? 0,
@@ -561,8 +559,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
     const validationEndRow = lastDataRow + 200;
 
     for (let row = 2; row <= validationEndRow; row++) {
-      // Unit dropdown — column I
-      ws.getCell(`I${row}`).dataValidation = {
+      // Unit dropdown — column H (A=ID, B=Name, C=Desc, D=Category, E=Price, F=MRP, G=Discount%, H=Unit)
+      ws.getCell(`H${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         showErrorMessage: true,
@@ -572,8 +570,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         formulae: ['"per kg,per 500g,per 250g,per 100g,per tray,per pack,per piece"'],
       };
 
-      // Status dropdown — column N
-      ws.getCell(`N${row}`).dataValidation = {
+      // Status dropdown — column M (I=Weight, J=Pieces, K=Serves, L=Stock, M=Status)
+      ws.getCell(`M${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         showErrorMessage: true,
@@ -583,8 +581,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         formulae: ['"available,out_of_stock"'],
       };
 
-      // Archived dropdown — column O
-      ws.getCell(`O${row}`).dataValidation = {
+      // Archived dropdown — column N
+      ws.getCell(`N${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         showErrorMessage: true,
