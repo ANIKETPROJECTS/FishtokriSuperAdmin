@@ -3,7 +3,7 @@ import { useParams } from "wouter";
 import {
   ArrowLeft, Plus, Edit2, Trash2, Search, X, Package, Tag, Ticket,
   RefreshCw, Database, AlertCircle, CheckCircle, XCircle, Image,
-  LayoutList, MapPin, ShoppingBag, ChevronDown, ChevronUp, GripVertical,
+  LayoutList, ShoppingBag, ChevronDown, ChevronUp, GripVertical,
   LayoutGrid, List, SlidersHorizontal, ArrowUpDown, Clock,
   Download, Upload, FilePen,
 } from "lucide-react";
@@ -45,7 +45,7 @@ async function apiFetch(path: string, options?: RequestInit) {
   return res.json();
 }
 
-type Tab = "products" | "categories" | "combos" | "coupons" | "carousels" | "sections" | "pincodes" | "timeslots";
+type Tab = "products" | "categories" | "combos" | "coupons" | "carousels" | "sections" | "timeslots";
 type Layout = "list" | "grid";
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
@@ -55,7 +55,6 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: "coupons", label: "Coupons", icon: Ticket },
   { key: "carousels", label: "Banners", icon: Image },
   { key: "sections", label: "Sections", icon: LayoutList },
-  { key: "pincodes", label: "Pincodes", icon: MapPin },
   { key: "timeslots", label: "Time Slots", icon: Clock },
 ];
 
@@ -316,7 +315,6 @@ export default function SubHubMenuAdmin() {
     { label: "Coupons", value: stats?.coupons ?? 0, icon: Ticket, color: "text-orange-600", bg: "bg-orange-50" },
     { label: "Banners", value: stats?.carousels ?? 0, icon: Image, color: "text-pink-600", bg: "bg-pink-50" },
     { label: "Sections", value: stats?.sections ?? 0, icon: LayoutList, color: "text-teal-600", bg: "bg-teal-50" },
-    { label: "Pincodes", value: stats?.pincodes ?? 0, icon: MapPin, color: "text-green-600", bg: "bg-green-50" },
     { label: "Time Slots", value: stats?.timeslots ?? 0, icon: Clock, color: "text-cyan-600", bg: "bg-cyan-50" },
   ];
 
@@ -353,9 +351,9 @@ export default function SubHubMenuAdmin() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
+      <div className="grid grid-cols-4 md:grid-cols-7 gap-3">
         {loadingStats
-          ? [1, 2, 3, 4, 5, 6, 7, 8].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)
+          ? [1, 2, 3, 4, 5, 6, 7].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)
           : statCards.map(({ label, value, icon: Icon, color, bg }) => (
             <button
               key={label}
@@ -392,7 +390,6 @@ export default function SubHubMenuAdmin() {
           {!statsError && tab === "coupons" && <CouponsTab subHubId={subHubId} />}
           {!statsError && tab === "carousels" && <CarouselsTab subHubId={subHubId} />}
           {!statsError && tab === "sections" && <SectionsTab subHubId={subHubId} />}
-          {!statsError && tab === "pincodes" && <PincodesTab subHubId={subHubId} />}
           {!statsError && tab === "timeslots" && <TimeSlotsTab subHubId={subHubId} />}
           {statsError && <div className="py-12 text-center text-gray-400 text-sm">Fix the database connection to manage this sub hub's menu.</div>}
         </div>
@@ -1487,134 +1484,6 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
 
       <SectionModal isOpen={modalOpen} onClose={() => setModalOpen(false)} section={editing} subHubId={subHubId} onSaved={load} />
       <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Section" description="This will permanently remove this homepage section." />
-    </div>
-  );
-}
-
-// ─── PINCODES TAB ─────────────────────────────────────────────────────────────
-function PincodesTab({ subHubId }: { subHubId: string }) {
-  const { toast } = useToast();
-  const [pincodes, setPincodes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [sortValue, setSortValue] = useState("pincode_asc");
-  const [filters, setFilters] = useState<Record<string, string>>({ status: "all", city: "all" });
-  const [layout, setLayout] = useState<Layout>("list");
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes`);
-      setPincodes(data.pincodes ?? []);
-    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
-    finally { setLoading(false); }
-  }, [subHubId, toast]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const cities = useMemo(() => {
-    const unique = [...new Set(pincodes.map((p) => p.city).filter(Boolean))].sort();
-    return [{ value: "all", label: "All Cities" }, ...unique.map((c) => ({ value: c, label: c }))];
-  }, [pincodes]);
-
-  const sortOptions: SortOption[] = [
-    { value: "pincode_asc", label: "Pincode A→Z" },
-    { value: "area_asc", label: "Area A→Z" },
-    { value: "city_asc", label: "City A→Z" },
-    { value: "status", label: "Status" },
-  ];
-  const filterGroups: FilterGroup[] = [
-    { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
-    { key: "city", label: "City", options: cities },
-  ];
-
-  const processed = useMemo(() => {
-    let items = [...pincodes];
-    if (search) items = items.filter((p) => p.pincode?.includes(search) || p.area?.toLowerCase().includes(search.toLowerCase()) || p.city?.toLowerCase().includes(search.toLowerCase()));
-    if (filters.status === "active") items = items.filter((p) => p.isActive !== false);
-    if (filters.status === "inactive") items = items.filter((p) => p.isActive === false);
-    if (filters.city !== "all") items = items.filter((p) => p.city === filters.city);
-    items.sort((a, b) => {
-      if (sortValue === "pincode_asc") return (a.pincode ?? "").localeCompare(b.pincode ?? "");
-      if (sortValue === "area_asc") return (a.area ?? "").localeCompare(b.area ?? "");
-      if (sortValue === "city_asc") return (a.city ?? "").localeCompare(b.city ?? "");
-      if (sortValue === "status") return (b.isActive === false ? -1 : 1) - (a.isActive === false ? -1 : 1);
-      return 0;
-    });
-    return items;
-  }, [pincodes, search, filters, sortValue]);
-
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    try {
-      await apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes/${deleteId}`, { method: "DELETE" });
-      toast({ title: "Pincode deleted" }); load();
-    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
-    finally { setDeleteId(null); }
-  };
-
-  return (
-    <div className="space-y-4">
-      <TabToolbar
-        search={search} onSearch={setSearch}
-        sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
-        filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
-        layout={layout} onLayout={setLayout}
-        addLabel="Add Pincode" onAdd={() => { setEditing(null); setModalOpen(true); }}
-        resultCount={processed.length} totalCount={pincodes.length}
-      />
-
-      {loading ? <div className="space-y-2">{[1,2,3].map((i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
-      : processed.length === 0 ? <EmptyState icon={MapPin} message="No pincodes found" />
-      : layout === "list" ? (
-        <div className="overflow-x-auto rounded-lg border border-gray-100">
-          <table className="w-full text-sm">
-            <thead><tr className="bg-gray-50 text-left">
-              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Pincode</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Area</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">City</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Actions</th>
-            </tr></thead>
-            <tbody className="divide-y divide-gray-50">
-              {processed.map((p) => (
-                <tr key={String(p._id)} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-4 py-3"><span className="font-mono font-bold text-[#162B4D]">{p.pincode}</span></td>
-                  <td className="px-4 py-3 text-gray-600 text-sm">{p.area || "—"}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{p.city || "—"}</td>
-                  <td className="px-4 py-3"><StatusBadge active={p.isActive !== false} /></td>
-                  <td className="px-4 py-3"><ActionButtons onEdit={() => { setEditing(p); setModalOpen(true); }} onDelete={() => setDeleteId(String(p._id))} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {processed.map((p) => (
-            <div key={String(p._id)} className="border border-gray-100 rounded-xl p-3 bg-white hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between gap-1 mb-2">
-                <div>
-                  <p className="font-mono font-black text-[#162B4D] text-lg leading-none">{p.pincode}</p>
-                  {p.area && <p className="text-xs text-gray-500 mt-1">{p.area}</p>}
-                  {p.city && <p className="text-[10px] text-gray-400">{p.city}</p>}
-                </div>
-                <div className="mt-0.5"><StatusBadge active={p.isActive !== false} /></div>
-              </div>
-              <div className="flex gap-1">
-                <button onClick={() => { setEditing(p); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
-                <button onClick={() => setDeleteId(String(p._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <PincodeModal isOpen={modalOpen} onClose={() => setModalOpen(false)} pincode={editing} subHubId={subHubId} onSaved={load} />
-      <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Pincode" description="This will remove the pincode from the service area." />
     </div>
   );
 }
@@ -2820,47 +2689,6 @@ function SectionModal({ isOpen, onClose, section, subHubId, onSaved }: any) {
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
           </div>
           <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Section"}</Button></DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function PincodeModal({ isOpen, onClose, pincode, subHubId, onSaved }: any) {
-  const { toast } = useToast();
-  const isEditing = !!pincode;
-  const [code, setCode] = useState(""); const [area, setArea] = useState("");
-  const [city, setCity] = useState("Thane"); const [isActive, setIsActive] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      if (pincode) { setCode(pincode.pincode ?? ""); setArea(pincode.area ?? ""); setCity(pincode.city ?? ""); setIsActive(pincode.isActive !== false); }
-      else { setCode(""); setArea(""); setCity("Thane"); setIsActive(true); }
-    }
-  }, [isOpen, pincode]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setSaving(true);
-    const payload = { pincode: code, area, city, isActive };
-    try {
-      if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes/${pincode._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Pincode updated" }); }
-      else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Pincode added" }); }
-      onSaved(); onClose();
-    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Pincode" : "Add Pincode"}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Pincode *</Label><Input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. 400601" maxLength={6} className="h-9 font-mono" /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Area</Label><Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Thane West" className="h-9" /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">City</Label><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Thane" className="h-9" /></div>
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
-          <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Pincode"}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
