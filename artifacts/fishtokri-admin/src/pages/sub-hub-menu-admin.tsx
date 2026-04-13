@@ -516,6 +516,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
       { header: "MRP",                             key: "mrp",              width: 10 },
       { header: "Unit",                            key: "unit",             width: 16 },
       { header: "Weight",                          key: "weight",           width: 12 },
+      { header: "Gross Weight",                    key: "grossWeight",      width: 14 },
+      { header: "Net Weight",                      key: "netWeight",        width: 14 },
       { header: "Pieces",                          key: "pieces",           width: 12 },
       { header: "Serves",                          key: "serves",           width: 12 },
       { header: "Stock",                           key: "stock",            width: 10 },
@@ -541,6 +543,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         mrp: p.originalPrice ?? 0,
         unit: p.unit ?? "",
         weight: p.weight ?? "",
+        grossWeight: p.grossWeight ?? "",
+        netWeight: p.netWeight ?? "",
         pieces: p.pieces ?? "",
         serves: p.serves ?? "",
         stock: p.quantity ?? 0,
@@ -566,8 +570,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         formulae: ['"per kg,per 500g,per 250g,per 100g,per tray,per pack,per piece"'],
       };
 
-      // Status dropdown — column L (H=Weight, I=Pieces, J=Serves, K=Stock, L=Status)
-      ws.getCell(`L${row}`).dataValidation = {
+      // Status dropdown — column N (H=Weight, I=GrossWeight, J=NetWeight, K=Pieces, L=Serves, M=Stock, N=Status)
+      ws.getCell(`N${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         showErrorMessage: true,
@@ -577,8 +581,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         formulae: ['"available,out_of_stock"'],
       };
 
-      // Archived dropdown — column M
-      ws.getCell(`M${row}`).dataValidation = {
+      // Archived dropdown — column O
+      ws.getCell(`O${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         showErrorMessage: true,
