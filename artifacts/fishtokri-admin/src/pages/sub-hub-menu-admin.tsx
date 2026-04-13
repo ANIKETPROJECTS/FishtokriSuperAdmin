@@ -726,19 +726,18 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
           name: r["Name"] ?? r["name"] ?? "",
           description: r["Description"] ?? r["description"] ?? "",
           category: r["Category"] ?? r["category"] ?? "",
-          subCategory: r["Sub Category"] ?? r["subCategory"] ?? "",
-          price: r["Price"] ?? r["price"] ?? 0,
-          originalPrice: r["MRP"] ?? r["originalPrice"] ?? 0,
-          discountPct: r["Discount %"] ?? r["discountPct"] ?? 0,
+          price: Number(r["Price"] ?? r["price"] ?? 0),
+          originalPrice: Number(r["MRP"] ?? r["originalPrice"] ?? 0),
           unit: r["Unit"] ?? r["unit"] ?? "per kg",
-          weight: r["Weight"] ?? r["weight"] ?? "",
-          pieces: r["Pieces"] ?? r["pieces"] ?? "",
-          serves: r["Serves"] ?? r["serves"] ?? "",
-          quantity: r["Stock"] ?? r["quantity"] ?? 0,
+          weight: String(r["Weight"] ?? r["weight"] ?? ""),
+          grossWeight: String(r["Gross Weight"] ?? r["grossWeight"] ?? ""),
+          netWeight: String(r["Net Weight"] ?? r["netWeight"] ?? ""),
+          pieces: String(r["Pieces"] ?? r["pieces"] ?? ""),
+          serves: String(r["Serves"] ?? r["serves"] ?? ""),
+          quantity: Number(r["Stock"] ?? r["quantity"] ?? 0),
           status: r["Status (available/out_of_stock)"] ?? r["status"] ?? "available",
           isArchived: r["Archived (yes/no)"] ?? r["isArchived"] ?? "no",
           imageUrl: r["Image URL"] ?? r["imageUrl"] ?? "",
-          limitedStockNote: r["Limited Stock Note"] ?? r["limitedStockNote"] ?? "",
         }))
         .filter((r) => r.name);
       if (newRows.length === 0) { toast({ title: "No valid rows found", description: "Make sure the file has a Name column.", variant: "destructive" }); return; }
@@ -768,31 +767,33 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
             name: r["Name"] ?? r["name"] ?? orig?.name ?? "",
             description: r["Description"] ?? r["description"] ?? orig?.description ?? "",
             category: r["Category"] ?? r["category"] ?? orig?.category ?? "",
-            subCategory: r["Sub Category"] ?? r["subCategory"] ?? orig?.subCategory ?? "",
             price: Number(r["Price"] ?? r["price"] ?? orig?.price ?? 0),
             originalPrice: Number(r["MRP"] ?? r["originalPrice"] ?? orig?.originalPrice ?? 0),
-            discountPct: Number(r["Discount %"] ?? r["discountPct"] ?? orig?.discountPct ?? 0),
             unit: r["Unit"] ?? r["unit"] ?? orig?.unit ?? "per kg",
             weight: String(r["Weight"] ?? r["weight"] ?? orig?.weight ?? ""),
+            grossWeight: String(r["Gross Weight"] ?? r["grossWeight"] ?? orig?.grossWeight ?? ""),
+            netWeight: String(r["Net Weight"] ?? r["netWeight"] ?? orig?.netWeight ?? ""),
             pieces: String(r["Pieces"] ?? r["pieces"] ?? orig?.pieces ?? ""),
             serves: String(r["Serves"] ?? r["serves"] ?? orig?.serves ?? ""),
             quantity: Number(r["Stock"] ?? r["quantity"] ?? orig?.quantity ?? 0),
             status: r["Status (available/out_of_stock)"] ?? r["status"] ?? orig?.status ?? "available",
             isArchived: r["Archived (yes/no)"] ?? r["isArchived"] ?? (orig?.isArchived ? "yes" : "no"),
             imageUrl: r["Image URL"] ?? r["imageUrl"] ?? orig?.imageUrl ?? "",
-            limitedStockNote: r["Limited Stock Note"] ?? r["limitedStockNote"] ?? orig?.limitedStockNote ?? "",
           };
           if (!row._id || !orig) return null;
           const changed =
             row.name !== orig.name || row.description !== (orig.description ?? "") ||
-            row.category !== (orig.category ?? "") || row.subCategory !== (orig.subCategory ?? "") ||
+            row.category !== (orig.category ?? "") ||
             row.price !== orig.price || row.originalPrice !== orig.originalPrice ||
-            row.discountPct !== (orig.discountPct ?? 0) || row.unit !== (orig.unit ?? "") ||
-            row.weight !== String(orig.weight ?? "") || row.pieces !== String(orig.pieces ?? "") ||
+            row.unit !== (orig.unit ?? "") ||
+            row.weight !== String(orig.weight ?? "") ||
+            row.grossWeight !== String(orig.grossWeight ?? "") ||
+            row.netWeight !== String(orig.netWeight ?? "") ||
+            row.pieces !== String(orig.pieces ?? "") ||
             row.serves !== String(orig.serves ?? "") || row.quantity !== (orig.quantity ?? 0) ||
             row.status !== (orig.status ?? "available") ||
             (String(row.isArchived).toLowerCase() === "yes") !== (orig.isArchived === true) ||
-            row.imageUrl !== (orig.imageUrl ?? "") || row.limitedStockNote !== (orig.limitedStockNote ?? "");
+            row.imageUrl !== (orig.imageUrl ?? "");
           return changed ? row : null;
         })
         .filter(Boolean);

@@ -220,6 +220,8 @@ router.post("/products/bulk-upsert", async (req, res) => {
           discountPct: Number(row.discountPct ?? row.discount_pct) || (op > p ? Math.round(((op - p) / op) * 100) : 0),
           unit: row.unit ?? "per kg",
           weight: row.weight ?? "",
+          grossWeight: row.grossWeight ?? "",
+          netWeight: row.netWeight ?? "",
           pieces: row.pieces ?? "",
           serves: row.serves ?? "",
           quantity: Number(row.quantity ?? row.stock) || 0,
