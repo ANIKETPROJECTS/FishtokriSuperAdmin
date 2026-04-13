@@ -5,7 +5,7 @@ import {
   ArrowUpDown, SlidersHorizontal, X, LayoutGrid, LayoutList,
   MapPin, ShoppingBag, ChevronLeft, ChevronRight, Users,
   Eye, Home, Clock, CheckCircle2, ClipboardList, Package,
-  CreditCard, Truck, Hash, UserRound,
+  CreditCard, Truck, UserRound,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -589,7 +589,7 @@ function CustomerDetailDialog({ customer, onClose, onEdit, onDelete }: { custome
                 <UserRound className="w-5 h-5" />
                 Customer Details
               </DialogTitle>
-              <DialogDescription>Complete customer profile, saved addresses, current orders, order history and database record.</DialogDescription>
+              <DialogDescription>Complete customer profile, saved addresses, current orders and order history.</DialogDescription>
             </DialogHeader>
 
             {isLoading && <Skeleton className="h-2 w-full" />}
@@ -642,22 +642,7 @@ function CustomerDetailDialog({ customer, onClose, onEdit, onDelete }: { custome
                 {fullCustomer.addresses?.length ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {fullCustomer.addresses.map((address: any, index: number) => (
-                      <div key={index} className="rounded-xl border border-gray-100 bg-white p-4">
-                        <div className="flex items-start gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0"><MapPin className="w-4 h-4 text-blue-600" /></div>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-[#162B4D] text-sm">{address?.label || address?.type || `Address ${index + 1}`}</p>
-                            <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{addressText(address)}</p>
-                            {typeof address === "object" && (
-                              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
-                                {Object.entries(address).map(([key, value]) => (
-                                  <div key={key} className="rounded bg-gray-50 p-2 overflow-hidden"><span className="font-semibold">{key}:</span> <span className="break-words">{typeof value === "object" ? JSON.stringify(value) : String(value ?? "—")}</span></div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                      <AddressCard key={index} address={address} index={index} />
                     ))}
                   </div>
                 ) : <EmptyPanel text="No saved addresses found for this customer." />}
@@ -671,9 +656,6 @@ function CustomerDetailDialog({ customer, onClose, onEdit, onDelete }: { custome
                 <OrderList orders={history} empty="No completed, cancelled or past orders found for this customer." />
               </DetailSection>
 
-              <DetailSection title="Complete Database Record" icon={Hash}>
-                <pre className="max-h-80 overflow-auto rounded-xl bg-slate-950 text-slate-100 text-xs p-4 whitespace-pre-wrap">{JSON.stringify(fullCustomer, null, 2)}</pre>
-              </DetailSection>
             </div>
           </>
         )}
@@ -714,6 +696,62 @@ function EmptyPanel({ text }: { text: string }) {
   return <div className="rounded-xl border border-dashed border-gray-200 bg-white py-8 text-center text-sm text-gray-400">{text}</div>;
 }
 
+function AddressCard({ address, index }: { address: any; index: number }) {
+  if (!address) return null;
+  if (typeof address === "string") {
+    return (
+      <div className="rounded-xl border border-gray-100 bg-white p-4 flex items-start gap-3">
+        <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0"><MapPin className="w-4 h-4 text-blue-600" /></div>
+        <p className="text-sm text-gray-700">{address}</p>
+      </div>
+    );
+  }
+  const label = address.label || address.type || `Address ${index + 1}`;
+  const contactName = address.name || address.contactName || "";
+  const phone = address.phone || address.contactPhone || address.mobile || "";
+  const houseNo = address.houseNo || address.flatNo || address.house || address.apartment || "";
+  const building = address.building || address.buildingName || address.society || "";
+  const street = address.street || address.streetName || address.road || address.addressLine1 || "";
+  const area = address.area || address.locality || address.neighbourhood || "";
+  const landmark = address.landmark || "";
+  const city = address.city || "";
+  const state = address.state || "";
+  const pincode = address.pincode || address.zipCode || address.zip || "";
+  const instructions = address.instructions || address.deliveryInstructions || "";
+
+  const addressLines = [
+    [houseNo, building].filter(Boolean).join(", "),
+    [street, area].filter(Boolean).join(", "),
+    landmark ? `Near ${landmark}` : "",
+    [city, state, pincode].filter(Boolean).join(", "),
+  ].filter(Boolean);
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-4">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <MapPin className="w-4 h-4 text-blue-600" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <span className="inline-block bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full mb-2 capitalize">{label}</span>
+          {contactName && <p className="text-sm font-semibold text-[#162B4D]">{contactName}</p>}
+          {phone && <p className="text-xs text-gray-500 mt-0.5">{phone}</p>}
+          <div className="mt-2 space-y-0.5">
+            {addressLines.map((line, i) => (
+              <p key={i} className="text-sm text-gray-700">{line}</p>
+            ))}
+          </div>
+          {instructions && (
+            <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 border border-amber-100">
+              Delivery note: {instructions}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrderList({ orders, empty }: { orders: any[]; empty: string }) {
   if (!orders.length) return <EmptyPanel text={empty} />;
   return (
@@ -725,14 +763,21 @@ function OrderList({ orders, empty }: { orders: any[]; empty: string }) {
   );
 }
 
+function shortOrderRef(order: any, index: number) {
+  const id = getOrderId(order);
+  if (order.orderNumber) return `#${order.orderNumber}`;
+  if (id && id.length >= 8) return `#${id.slice(-8).toUpperCase()}`;
+  return `Order ${index + 1}`;
+}
+
 function OrderCard({ order, index }: { order: any; index: number }) {
   const items = Array.isArray(order.items) ? order.items : [];
-  const orderId = getOrderId(order) || `Order ${index + 1}`;
+  const ref = shortOrderRef(order, index);
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
         <div>
-          <p className="font-bold text-[#162B4D] flex items-center gap-2"><Package className="w-4 h-4 text-gray-400" />{order.orderNumber || orderId}</p>
+          <p className="font-bold text-[#162B4D] flex items-center gap-2"><Package className="w-4 h-4 text-gray-400" />{ref}</p>
           <p className="text-xs text-gray-400 mt-1">{formatDateTime(order.createdAt || order.orderDate || order.date)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -761,10 +806,6 @@ function OrderCard({ order, index }: { order: any; index: number }) {
         </div>
       </div>
       {order.notes && <p className="mt-3 rounded-lg bg-amber-50 text-amber-700 text-xs p-2">Notes: {order.notes}</p>}
-      <details className="mt-3">
-        <summary className="cursor-pointer text-xs font-semibold text-[#1A56DB]">View raw order data</summary>
-        <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-slate-950 text-slate-100 text-xs p-3 whitespace-pre-wrap">{JSON.stringify(order, null, 2)}</pre>
-      </details>
     </div>
   );
 }
