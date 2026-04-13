@@ -274,6 +274,76 @@ function EmptyState({ icon: Icon, message, sub }: { icon: any; message: string; 
   );
 }
 
+// ─── EXCEL HELPERS (module-level) ────────────────────────────────────────────
+const parseXlsxFile = (file: File): Promise<any[]> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target?.result as ArrayBuffer, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      resolve(XLSX.utils.sheet_to_json(ws, { defval: "" }) as any[]);
+    } catch (err) { reject(err); }
+  };
+  reader.onerror = () => reject(new Error("Failed to read file"));
+  reader.readAsArrayBuffer(file);
+});
+
+async function buildAndDownloadExcel(
+  items: any[],
+  columns: { header: string; key: string; width: number }[],
+  getRow: (item: any) => Record<string, any>,
+  filename: string,
+  sheetName: string,
+  headerArgb: string,
+  validations?: Array<{ col: string; formulae: string[] }>,
+) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(sheetName);
+  ws.columns = columns;
+  const hRow = ws.getRow(1);
+  hRow.font = { bold: true };
+  hRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: headerArgb } };
+  hRow.alignment = { vertical: "middle" };
+  items.forEach((item) => ws.addRow(getRow(item)));
+  if (validations?.length) {
+    const end = Math.max(items.length + 1, 1) + 100;
+    for (let row = 2; row <= end; row++) {
+      validations.forEach(({ col, formulae }) => {
+        ws.getCell(`${col}${row}`).dataValidation = { type: "list", allowBlank: true, errorStyle: "warning", formulae };
+      });
+    }
+  }
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ExcelBar({ busy, onImport, onEdit, onExport, count }: {
+  busy: boolean;
+  onImport: () => void;
+  onEdit: () => void;
+  onExport: () => void;
+  count: number;
+}) {
+  return (
+    <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-100 rounded-xl">
+      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide mr-1">Excel</span>
+      <button disabled={busy} onClick={onImport} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 disabled:opacity-50 transition-colors">
+        <Upload className="w-3.5 h-3.5" /> Import New
+      </button>
+      <button disabled={busy} onClick={onEdit} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50 transition-colors">
+        <FilePen className="w-3.5 h-3.5" /> Edit
+      </button>
+      <button disabled={busy || count === 0} onClick={onExport} className="ml-auto inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-orange-200 text-orange-700 bg-white hover:bg-orange-50 disabled:opacity-50 transition-colors">
+        <Download className="w-3.5 h-3.5" /> Export ({count})
+      </button>
+    </div>
+  );
+}
+
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 export default function SubHubMenuAdmin() {
   const params = useParams<{ id: string }>();
@@ -996,6 +1066,9 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [xlsxBusy, setXlsxBusy] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1007,6 +1080,60 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
   }, [subHubId, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const catColumns = [
+    { header: "ID (do not edit)", key: "_id", width: 28 },
+    { header: "Name", key: "name", width: 24 },
+    { header: "Image URL", key: "imageUrl", width: 40 },
+    { header: "Active (yes/no)", key: "isActive", width: 16 },
+    { header: "Sort Order", key: "sortOrder", width: 12 },
+    { header: "Sub Categories (pipe-separated names)", key: "subCategories", width: 46 },
+  ];
+  const catRow = (c: any) => ({
+    _id: String(c._id ?? ""),
+    name: c.name ?? "",
+    imageUrl: c.imageUrl ?? "",
+    isActive: c.isActive !== false ? "yes" : "no",
+    sortOrder: c.sortOrder ?? 0,
+    subCategories: Array.isArray(c.subCategories) ? c.subCategories.map((s: any) => s.name ?? s).join("|") : "",
+  });
+
+  const handleCatExport = async () => {
+    setXlsxBusy(true);
+    try {
+      await buildAndDownloadExcel(processed, catColumns, catRow, "categories.xlsx", "Categories", "FFCE93D8",
+        [{ col: "D", formulae: ['"yes,no"'] }]);
+    } catch (err: any) { toast({ title: "Export failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
+  const handleCatImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    setXlsxBusy(true);
+    try {
+      const rows = await parseXlsxFile(file);
+      const items = rows.map((r) => ({ name: r["Name"], imageUrl: r["Image URL"] ?? "", isActive: String(r["Active (yes/no)"] ?? "yes"), sortOrder: r["Sort Order"], subCategories: r["Sub Categories (pipe-separated names)"] ?? "" }));
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/categories/bulk-upsert`, { method: "POST", body: JSON.stringify({ items }) });
+      toast({ title: "Import complete", description: `Created: ${res.created}, Updated: ${res.updated}${res.errors?.length ? `, Errors: ${res.errors.length}` : ""}` });
+      load(); onRefreshStats();
+    } catch (err: any) { toast({ title: "Import failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
+  const handleCatEdit = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    setXlsxBusy(true);
+    try {
+      const rows = await parseXlsxFile(file);
+      const items = rows.map((r) => ({ _id: r["ID (do not edit)"] ?? "", name: r["Name"], imageUrl: r["Image URL"] ?? "", isActive: String(r["Active (yes/no)"] ?? "yes"), sortOrder: r["Sort Order"], subCategories: r["Sub Categories (pipe-separated names)"] ?? "" }));
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/categories/bulk-upsert`, { method: "POST", body: JSON.stringify({ items }) });
+      toast({ title: "Edit complete", description: `Created: ${res.created}, Updated: ${res.updated}${res.errors?.length ? `, Errors: ${res.errors.length}` : ""}` });
+      load(); onRefreshStats();
+    } catch (err: any) { toast({ title: "Edit failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
 
   const sortOptions: SortOption[] = [
     { value: "sort_asc", label: "Sort Order" },
@@ -1046,6 +1173,9 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
 
   return (
     <div className="space-y-4">
+      <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleCatImport} />
+      <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleCatEdit} />
+      <ExcelBar busy={xlsxBusy} onImport={() => importRef.current?.click()} onEdit={() => editRef.current?.click()} onExport={handleCatExport} count={processed.length} />
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
@@ -1134,6 +1264,9 @@ function CombosTab({ subHubId }: { subHubId: string }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [xlsxBusy, setXlsxBusy] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1145,6 +1278,73 @@ function CombosTab({ subHubId }: { subHubId: string }) {
   }, [subHubId, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const comboColumns = [
+    { header: "ID (do not edit)", key: "_id", width: 28 },
+    { header: "Name", key: "name", width: 28 },
+    { header: "Description", key: "description", width: 40 },
+    { header: "Serves", key: "serves", width: 14 },
+    { header: "Weight", key: "weight", width: 14 },
+    { header: "Sale Price", key: "discountedPrice", width: 14 },
+    { header: "Original Price", key: "originalPrice", width: 14 },
+    { header: "Discount %", key: "discount", width: 13 },
+    { header: "Includes (pipe-separated)", key: "includes", width: 40 },
+    { header: "Tags (pipe-separated)", key: "tags", width: 30 },
+    { header: "Active (yes/no)", key: "isActive", width: 16 },
+    { header: "Sort Order", key: "sortOrder", width: 12 },
+  ];
+  const comboRow = (c: any) => ({
+    _id: String(c._id ?? ""), name: c.name ?? "", description: c.description ?? "",
+    serves: c.serves ?? "", weight: c.weight ?? "",
+    discountedPrice: c.discountedPrice ?? 0, originalPrice: c.originalPrice ?? 0, discount: c.discount ?? 0,
+    includes: Array.isArray(c.includes) ? c.includes.join("|") : "",
+    tags: Array.isArray(c.tags) ? c.tags.join("|") : "",
+    isActive: c.isActive !== false ? "yes" : "no", sortOrder: c.sortOrder ?? 0,
+  });
+  const parseComboRow = (r: any) => ({
+    _id: r["ID (do not edit)"] ?? "", name: r["Name"], description: r["Description"] ?? "",
+    serves: r["Serves"] ?? "", weight: r["Weight"] ?? "",
+    discountedPrice: r["Sale Price"], originalPrice: r["Original Price"], discount: r["Discount %"],
+    includes: r["Includes (pipe-separated)"] ?? "", tags: r["Tags (pipe-separated)"] ?? "",
+    isActive: String(r["Active (yes/no)"] ?? "yes"), sortOrder: r["Sort Order"],
+  });
+
+  const handleComboExport = async () => {
+    setXlsxBusy(true);
+    try {
+      await buildAndDownloadExcel(processed, comboColumns, comboRow, "combos.xlsx", "Combos", "FFB8CCE4",
+        [{ col: "K", formulae: ['"yes,no"'] }]);
+    } catch (err: any) { toast({ title: "Export failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
+  const handleComboImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    setXlsxBusy(true);
+    try {
+      const rows = await parseXlsxFile(file);
+      const items = rows.map(parseComboRow);
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/combos/bulk-upsert`, { method: "POST", body: JSON.stringify({ items }) });
+      toast({ title: "Import complete", description: `Created: ${res.created}, Updated: ${res.updated}${res.errors?.length ? `, Errors: ${res.errors.length}` : ""}` });
+      load();
+    } catch (err: any) { toast({ title: "Import failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
+  const handleComboEdit = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    setXlsxBusy(true);
+    try {
+      const rows = await parseXlsxFile(file);
+      const items = rows.map(parseComboRow);
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/combos/bulk-upsert`, { method: "POST", body: JSON.stringify({ items }) });
+      toast({ title: "Edit complete", description: `Created: ${res.created}, Updated: ${res.updated}${res.errors?.length ? `, Errors: ${res.errors.length}` : ""}` });
+      load();
+    } catch (err: any) { toast({ title: "Edit failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
 
   const sortOptions: SortOption[] = [
     { value: "sort_asc", label: "Sort Order" },
@@ -1186,6 +1386,9 @@ function CombosTab({ subHubId }: { subHubId: string }) {
 
   return (
     <div className="space-y-4">
+      <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleComboImport} />
+      <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleComboEdit} />
+      <ExcelBar busy={xlsxBusy} onImport={() => importRef.current?.click()} onEdit={() => editRef.current?.click()} onExport={handleComboExport} count={processed.length} />
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
@@ -1280,6 +1483,9 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [xlsxBusy, setXlsxBusy] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1291,6 +1497,70 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
   }, [subHubId, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const couponColumns = [
+    { header: "ID (do not edit)", key: "_id", width: 28 },
+    { header: "Code", key: "code", width: 18 },
+    { header: "Title", key: "title", width: 28 },
+    { header: "Description", key: "description", width: 40 },
+    { header: "Type (percentage/flat)", key: "type", width: 22 },
+    { header: "Discount Value", key: "discountValue", width: 16 },
+    { header: "Min Order Amount", key: "minOrderAmount", width: 18 },
+    { header: "Max Usage", key: "maxUsage", width: 12 },
+    { header: "First Time Only (yes/no)", key: "isFirstTimeOnly", width: 24 },
+    { header: "Active (yes/no)", key: "isActive", width: 16 },
+    { header: "Expires At", key: "expiresAt", width: 20 },
+  ];
+  const couponRow = (c: any) => ({
+    _id: String(c._id ?? ""), code: c.code ?? "", title: c.title ?? "", description: c.description ?? "",
+    type: c.type ?? "percentage", discountValue: c.discountValue ?? 0, minOrderAmount: c.minOrderAmount ?? 0,
+    maxUsage: c.maxUsage ?? "", isFirstTimeOnly: c.isFirstTimeOnly ? "yes" : "no",
+    isActive: c.isActive !== false ? "yes" : "no",
+    expiresAt: c.expiresAt ? new Date(c.expiresAt).toISOString().slice(0, 10) : "",
+  });
+  const parseCouponRow = (r: any) => ({
+    _id: r["ID (do not edit)"] ?? "", code: r["Code"], title: r["Title"] ?? "", description: r["Description"] ?? "",
+    type: r["Type (percentage/flat)"], discountValue: r["Discount Value"], minOrderAmount: r["Min Order Amount"],
+    maxUsage: r["Max Usage"], isFirstTimeOnly: String(r["First Time Only (yes/no)"] ?? "no"),
+    isActive: String(r["Active (yes/no)"] ?? "yes"), expiresAt: r["Expires At"] ?? "",
+  });
+
+  const handleCouponExport = async () => {
+    setXlsxBusy(true);
+    try {
+      await buildAndDownloadExcel(processed, couponColumns, couponRow, "coupons.xlsx", "Coupons", "FFFCE4D6",
+        [{ col: "E", formulae: ['"percentage,flat"'] }, { col: "I", formulae: ['"yes,no"'] }, { col: "J", formulae: ['"yes,no"'] }]);
+    } catch (err: any) { toast({ title: "Export failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
+  const handleCouponImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    setXlsxBusy(true);
+    try {
+      const rows = await parseXlsxFile(file);
+      const items = rows.map(parseCouponRow);
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons/bulk-upsert`, { method: "POST", body: JSON.stringify({ items }) });
+      toast({ title: "Import complete", description: `Created: ${res.created}, Updated: ${res.updated}${res.errors?.length ? `, Errors: ${res.errors.length}` : ""}` });
+      load();
+    } catch (err: any) { toast({ title: "Import failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
+  const handleCouponEdit = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    setXlsxBusy(true);
+    try {
+      const rows = await parseXlsxFile(file);
+      const items = rows.map(parseCouponRow);
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons/bulk-upsert`, { method: "POST", body: JSON.stringify({ items }) });
+      toast({ title: "Edit complete", description: `Created: ${res.created}, Updated: ${res.updated}${res.errors?.length ? `, Errors: ${res.errors.length}` : ""}` });
+      load();
+    } catch (err: any) { toast({ title: "Edit failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
 
   const sortOptions: SortOption[] = [
     { value: "code_asc", label: "Code A→Z" },
@@ -1334,6 +1604,9 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
 
   return (
     <div className="space-y-4">
+      <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleCouponImport} />
+      <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleCouponEdit} />
+      <ExcelBar busy={xlsxBusy} onImport={() => importRef.current?.click()} onEdit={() => editRef.current?.click()} onExport={handleCouponExport} count={processed.length} />
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
@@ -1557,6 +1830,9 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [xlsxBusy, setXlsxBusy] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1566,6 +1842,53 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
     } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
     finally { setLoading(false); }
   }, [subHubId, toast]);
+
+  const sectionColumns = [
+    { header: "ID (do not edit)", key: "_id", width: 28 },
+    { header: "Title", key: "title", width: 28 },
+    { header: "Type (products/combos/categories/carousels)", key: "type", width: 42 },
+    { header: "Sort Order", key: "sortOrder", width: 12 },
+    { header: "Active (yes/no)", key: "isActive", width: 16 },
+  ];
+  const sectionRow = (s: any) => ({ _id: String(s._id ?? ""), title: s.title ?? "", type: s.type ?? "products", sortOrder: s.sortOrder ?? 0, isActive: s.isActive !== false ? "yes" : "no" });
+  const parseSectionRow = (r: any) => ({ _id: r["ID (do not edit)"] ?? "", title: r["Title"], type: r["Type (products/combos/categories/carousels)"], sortOrder: r["Sort Order"], isActive: String(r["Active (yes/no)"] ?? "yes") });
+
+  const handleSectionExport = async () => {
+    setXlsxBusy(true);
+    try {
+      await buildAndDownloadExcel(processed, sectionColumns, sectionRow, "sections.xlsx", "Sections", "FFD9EAD3",
+        [{ col: "C", formulae: ['"products,combos,categories,carousels"'] }, { col: "E", formulae: ['"yes,no"'] }]);
+    } catch (err: any) { toast({ title: "Export failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
+  const handleSectionImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    setXlsxBusy(true);
+    try {
+      const rows = await parseXlsxFile(file);
+      const items = rows.map(parseSectionRow);
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections/bulk-upsert`, { method: "POST", body: JSON.stringify({ items }) });
+      toast({ title: "Import complete", description: `Created: ${res.created}, Updated: ${res.updated}${res.errors?.length ? `, Errors: ${res.errors.length}` : ""}` });
+      load();
+    } catch (err: any) { toast({ title: "Import failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
+  const handleSectionEdit = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    setXlsxBusy(true);
+    try {
+      const rows = await parseXlsxFile(file);
+      const items = rows.map(parseSectionRow);
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections/bulk-upsert`, { method: "POST", body: JSON.stringify({ items }) });
+      toast({ title: "Edit complete", description: `Created: ${res.created}, Updated: ${res.updated}${res.errors?.length ? `, Errors: ${res.errors.length}` : ""}` });
+      load();
+    } catch (err: any) { toast({ title: "Edit failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -1613,6 +1936,9 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
 
   return (
     <div className="space-y-4">
+      <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleSectionImport} />
+      <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleSectionEdit} />
+      <ExcelBar busy={xlsxBusy} onImport={() => importRef.current?.click()} onEdit={() => editRef.current?.click()} onExport={handleSectionExport} count={processed.length} />
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
@@ -2885,6 +3211,9 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [xlsxBusy, setXlsxBusy] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2893,6 +3222,56 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
       setTimeslots(data.timeslots ?? []);
     } catch { setTimeslots([]); } finally { setLoading(false); }
   }, [subHubId]);
+
+  const slotColumns = [
+    { header: "ID (do not edit)", key: "_id", width: 28 },
+    { header: "Label", key: "label", width: 24 },
+    { header: "Start Time (HH:MM)", key: "startTime", width: 20 },
+    { header: "End Time (HH:MM)", key: "endTime", width: 20 },
+    { header: "Instant (yes/no)", key: "isInstant", width: 18 },
+    { header: "Extra Charge", key: "extraCharge", width: 14 },
+    { header: "Active (yes/no)", key: "isActive", width: 16 },
+    { header: "Sort Order", key: "sortOrder", width: 12 },
+  ];
+  const slotRow = (s: any) => ({ _id: String(s._id ?? ""), label: s.label ?? "", startTime: s.startTime ?? "", endTime: s.endTime ?? "", isInstant: s.isInstant ? "yes" : "no", extraCharge: s.extraCharge ?? 0, isActive: s.isActive !== false ? "yes" : "no", sortOrder: s.sortOrder ?? 0 });
+  const parseSlotRow = (r: any) => ({ _id: r["ID (do not edit)"] ?? "", label: r["Label"], startTime: r["Start Time (HH:MM)"], endTime: r["End Time (HH:MM)"], isInstant: String(r["Instant (yes/no)"] ?? "no"), extraCharge: r["Extra Charge"], isActive: String(r["Active (yes/no)"] ?? "yes"), sortOrder: r["Sort Order"] });
+
+  const handleSlotExport = async () => {
+    setXlsxBusy(true);
+    try {
+      await buildAndDownloadExcel(processed, slotColumns, slotRow, "timeslots.xlsx", "Time Slots", "FFFFF2CC",
+        [{ col: "E", formulae: ['"yes,no"'] }, { col: "G", formulae: ['"yes,no"'] }]);
+    } catch (err: any) { toast({ title: "Export failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
+  const handleSlotImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    setXlsxBusy(true);
+    try {
+      const rows = await parseXlsxFile(file);
+      const items = rows.map(parseSlotRow);
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/timeslots/bulk-upsert`, { method: "POST", body: JSON.stringify({ items }) });
+      toast({ title: "Import complete", description: `Created: ${res.created}, Updated: ${res.updated}${res.errors?.length ? `, Errors: ${res.errors.length}` : ""}` });
+      load();
+    } catch (err: any) { toast({ title: "Import failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
+
+  const handleSlotEdit = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    setXlsxBusy(true);
+    try {
+      const rows = await parseXlsxFile(file);
+      const items = rows.map(parseSlotRow);
+      const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/timeslots/bulk-upsert`, { method: "POST", body: JSON.stringify({ items }) });
+      toast({ title: "Edit complete", description: `Created: ${res.created}, Updated: ${res.updated}${res.errors?.length ? `, Errors: ${res.errors.length}` : ""}` });
+      load();
+    } catch (err: any) { toast({ title: "Edit failed", description: err.message, variant: "destructive" }); }
+    finally { setXlsxBusy(false); }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -2935,6 +3314,9 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
 
   return (
     <div className="space-y-4">
+      <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleSlotImport} />
+      <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleSlotEdit} />
+      <ExcelBar busy={xlsxBusy} onImport={() => importRef.current?.click()} onEdit={() => editRef.current?.click()} onExport={handleSlotExport} count={processed.length} />
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}

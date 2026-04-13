@@ -793,4 +793,140 @@ router.delete("/timeslots/:timeslotId", async (req, res) => {
   }
 });
 
+// ─── BULK UPSERTS ─────────────────────────────────────────────────────────────
+
+router.post("/categories/bulk-upsert", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res);
+    if (!ctx) return;
+    const rows: any[] = Array.isArray(req.body.items) ? req.body.items : [];
+    if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No items provided" }); return; }
+    let created = 0, updated = 0; const errors: string[] = [];
+    for (const row of rows) {
+      try {
+        const subCats = row.subCategories ? String(row.subCategories).split("|").map((s: string) => ({ name: s.trim() })).filter((s: any) => s.name) : undefined;
+        const fields: any = { name: row.name ?? "", imageUrl: row.imageUrl ?? "", isActive: String(row.isActive ?? "yes").toLowerCase() !== "no", sortOrder: Number(row.sortOrder) || 0, updatedAt: new Date() };
+        if (subCats !== undefined) fields.subCategories = subCats;
+        if (!fields.name) { errors.push("Skipped: missing name"); continue; }
+        const oid = row._id ? toId(String(row._id)) : null;
+        if (oid) { await ctx.conn.db.collection("categories").updateOne({ _id: oid }, { $set: fields }); updated++; }
+        else { await ctx.conn.db.collection("categories").insertOne({ ...fields, createdAt: new Date() }); created++; }
+      } catch (e: any) { errors.push(e.message); }
+    }
+    res.json({ created, updated, errors });
+  } catch (err) { req.log.error({ err }, "categories bulk-upsert failed"); res.status(500).json({ error: "InternalError", message: "Failed" }); }
+});
+
+router.post("/combos/bulk-upsert", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res);
+    if (!ctx) return;
+    const rows: any[] = Array.isArray(req.body.items) ? req.body.items : [];
+    if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No items provided" }); return; }
+    let created = 0, updated = 0; const errors: string[] = [];
+    for (const row of rows) {
+      try {
+        const dp = Number(row.discountedPrice ?? row.salePrice) || 0;
+        const op = Number(row.originalPrice ?? row.mrp) || dp;
+        const fields: any = {
+          name: row.name ?? "", description: row.description ?? "", fullDescription: row.fullDescription ?? "",
+          serves: row.serves ?? "", weight: row.weight ?? "",
+          discountedPrice: dp, originalPrice: op,
+          discount: Number(row.discount) || (op > dp && dp > 0 ? Math.round(((op - dp) / op) * 100) : 0),
+          includes: row.includes ? String(row.includes).split("|").map((s: string) => s.trim()).filter(Boolean) : [],
+          tags: row.tags ? String(row.tags).split("|").map((s: string) => s.trim()).filter(Boolean) : [],
+          isActive: String(row.isActive ?? "yes").toLowerCase() !== "no",
+          sortOrder: Number(row.sortOrder) || 0, updatedAt: new Date(),
+        };
+        if (!fields.name) { errors.push("Skipped: missing name"); continue; }
+        const oid = row._id ? toId(String(row._id)) : null;
+        if (oid) { await ctx.conn.db.collection("combos").updateOne({ _id: oid }, { $set: fields }); updated++; }
+        else { await ctx.conn.db.collection("combos").insertOne({ ...fields, createdAt: new Date() }); created++; }
+      } catch (e: any) { errors.push(e.message); }
+    }
+    res.json({ created, updated, errors });
+  } catch (err) { req.log.error({ err }, "combos bulk-upsert failed"); res.status(500).json({ error: "InternalError", message: "Failed" }); }
+});
+
+router.post("/coupons/bulk-upsert", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res);
+    if (!ctx) return;
+    const rows: any[] = Array.isArray(req.body.items) ? req.body.items : [];
+    if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No items provided" }); return; }
+    let created = 0, updated = 0; const errors: string[] = [];
+    for (const row of rows) {
+      try {
+        const code = String(row.code ?? "").toUpperCase().trim();
+        if (!code) { errors.push("Skipped: missing code"); continue; }
+        const fields: any = {
+          code, title: row.title ?? "", description: row.description ?? "",
+          type: row.type === "flat" ? "flat" : "percentage",
+          discountValue: Number(row.discountValue) || 0,
+          minOrderAmount: Number(row.minOrderAmount) || 0,
+          maxUsage: row.maxUsage ? Number(row.maxUsage) : null,
+          isFirstTimeOnly: String(row.isFirstTimeOnly ?? "no").toLowerCase() === "yes",
+          isActive: String(row.isActive ?? "yes").toLowerCase() !== "no",
+          expiresAt: row.expiresAt ? new Date(row.expiresAt) : null,
+          updatedAt: new Date(),
+        };
+        const oid = row._id ? toId(String(row._id)) : null;
+        if (oid) { await ctx.conn.db.collection("coupons").updateOne({ _id: oid }, { $set: fields }); updated++; }
+        else {
+          const existing = await ctx.conn.db.collection("coupons").findOne({ code: { $regex: `^${code}$`, $options: "i" } });
+          if (existing) { await ctx.conn.db.collection("coupons").updateOne({ _id: existing._id }, { $set: fields }); updated++; }
+          else { await ctx.conn.db.collection("coupons").insertOne({ ...fields, usedCount: 0, applicableCategories: [], applicableProducts: [], createdAt: new Date() }); created++; }
+        }
+      } catch (e: any) { errors.push(e.message); }
+    }
+    res.json({ created, updated, errors });
+  } catch (err) { req.log.error({ err }, "coupons bulk-upsert failed"); res.status(500).json({ error: "InternalError", message: "Failed" }); }
+});
+
+router.post("/sections/bulk-upsert", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res);
+    if (!ctx) return;
+    const rows: any[] = Array.isArray(req.body.items) ? req.body.items : [];
+    if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No items provided" }); return; }
+    let created = 0, updated = 0; const errors: string[] = [];
+    for (const row of rows) {
+      try {
+        const fields: any = { title: row.title ?? "", type: row.type ?? "products", sortOrder: Number(row.sortOrder) || 0, isActive: String(row.isActive ?? "yes").toLowerCase() !== "no", updatedAt: new Date() };
+        if (!fields.title) { errors.push("Skipped: missing title"); continue; }
+        const oid = row._id ? toId(String(row._id)) : null;
+        if (oid) { await ctx.conn.db.collection("sections").updateOne({ _id: oid }, { $set: fields }); updated++; }
+        else { await ctx.conn.db.collection("sections").insertOne({ ...fields, createdAt: new Date() }); created++; }
+      } catch (e: any) { errors.push(e.message); }
+    }
+    res.json({ created, updated, errors });
+  } catch (err) { req.log.error({ err }, "sections bulk-upsert failed"); res.status(500).json({ error: "InternalError", message: "Failed" }); }
+});
+
+router.post("/timeslots/bulk-upsert", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res);
+    if (!ctx) return;
+    const rows: any[] = Array.isArray(req.body.items) ? req.body.items : [];
+    if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No items provided" }); return; }
+    let created = 0, updated = 0; const errors: string[] = [];
+    for (const row of rows) {
+      try {
+        const fields: any = {
+          label: row.label ?? "", startTime: row.startTime ?? "", endTime: row.endTime ?? "",
+          isInstant: String(row.isInstant ?? "no").toLowerCase() === "yes",
+          extraCharge: Number(row.extraCharge) || 0,
+          isActive: String(row.isActive ?? "yes").toLowerCase() !== "no",
+          sortOrder: Number(row.sortOrder) || 0, updatedAt: new Date(),
+        };
+        if (!fields.label || !fields.startTime || !fields.endTime) { errors.push("Skipped: missing label/startTime/endTime"); continue; }
+        const oid = row._id ? toId(String(row._id)) : null;
+        if (oid) { await ctx.conn.db.collection("timeslots").updateOne({ _id: oid }, { $set: fields }); updated++; }
+        else { await ctx.conn.db.collection("timeslots").insertOne({ ...fields, createdAt: new Date() }); created++; }
+      } catch (e: any) { errors.push(e.message); }
+    }
+    res.json({ created, updated, errors });
+  } catch (err) { req.log.error({ err }, "timeslots bulk-upsert failed"); res.status(500).json({ error: "InternalError", message: "Failed" }); }
+});
+
 export default router;
