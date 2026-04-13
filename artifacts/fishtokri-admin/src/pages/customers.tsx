@@ -1,9 +1,11 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   Plus, Search, Edit2, Trash2, Mail, Phone, Calendar,
   ArrowUpDown, SlidersHorizontal, X, LayoutGrid, LayoutList,
   MapPin, ShoppingBag, ChevronLeft, ChevronRight, Users,
+  Eye, Home, Clock, CheckCircle2, ClipboardList, Package,
+  CreditCard, Truck, Hash, UserRound,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,7 @@ function getBase() {
 }
 
 const CUSTOMERS_QUERY_KEY = ["customers"] as const;
+const ACTIVE_ORDER_STATUSES = new Set(["pending", "confirmed", "preparing", "out_for_delivery"]);
 
 interface Customer {
   id: string;
@@ -39,8 +42,11 @@ interface Customer {
   dateOfBirth: string;
   addresses: any[];
   orders: any[];
+  currentOrders?: any[];
+  orderHistory?: any[];
   createdAt: string;
   updatedAt: string;
+  [key: string]: any;
 }
 
 interface CustomersResponse {
@@ -67,6 +73,16 @@ async function fetchCustomers(params: {
   });
   if (!res.ok) throw new Error("Failed to fetch customers");
   return res.json();
+}
+
+async function fetchCustomer(id: string): Promise<Customer> {
+  const base = getBase();
+  const res = await fetch(`${base}/api/customers/${id}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.message || "Failed to fetch customer");
+  return json.customer;
 }
 
 async function createCustomer(data: Partial<Customer>): Promise<Customer> {
@@ -124,13 +140,93 @@ function getInitials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase();
 }
 
-function formatDate(dateStr: string) {
+function formatDate(dateStr: any) {
   if (!dateStr) return "—";
   try {
     return new Date(dateStr).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   } catch {
-    return dateStr;
+    return String(dateStr);
   }
+}
+
+function formatDateTime(dateStr: any) {
+  if (!dateStr) return "—";
+  try {
+    return new Date(dateStr).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return String(dateStr);
+  }
+}
+
+function formatRupees(value: any) {
+  const n = Number(value || 0);
+  return `₹${n.toLocaleString("en-IN")}`;
+}
+
+function normalize(value: any) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function getOrderId(order: any) {
+  return String(order?._id ?? order?.id ?? order?.orderId ?? order?.orderNumber ?? "");
+}
+
+function getOrderTotal(order: any) {
+  if (order?.total !== undefined) return Number(order.total) || 0;
+  if (order?.totalAmount !== undefined) return Number(order.totalAmount) || 0;
+  if (order?.amount !== undefined) return Number(order.amount) || 0;
+  return (order?.items ?? []).reduce((sum: number, item: any) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1), 0);
+}
+
+function getStatusStyle(status: any) {
+  const value = normalize(status);
+  if (["delivered", "completed", "paid"].includes(value)) return "bg-green-50 text-green-700 border-green-200";
+  if (["cancelled", "canceled", "failed", "rejected"].includes(value)) return "bg-red-50 text-red-700 border-red-200";
+  if (["out_for_delivery", "shipped", "dispatch", "dispatched"].includes(value)) return "bg-indigo-50 text-indigo-700 border-indigo-200";
+  if (["confirmed", "preparing", "processing"].includes(value)) return "bg-blue-50 text-blue-700 border-blue-200";
+  return "bg-amber-50 text-amber-700 border-amber-200";
+}
+
+function splitOrders(customer: Customer) {
+  const orders = Array.isArray(customer.orders) ? customer.orders : [];
+  const current = Array.isArray(customer.currentOrders) ? customer.currentOrders : orders.filter((o) => ACTIVE_ORDER_STATUSES.has(normalize(o?.status)));
+  const history = Array.isArray(customer.orderHistory) ? customer.orderHistory : orders.filter((o) => !ACTIVE_ORDER_STATUSES.has(normalize(o?.status)));
+  return { current, history, all: orders };
+}
+
+function stringifyValue(value: any) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function addressText(address: any) {
+  if (!address) return "—";
+  if (typeof address === "string") return address;
+  const parts = [
+    address.name,
+    address.label,
+    address.type,
+    address.houseNo,
+    address.house,
+    address.flatNo,
+    address.apartment,
+    address.building,
+    address.street,
+    address.addressLine1,
+    address.addressLine2,
+    address.area,
+    address.landmark,
+    address.city,
+    address.state,
+    address.pincode,
+    address.zipCode,
+  ].filter(Boolean);
+  return parts.length ? parts.join(", ") : JSON.stringify(address, null, 2);
+}
+
+function statusLabel(status: any) {
+  return String(status || "unknown").replace(/_/g, " ");
 }
 
 export default function Customers() {
@@ -141,13 +237,12 @@ export default function Customers() {
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [deleteCustomerId, setDeleteCustomerId] = useState<string | null>(null);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
   const LIMIT = 20;
-
   const searchTimeout = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSearchChange = useCallback((val: string) => {
@@ -178,6 +273,7 @@ export default function Customers() {
       toast({ title: "Customer deleted" });
       queryClient.invalidateQueries({ queryKey: CUSTOMERS_QUERY_KEY });
       setDeleteCustomerId(null);
+      setSelectedCustomer(null);
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -193,15 +289,18 @@ export default function Customers() {
     setPage(1);
   };
 
+  const openEdit = (customer: Customer) => {
+    setEditingCustomer(customer);
+    setIsModalOpen(true);
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex justify-between items-end">
+      <div className="flex justify-between items-end gap-4">
         <div>
           <h2 className="text-2xl font-bold text-[#162B4D]">Customers</h2>
           <p className="text-gray-500 text-sm mt-1">
-            Manage all registered customers.{" "}
-            {total > 0 && <span className="font-medium text-[#162B4D]">{total} total</span>}
+            Manage all registered customers with saved addresses, current orders and order history. {total > 0 && <span className="font-medium text-[#162B4D]">{total} total</span>}
           </p>
         </div>
         <Button
@@ -213,7 +312,6 @@ export default function Customers() {
         </Button>
       </div>
 
-      {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -224,10 +322,7 @@ export default function Customers() {
             className="pl-9 bg-white border-gray-200 h-9 text-sm"
           />
           {search && (
-            <button
-              onClick={() => handleSearchChange("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
+            <button onClick={() => handleSearchChange("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
               <X className="w-3.5 h-3.5" />
             </button>
           )}
@@ -258,33 +353,22 @@ export default function Customers() {
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-gray-400 font-medium">
-            {customers.length} of {total}
-          </span>
+          <span className="text-xs text-gray-400 font-medium">{customers.length} of {total}</span>
           <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
-            <button
-              onClick={() => setViewMode("list")}
-              className={`w-8 h-8 flex items-center justify-center transition-colors ${viewMode === "list" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
-              title="List view"
-            >
+            <button onClick={() => setViewMode("list")} className={`w-8 h-8 flex items-center justify-center transition-colors ${viewMode === "list" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`} title="List view">
               <LayoutList className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={() => setViewMode("grid")}
-              className={`w-8 h-8 flex items-center justify-center transition-colors ${viewMode === "grid" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
-              title="Grid view"
-            >
+            <button onClick={() => setViewMode("grid")} className={`w-8 h-8 flex items-center justify-center transition-colors ${viewMode === "grid" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`} title="Grid view">
               <LayoutGrid className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Content */}
       {viewMode === "grid" ? (
         isLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
+            {[1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-52 rounded-xl" />)}
           </div>
         ) : customers.length === 0 ? (
           <EmptyState search={debouncedSearch} />
@@ -294,7 +378,8 @@ export default function Customers() {
               <CustomerCard
                 key={c.id}
                 customer={c}
-                onEdit={() => { setEditingCustomer(c); setIsModalOpen(true); }}
+                onView={() => setSelectedCustomer(c)}
+                onEdit={() => openEdit(c)}
                 onDelete={() => setDeleteCustomerId(c.id)}
               />
             ))}
@@ -314,7 +399,8 @@ export default function Customers() {
                   <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider py-3">Contact</TableHead>
                   <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider py-3">Date of Birth</TableHead>
                   <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider py-3">Addresses</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider py-3">Orders</TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider py-3">Current</TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider py-3">History</TableHead>
                   <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider py-3">Joined</TableHead>
                   <TableHead className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider py-3">Actions</TableHead>
                 </TableRow>
@@ -322,7 +408,7 @@ export default function Customers() {
               <TableBody>
                 {customers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-16 text-gray-400 text-sm">
+                    <TableCell colSpan={8} className="text-center py-16 text-gray-400 text-sm">
                       <div className="flex flex-col items-center gap-2">
                         <Users className="w-8 h-8 text-gray-300" />
                         <p>No customers found{debouncedSearch ? ` for "${debouncedSearch}"` : ""}.</p>
@@ -330,75 +416,50 @@ export default function Customers() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  customers.map((c) => (
-                    <TableRow key={c.id} className="hover:bg-gray-50/40 border-gray-100">
-                      <TableCell className="py-4">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9 flex-shrink-0">
-                            <AvatarFallback className={`text-sm font-bold ${getAvatarColor(c.name || "?")}`}>
-                              {c.name ? getInitials(c.name) : "?"}
-                            </AvatarFallback>
-                          </Avatar>
-                          <p className="font-semibold text-[#162B4D] text-sm">{c.name || "—"}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <div className="space-y-0.5">
-                          {c.email && (
-                            <div className="flex items-center gap-1 text-gray-500 text-xs">
-                              <Mail className="w-3 h-3 flex-shrink-0" />
-                              <span>{c.email}</span>
+                  customers.map((c) => {
+                    const { current, history } = splitOrders(c);
+                    return (
+                      <TableRow key={c.id} className="hover:bg-gray-50/40 border-gray-100">
+                        <TableCell className="py-4">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-9 w-9 flex-shrink-0">
+                              <AvatarFallback className={`text-sm font-bold ${getAvatarColor(c.name || "?")}`}>
+                                {c.name ? getInitials(c.name) : "?"}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-semibold text-[#162B4D] text-sm">{c.name || "—"}</p>
+                              <p className="text-[11px] text-gray-400">ID: {c.id}</p>
                             </div>
-                          )}
-                          {c.phone && (
-                            <div className="flex items-center gap-1 text-gray-400 text-xs">
-                              <Phone className="w-3 h-3 flex-shrink-0" />
-                              <span>{c.phone}</span>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <div className="flex items-center gap-1 text-gray-500 text-xs">
-                          <Calendar className="w-3 h-3 flex-shrink-0" />
-                          <span>{c.dateOfBirth || "—"}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
-                          <MapPin className="w-3 h-3" />
-                          {c.addresses?.length ?? 0}
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">
-                          <ShoppingBag className="w-3 h-3" />
-                          {c.orders?.length ?? 0}
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-4 text-xs text-gray-500">
-                        {formatDate(c.createdAt)}
-                      </TableCell>
-                      <TableCell className="py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => { setEditingCustomer(c); setIsModalOpen(true); }}
-                            className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"
-                            title="Edit"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteCustomerId(c.id)}
-                            className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="space-y-0.5">
+                            {c.email && <div className="flex items-center gap-1 text-gray-500 text-xs"><Mail className="w-3 h-3 flex-shrink-0" /><span>{c.email}</span></div>}
+                            {c.phone && <div className="flex items-center gap-1 text-gray-400 text-xs"><Phone className="w-3 h-3 flex-shrink-0" /><span>{c.phone}</span></div>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4"><div className="flex items-center gap-1 text-gray-500 text-xs"><Calendar className="w-3 h-3 flex-shrink-0" /><span>{c.dateOfBirth || "—"}</span></div></TableCell>
+                        <TableCell className="py-4"><CounterBadge icon={MapPin} count={c.addresses?.length ?? 0} className="bg-blue-50 text-blue-700" /></TableCell>
+                        <TableCell className="py-4"><CounterBadge icon={Clock} count={current.length} className="bg-indigo-50 text-indigo-700" /></TableCell>
+                        <TableCell className="py-4"><CounterBadge icon={ShoppingBag} count={history.length} className="bg-amber-50 text-amber-700" /></TableCell>
+                        <TableCell className="py-4 text-xs text-gray-500">{formatDate(c.createdAt)}</TableCell>
+                        <TableCell className="py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => setSelectedCustomer(c)} className="w-8 h-8 flex items-center justify-center rounded border border-blue-200 text-[#1A56DB] hover:bg-blue-50 transition-colors" title="View everything">
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => openEdit(c)} className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors" title="Edit">
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => setDeleteCustomerId(c.id)} className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors" title="Delete">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -406,30 +467,15 @@ export default function Customers() {
         </div>
       )}
 
-      {/* Pagination */}
       {!isLoading && total > LIMIT && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            Page {page} of {totalPages} &mdash; {total} customers
-          </p>
+          <p className="text-sm text-gray-500">Page {page} of {totalPages} &mdash; {total} customers</p>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="h-8 px-3 text-sm"
-            >
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="h-8 px-3 text-sm">
               <ChevronLeft className="w-4 h-4" />
               Prev
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="h-8 px-3 text-sm"
-            >
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="h-8 px-3 text-sm">
               Next
               <ChevronRight className="w-4 h-4" />
             </Button>
@@ -437,6 +483,12 @@ export default function Customers() {
         </div>
       )}
 
+      <CustomerDetailDialog
+        customer={selectedCustomer}
+        onClose={() => setSelectedCustomer(null)}
+        onEdit={(customer) => openEdit(customer)}
+        onDelete={(customer) => setDeleteCustomerId(customer.id)}
+      />
       <CustomerModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -453,68 +505,277 @@ export default function Customers() {
   );
 }
 
+function CounterBadge({ icon: Icon, count, className }: { icon: any; count: number; className: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${className}`}>
+      <Icon className="w-3 h-3" />
+      {count}
+    </span>
+  );
+}
+
 function EmptyState({ search }: { search: string }) {
   return (
     <div className="bg-white rounded-xl border border-dashed border-gray-200 py-20 text-center">
       <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-      <p className="text-gray-500 font-medium">
-        {search ? `No customers match "${search}"` : "No customers yet."}
-      </p>
+      <p className="text-gray-500 font-medium">{search ? `No customers match "${search}"` : "No customers yet."}</p>
     </div>
   );
 }
 
-function CustomerCard({ customer: c, onEdit, onDelete }: { customer: Customer; onEdit: () => void; onDelete: () => void }) {
+function CustomerCard({ customer: c, onView, onEdit, onDelete }: { customer: Customer; onView: () => void; onEdit: () => void; onDelete: () => void }) {
+  const { current, history } = splitOrders(c);
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
       <div className="flex items-start gap-3">
         <Avatar className="h-10 w-10 flex-shrink-0">
-          <AvatarFallback className={`text-sm font-bold ${getAvatarColor(c.name || "?")}`}>
-            {c.name ? getInitials(c.name) : "?"}
-          </AvatarFallback>
+          <AvatarFallback className={`text-sm font-bold ${getAvatarColor(c.name || "?")}`}>{c.name ? getInitials(c.name) : "?"}</AvatarFallback>
         </Avatar>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-semibold text-[#162B4D] text-sm truncate">{c.name || "—"}</p>
           <p className="text-xs text-gray-400 mt-0.5">{formatDate(c.createdAt)}</p>
         </div>
       </div>
       <div className="space-y-1">
-        {c.email && (
-          <div className="flex items-center gap-1.5 text-gray-500 text-xs">
-            <Mail className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate">{c.email}</span>
-          </div>
-        )}
-        {c.phone && (
-          <div className="flex items-center gap-1.5 text-gray-400 text-xs">
-            <Phone className="w-3 h-3 flex-shrink-0" />
-            <span>{c.phone}</span>
-          </div>
-        )}
-        {c.dateOfBirth && (
-          <div className="flex items-center gap-1.5 text-gray-400 text-xs">
-            <Calendar className="w-3 h-3 flex-shrink-0" />
-            <span>{c.dateOfBirth}</span>
-          </div>
-        )}
+        {c.email && <div className="flex items-center gap-1.5 text-gray-500 text-xs"><Mail className="w-3 h-3 flex-shrink-0" /><span className="truncate">{c.email}</span></div>}
+        {c.phone && <div className="flex items-center gap-1.5 text-gray-400 text-xs"><Phone className="w-3 h-3 flex-shrink-0" /><span>{c.phone}</span></div>}
+        {c.dateOfBirth && <div className="flex items-center gap-1.5 text-gray-400 text-xs"><Calendar className="w-3 h-3 flex-shrink-0" /><span>{c.dateOfBirth}</span></div>}
       </div>
-      <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
-          <MapPin className="w-3 h-3" />
-          {c.addresses?.length ?? 0} addr
-        </span>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">
-          <ShoppingBag className="w-3 h-3" />
-          {c.orders?.length ?? 0} orders
-        </span>
+      <div className="grid grid-cols-3 gap-2">
+        <MiniStat label="Addresses" value={c.addresses?.length ?? 0} icon={MapPin} />
+        <MiniStat label="Current" value={current.length} icon={Clock} />
+        <MiniStat label="History" value={history.length} icon={ShoppingBag} />
       </div>
       <div className="pt-2 border-t border-gray-100 flex items-center justify-end gap-1.5">
-        <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors">
-          <Edit2 className="w-3.5 h-3.5" />
+        <button onClick={onView} className="h-7 px-2 flex items-center gap-1 rounded border border-blue-200 text-[#1A56DB] bg-blue-50 hover:bg-blue-100 transition-colors text-xs font-semibold">
+          <Eye className="w-3.5 h-3.5" /> View all
         </button>
-        <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors">
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+        <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, icon: Icon }: { label: string; value: number; icon: any }) {
+  return (
+    <div className="rounded-lg bg-gray-50 p-2">
+      <Icon className="w-3.5 h-3.5 text-gray-400 mb-1" />
+      <p className="text-sm font-bold text-[#162B4D]">{value}</p>
+      <p className="text-[10px] text-gray-400 truncate">{label}</p>
+    </div>
+  );
+}
+
+function CustomerDetailDialog({ customer, onClose, onEdit, onDelete }: { customer: Customer | null; onClose: () => void; onEdit: (customer: Customer) => void; onDelete: (customer: Customer) => void }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["customer", customer?.id],
+    queryFn: () => fetchCustomer(customer!.id),
+    enabled: !!customer?.id,
+    initialData: customer ?? undefined,
+  });
+
+  const fullCustomer = data ?? customer;
+  const { current, history, all } = useMemo(() => fullCustomer ? splitOrders(fullCustomer) : { current: [], history: [], all: [] }, [fullCustomer]);
+  const totalSpend = all.reduce((sum: number, order: any) => sum + getOrderTotal(order), 0);
+
+  return (
+    <Dialog open={!!customer} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-6xl max-h-[92vh] overflow-y-auto">
+        {fullCustomer && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="text-[#162B4D] flex items-center gap-2">
+                <UserRound className="w-5 h-5" />
+                Customer Details
+              </DialogTitle>
+              <DialogDescription>Complete customer profile, saved addresses, current orders, order history and database record.</DialogDescription>
+            </DialogHeader>
+
+            {isLoading && <Skeleton className="h-2 w-full" />}
+            {error && <div className="rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-sm p-3">Showing cached customer data because the latest details could not be loaded.</div>}
+
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-gray-100 bg-gradient-to-r from-blue-50 to-white p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <Avatar className="h-14 w-14">
+                      <AvatarFallback className={`text-lg font-bold ${getAvatarColor(fullCustomer.name || "?")}`}>{fullCustomer.name ? getInitials(fullCustomer.name) : "?"}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h3 className="text-xl font-bold text-[#162B4D]">{fullCustomer.name || "Unnamed customer"}</h3>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
+                        <span className="inline-flex items-center gap-1"><Phone className="w-4 h-4 text-gray-400" />{fullCustomer.phone || "No phone"}</span>
+                        <span className="inline-flex items-center gap-1"><Mail className="w-4 h-4 text-gray-400" />{fullCustomer.email || "No email"}</span>
+                        <span className="inline-flex items-center gap-1"><Calendar className="w-4 h-4 text-gray-400" />DOB: {fullCustomer.dateOfBirth || "—"}</span>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-400">Customer ID: {fullCustomer.id}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => onEdit(fullCustomer)} className="gap-1.5"><Edit2 className="w-3.5 h-3.5" />Edit</Button>
+                    <Button variant="outline" size="sm" onClick={() => onDelete(fullCustomer)} className="gap-1.5 text-red-600 hover:text-red-700"><Trash2 className="w-3.5 h-3.5" />Delete</Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <SummaryCard label="Addresses" value={fullCustomer.addresses?.length ?? 0} icon={Home} color="text-blue-600" />
+                <SummaryCard label="Current Orders" value={current.length} icon={Clock} color="text-indigo-600" />
+                <SummaryCard label="Order History" value={history.length} icon={CheckCircle2} color="text-green-600" />
+                <SummaryCard label="All Orders" value={all.length} icon={ClipboardList} color="text-amber-600" />
+                <SummaryCard label="Total Spend" value={formatRupees(totalSpend)} icon={CreditCard} color="text-emerald-600" />
+              </div>
+
+              <DetailSection title="Personal & Account Details" icon={UserRound}>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <InfoRow label="Name" value={fullCustomer.name} />
+                  <InfoRow label="Email" value={fullCustomer.email} />
+                  <InfoRow label="Phone" value={fullCustomer.phone} />
+                  <InfoRow label="Date of Birth" value={fullCustomer.dateOfBirth} />
+                  <InfoRow label="Created" value={formatDateTime(fullCustomer.createdAt)} />
+                  <InfoRow label="Updated" value={formatDateTime(fullCustomer.updatedAt)} />
+                </div>
+              </DetailSection>
+
+              <DetailSection title={`Saved Addresses (${fullCustomer.addresses?.length ?? 0})`} icon={MapPin}>
+                {fullCustomer.addresses?.length ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {fullCustomer.addresses.map((address: any, index: number) => (
+                      <div key={index} className="rounded-xl border border-gray-100 bg-white p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0"><MapPin className="w-4 h-4 text-blue-600" /></div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-[#162B4D] text-sm">{address?.label || address?.type || `Address ${index + 1}`}</p>
+                            <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{addressText(address)}</p>
+                            {typeof address === "object" && (
+                              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
+                                {Object.entries(address).map(([key, value]) => (
+                                  <div key={key} className="rounded bg-gray-50 p-2 overflow-hidden"><span className="font-semibold">{key}:</span> <span className="break-words">{typeof value === "object" ? JSON.stringify(value) : String(value ?? "—")}</span></div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <EmptyPanel text="No saved addresses found for this customer." />}
+              </DetailSection>
+
+              <DetailSection title={`Current Orders (${current.length})`} icon={Clock}>
+                <OrderList orders={current} empty="No current or active orders found for this customer." />
+              </DetailSection>
+
+              <DetailSection title={`Order History (${history.length})`} icon={ShoppingBag}>
+                <OrderList orders={history} empty="No completed, cancelled or past orders found for this customer." />
+              </DetailSection>
+
+              <DetailSection title="Complete Database Record" icon={Hash}>
+                <pre className="max-h-80 overflow-auto rounded-xl bg-slate-950 text-slate-100 text-xs p-4 whitespace-pre-wrap">{JSON.stringify(fullCustomer, null, 2)}</pre>
+              </DetailSection>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SummaryCard({ label, value, icon: Icon, color }: { label: string; value: any; icon: any; color: string }) {
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+      <Icon className={`w-4 h-4 ${color} mb-2`} />
+      <p className="text-lg font-bold text-[#162B4D]">{value}</p>
+      <p className="text-xs text-gray-400 font-medium">{label}</p>
+    </div>
+  );
+}
+
+function DetailSection({ title, icon: Icon, children }: { title: string; icon: any; children: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl border border-gray-100 bg-gray-50/40 p-4">
+      <h4 className="flex items-center gap-2 text-sm font-bold text-[#162B4D] mb-3"><Icon className="w-4 h-4 text-[#1A56DB]" />{title}</h4>
+      {children}
+    </section>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: any }) {
+  return (
+    <div className="rounded-xl bg-white border border-gray-100 p-3">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="text-sm font-medium text-[#162B4D] mt-1 break-words whitespace-pre-wrap">{stringifyValue(value)}</p>
+    </div>
+  );
+}
+
+function EmptyPanel({ text }: { text: string }) {
+  return <div className="rounded-xl border border-dashed border-gray-200 bg-white py-8 text-center text-sm text-gray-400">{text}</div>;
+}
+
+function OrderList({ orders, empty }: { orders: any[]; empty: string }) {
+  if (!orders.length) return <EmptyPanel text={empty} />;
+  return (
+    <div className="space-y-3">
+      {orders.map((order, index) => (
+        <OrderCard key={getOrderId(order) || index} order={order} index={index} />
+      ))}
+    </div>
+  );
+}
+
+function OrderCard({ order, index }: { order: any; index: number }) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  const orderId = getOrderId(order) || `Order ${index + 1}`;
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+        <div>
+          <p className="font-bold text-[#162B4D] flex items-center gap-2"><Package className="w-4 h-4 text-gray-400" />{order.orderNumber || orderId}</p>
+          <p className="text-xs text-gray-400 mt-1">{formatDateTime(order.createdAt || order.orderDate || order.date)}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`inline-flex border items-center px-2 py-1 rounded-full text-xs font-semibold capitalize ${getStatusStyle(order.status)}`}>{statusLabel(order.status)}</span>
+          <span className="inline-flex border border-gray-200 bg-gray-50 text-gray-600 items-center px-2 py-1 rounded-full text-xs font-semibold">{formatRupees(getOrderTotal(order))}</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+        <div className="space-y-2">
+          <OrderMeta icon={Truck} label="Delivery" value={[order.deliveryType, order.timeslotLabel, order.deliveryArea].filter(Boolean).join(" · ") || "—"} />
+          <OrderMeta icon={MapPin} label="Address" value={order.address || addressText(order.deliveryAddress) || "—"} />
+          <OrderMeta icon={CreditCard} label="Payment" value={[order.paymentMethod, order.paymentStatus].filter(Boolean).join(" · ") || "—"} />
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-2">Items ({items.length})</p>
+          {items.length ? (
+            <div className="space-y-1.5">
+              {items.map((item: any, itemIndex: number) => (
+                <div key={itemIndex} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-xs">
+                  <span className="font-medium text-[#162B4D] break-words">{item.name || item.productName || item.title || `Item ${itemIndex + 1}`}</span>
+                  <span className="text-gray-500 whitespace-nowrap">x{item.quantity ?? 1} · {formatRupees(item.price ?? item.total ?? 0)}</span>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-xs text-gray-400">No item details saved.</p>}
+        </div>
+      </div>
+      {order.notes && <p className="mt-3 rounded-lg bg-amber-50 text-amber-700 text-xs p-2">Notes: {order.notes}</p>}
+      <details className="mt-3">
+        <summary className="cursor-pointer text-xs font-semibold text-[#1A56DB]">View raw order data</summary>
+        <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-slate-950 text-slate-100 text-xs p-3 whitespace-pre-wrap">{JSON.stringify(order, null, 2)}</pre>
+      </details>
+    </div>
+  );
+}
+
+function OrderMeta({ icon: Icon, label, value }: { icon: any; label: string; value: any }) {
+  return (
+    <div className="flex items-start gap-2 text-gray-600">
+      <Icon className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+        <p className="text-sm text-[#162B4D] whitespace-pre-wrap break-words">{stringifyValue(value)}</p>
       </div>
     </div>
   );
@@ -537,13 +798,17 @@ function CustomerModal({
   const [dob, setDob] = useState(customer?.dateOfBirth ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const reset = () => {
+  const reset = useCallback(() => {
     setName(customer?.name ?? "");
     setEmail(customer?.email ?? "");
     setPhone(customer?.phone ?? "");
     setDob(customer?.dateOfBirth ?? "");
     setErrors({});
-  };
+  }, [customer]);
+
+  useEffect(() => {
+    if (isOpen) reset();
+  }, [isOpen, reset]);
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Customer>) => createCustomer(data),
@@ -599,53 +864,27 @@ function CustomerModal({
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700">Name <span className="text-red-500">*</span></Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Full name"
-              className={errors.name ? "border-red-400" : ""}
-            />
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className={errors.name ? "border-red-400" : ""} />
             {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
           </div>
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700">Email <span className="text-red-500">*</span></Label>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="email@example.com"
-              className={errors.email ? "border-red-400" : ""}
-            />
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" className={errors.email ? "border-red-400" : ""} />
             {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
           </div>
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700">Phone</Label>
-            <Input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="10-digit number"
-              className={errors.phone ? "border-red-400" : ""}
-            />
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit number" className={errors.phone ? "border-red-400" : ""} />
             {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
           </div>
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700">Date of Birth</Label>
-            <Input
-              value={dob}
-              onChange={(e) => setDob(e.target.value)}
-              placeholder="YYYY-MM-DD"
-            />
+            <Input value={dob} onChange={(e) => setDob(e.target.value)} placeholder="YYYY-MM-DD" />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { onClose(); reset(); }} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={isPending}
-            className="bg-[#1A56DB] hover:bg-[#1447B4] text-white"
-          >
+          <Button variant="outline" onClick={() => { onClose(); reset(); }} disabled={isPending}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={isPending} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white">
             {isPending ? "Saving..." : isEditing ? "Save Changes" : "Add Customer"}
           </Button>
         </DialogFooter>
@@ -667,19 +906,11 @@ function DeleteCustomerDialog({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-[#162B4D]">Delete Customer</DialogTitle>
-          <DialogDescription>
-            This will permanently remove the customer. This action cannot be undone.
-          </DialogDescription>
+          <DialogDescription>This will permanently remove the customer. This action cannot be undone.</DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
-          <Button
-            variant="destructive"
-            onClick={onConfirm}
-            disabled={isPending}
-          >
-            {isPending ? "Deleting..." : "Delete"}
-          </Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>{isPending ? "Deleting..." : "Delete"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

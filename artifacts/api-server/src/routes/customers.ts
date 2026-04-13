@@ -1,10 +1,13 @@
 import { Router, type IRouter } from "express";
 import mongoose from "mongoose";
 import { getCustomersConnection } from "../db/customers-connection.js";
+import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 import { requireAuth } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
+
+const ACTIVE_ORDER_STATUSES = new Set(["pending", "confirmed", "preparing", "out_for_delivery"]);
 
 const customerSchema = new mongoose.Schema(
   {
@@ -38,6 +41,123 @@ function serializeCustomer(doc: any) {
   };
 }
 
+function normalize(value: any) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function getOrderId(order: any) {
+  return String(order?._id ?? order?.id ?? order?.orderId ?? "");
+}
+
+function matchesCustomer(order: any, customer: any) {
+  const phone = normalize(customer.phone);
+  const email = normalize(customer.email);
+  const name = normalize(customer.name);
+  const id = normalize(customer.id);
+
+  const orderPhones = [
+    order.phone,
+    order.customerPhone,
+    order.mobile,
+    order.customer?.phone,
+    order.deliveryAddress?.phone,
+  ].map(normalize).filter(Boolean);
+
+  const orderEmails = [
+    order.email,
+    order.customerEmail,
+    order.customer?.email,
+  ].map(normalize).filter(Boolean);
+
+  const orderNames = [
+    order.customerName,
+    order.name,
+    order.customer?.name,
+  ].map(normalize).filter(Boolean);
+
+  const orderCustomerIds = [
+    order.customerId,
+    order.userId,
+    order.customer?._id,
+    order.customer?.id,
+  ].map(normalize).filter(Boolean);
+
+  return (
+    (phone && orderPhones.includes(phone)) ||
+    (email && orderEmails.includes(email)) ||
+    (id && orderCustomerIds.includes(id)) ||
+    (name && orderNames.includes(name))
+  );
+}
+
+function buildOrdersQuery(customers: any[]) {
+  const phones = [...new Set(customers.map((c) => normalize(c.phone)).filter(Boolean))];
+  const emails = [...new Set(customers.map((c) => normalize(c.email)).filter(Boolean))];
+  const names = [...new Set(customers.map((c) => normalize(c.name)).filter(Boolean))];
+  const ids = [...new Set(customers.map((c) => String(c.id)).filter(Boolean))];
+  const orderIds = customers
+    .flatMap((c) => (Array.isArray(c.orders) ? c.orders : []))
+    .map(getOrderId)
+    .filter(Boolean);
+  const objectIds = orderIds
+    .map((id) => {
+      try {
+        return new mongoose.Types.ObjectId(id);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
+  const or: any[] = [];
+  if (phones.length) {
+    or.push({ phone: { $in: phones } }, { customerPhone: { $in: phones } }, { "customer.phone": { $in: phones } });
+  }
+  if (emails.length) {
+    or.push({ email: { $in: emails } }, { customerEmail: { $in: emails } }, { "customer.email": { $in: emails } });
+  }
+  if (names.length) {
+    or.push({ customerName: { $in: names } }, { name: { $in: names } }, { "customer.name": { $in: names } });
+  }
+  if (ids.length) {
+    or.push({ customerId: { $in: ids } }, { userId: { $in: ids } }, { "customer.id": { $in: ids } });
+  }
+  if (objectIds.length) {
+    or.push({ _id: { $in: objectIds } });
+  }
+  return or.length ? { $or: or } : null;
+}
+
+async function enrichCustomers(customers: any[], log?: any) {
+  if (!customers.length) return customers;
+  const query = buildOrdersQuery(customers);
+  if (!query) return customers.map((c) => ({ ...c, currentOrders: [], orderHistory: c.orders ?? [] }));
+
+  let liveOrders: any[] = [];
+  try {
+    const ordersConn = await getSubHubDbConnection("orders");
+    liveOrders = await ordersConn.db.collection("orders").find(query).sort({ createdAt: -1 }).limit(1000).toArray();
+  } catch (err) {
+    log?.warn?.({ err }, "Could not enrich customers with live orders");
+  }
+
+  return customers.map((customer) => {
+    const linkedOrders = liveOrders.filter((order) => matchesCustomer(order, customer));
+    const combined = [...(Array.isArray(customer.orders) ? customer.orders : []), ...linkedOrders];
+    const seen = new Set<string>();
+    const orders = combined.filter((order) => {
+      const id = getOrderId(order);
+      const key = id || JSON.stringify(order);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const currentOrders = orders.filter((order) => ACTIVE_ORDER_STATUSES.has(normalize(order.status)));
+    const orderHistory = orders.filter((order) => !ACTIVE_ORDER_STATUSES.has(normalize(order.status)));
+    return { ...customer, orders, currentOrders, orderHistory };
+  });
+}
+
 router.get("/", async (req, res) => {
   try {
     const Customer = await getCustomerModel();
@@ -66,7 +186,8 @@ router.get("/", async (req, res) => {
       Customer.countDocuments(filter),
     ]);
 
-    res.json({ customers: customers.map(serializeCustomer), total, page: pageNum, limit: limitNum });
+    const enriched = await enrichCustomers(customers.map(serializeCustomer), req.log);
+    res.json({ customers: enriched, total, page: pageNum, limit: limitNum });
   } catch (err) {
     req.log.error({ err }, "Failed to get customers");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch customers" });
@@ -78,7 +199,8 @@ router.get("/:id", async (req, res) => {
     const Customer = await getCustomerModel();
     const customer = await Customer.findById(req.params.id);
     if (!customer) { res.status(404).json({ error: "NotFound", message: "Customer not found" }); return; }
-    res.json({ customer: serializeCustomer(customer) });
+    const [enriched] = await enrichCustomers([serializeCustomer(customer)], req.log);
+    res.json({ customer: enriched });
   } catch (err) {
     req.log.error({ err }, "Failed to get customer");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch customer" });

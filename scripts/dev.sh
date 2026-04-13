@@ -1,18 +1,33 @@
 #!/bin/bash
 
-# Start API server in background
-(cd artifacts/api-server && PORT=8080 pnpm run dev) &
-API_PID=$!
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+API_PORT="${API_PORT:-8080}"
+WEB_PORT="${PORT:-5000}"
+API_PID=""
 
-# Wait for API to be ready before starting frontend
+cleanup() {
+  if [ -n "$API_PID" ]; then
+    kill "$API_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+if curl -sf "http://localhost:${API_PORT}/api/healthz" > /dev/null 2>&1; then
+  echo "API server already running on port ${API_PORT}."
+else
+  (cd "$ROOT_DIR/artifacts/api-server" && PORT="$API_PORT" pnpm run dev) &
+  API_PID=$!
+fi
+
 echo "Waiting for API server to be ready..."
-until curl -sf http://localhost:8080/api/healthz > /dev/null 2>&1; do
+until curl -sf "http://localhost:${API_PORT}/api/healthz" > /dev/null 2>&1; do
   sleep 1
 done
 echo "API server ready."
 
-# Start frontend (webview)
-cd artifacts/fishtokri-admin && PORT="${PORT:-5000}" BASE_PATH=/ pnpm run dev
-
-# Cleanup on exit
-kill $API_PID 2>/dev/null || true
+if curl -sf "http://localhost:${WEB_PORT}/" > /dev/null 2>&1; then
+  echo "Frontend already running on port ${WEB_PORT}."
+  while sleep 3600; do :; done
+else
+  cd "$ROOT_DIR/artifacts/fishtokri-admin" && PORT="$WEB_PORT" BASE_PATH=/ pnpm run dev
+fi
