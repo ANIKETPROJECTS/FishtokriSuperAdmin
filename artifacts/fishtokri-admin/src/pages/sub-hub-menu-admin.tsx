@@ -599,6 +599,92 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
       }
     }
 
+    // ── RECIPES SHEET ────────────────────────────────────────────────────────
+    const recipeWs = wb.addWorksheet("Recipes");
+    recipeWs.columns = [
+      { header: "Product ID",    key: "productId",    width: 28 },
+      { header: "Product Name",  key: "productName",  width: 28 },
+      { header: "Recipe Title",  key: "title",        width: 28 },
+      { header: "Description",   key: "description",  width: 40 },
+      { header: "Prep Time",     key: "prepTime",     width: 12 },
+      { header: "Cook Time",     key: "cookTime",     width: 12 },
+      { header: "Total Time",    key: "totalTime",    width: 12 },
+      { header: "Servings",      key: "servings",     width: 10 },
+      { header: "Difficulty",    key: "difficulty",   width: 12 },
+      { header: "Ingredients",   key: "ingredients",  width: 50 },
+      { header: "Method Steps",  key: "method",       width: 60 },
+      { header: "Image URL",     key: "image",        width: 40 },
+    ];
+    const rHeader = recipeWs.getRow(1);
+    rHeader.font = { bold: true };
+    rHeader.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD5F5E3" } };
+    rHeader.alignment = { vertical: "middle" };
+
+    processed.forEach((p) => {
+      const pid = String(p._id ?? "");
+      const pname = p.name ?? "";
+      (p.recipes ?? []).forEach((r: any) => {
+        const ingredientsList = Array.isArray(r.ingredients) ? r.ingredients.join(" | ") : (r.ingredients ?? "");
+        const methodList = Array.isArray(r.method) ? r.method.map((s: string, i: number) => `${i + 1}. ${s}`).join(" | ") : (r.method ?? "");
+        recipeWs.addRow({
+          productId:   pid,
+          productName: pname,
+          title:       r.title ?? "",
+          description: r.description ?? "",
+          prepTime:    r.prepTime ?? "",
+          cookTime:    r.cookTime ?? "",
+          totalTime:   r.totalTime ?? "",
+          servings:    r.servings ?? "",
+          difficulty:  r.difficulty ?? "",
+          ingredients: ingredientsList,
+          method:      methodList,
+          image:       r.image ?? "",
+        });
+      });
+    });
+
+    // Difficulty dropdown for recipe sheet (col I)
+    const recipeDataRows = recipeWs.rowCount;
+    for (let row = 2; row <= Math.max(recipeDataRows + 50, 100); row++) {
+      recipeWs.getCell(`I${row}`).dataValidation = {
+        type: "list", allowBlank: true,
+        formulae: ['"Easy,Medium,Hard"'],
+      };
+    }
+
+    // ── INVENTORY BATCHES SHEET ───────────────────────────────────────────────
+    const batchWs = wb.addWorksheet("Inventory Batches");
+    batchWs.columns = [
+      { header: "Product ID",       key: "productId",    width: 28 },
+      { header: "Product Name",     key: "productName",  width: 28 },
+      { header: "Batch #",          key: "batchNum",     width: 10 },
+      { header: "Quantity",         key: "quantity",     width: 12 },
+      { header: "Shelf Life (days)",key: "shelfLife",    width: 18 },
+      { header: "Entry Date",       key: "entryDate",    width: 14 },
+      { header: "Expiry Date",      key: "expiryDate",   width: 14 },
+    ];
+    const bHeader = batchWs.getRow(1);
+    bHeader.font = { bold: true };
+    bHeader.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF3CD" } };
+    bHeader.alignment = { vertical: "middle" };
+
+    processed.forEach((p) => {
+      const pid = String(p._id ?? "");
+      const pname = p.name ?? "";
+      (p.inventoryBatches ?? []).forEach((b: any, i: number) => {
+        const fmt = (d: any) => d ? String(d).substring(0, 10) : "";
+        batchWs.addRow({
+          productId:   pid,
+          productName: pname,
+          batchNum:    i + 1,
+          quantity:    b.quantity ?? 0,
+          shelfLife:   b.shelfLifeDays ?? "",
+          entryDate:   fmt(b.entryDate),
+          expiryDate:  fmt(b.expiryDate),
+        });
+      });
+    });
+
     const buffer = await wb.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const url = URL.createObjectURL(blob);
