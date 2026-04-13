@@ -522,7 +522,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
       { header: "Status (available/out_of_stock)", key: "status",           width: 30 },
       { header: "Archived (yes/no)",               key: "archived",         width: 16 },
       { header: "Image URL",                       key: "imageUrl",         width: 40 },
-      { header: "Limited Stock Note",              key: "limitedStockNote", width: 24 },
     ];
 
     // Style header row
@@ -548,7 +547,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         status: p.status ?? "available",
         archived: p.isArchived ? "yes" : "no",
         imageUrl: p.imageUrl ?? "",
-        limitedStockNote: p.limitedStockNote ?? "",
       });
     });
 
