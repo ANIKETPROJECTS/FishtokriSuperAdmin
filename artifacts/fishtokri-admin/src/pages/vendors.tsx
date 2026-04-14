@@ -119,6 +119,10 @@ interface PurchaseItem {
   couponIdsText: string;
   existingInventoryBatches: any[];
   batches: BatchEntry[];
+  // new-product rich fields (mirrors sub-hub modal)
+  newProductRecipes: any[];
+  newProductInventoryBatches: any[];
+  newProductIsArchived: boolean;
 }
 
 interface PurchaseDisplayBatch {
@@ -166,6 +170,9 @@ const emptyItem = (): PurchaseItem => ({
   pieces: "", serves: "", imageUrl: "", imageMode: "url", productStatus: "available",
   limitedStockNote: "", shelfLifeDays: "", stockQty: "0", recipesText: "", sectionIdsText: "", couponIdsText: "", existingInventoryBatches: [],
   batches: [emptyBatch()],
+  newProductRecipes: [],
+  newProductInventoryBatches: [],
+  newProductIsArchived: false,
 });
 
 const PRODUCT_UNITS = ["per kg", "per piece", "per dozen", "per box", "per litre", "per pack", "per g", "per 500g"];
@@ -253,6 +260,20 @@ function productPayload(item: PurchaseItem, purchaseDate: string, existingBatche
   const price = Number(item.sellingPrice) || 0;
   const originalPrice = Number(item.originalPrice) || price;
   const discountPct = item.discountPct !== "" ? Number(item.discountPct) || 0 : originalPrice > price && originalPrice > 0 ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
+  const cleanedRecipes = (item.newProductRecipes ?? []).map((r: any) => ({
+    ...r,
+    ingredients: (r.ingredients ?? []).filter((s: string) => s.trim()),
+    method: (r.method ?? []).filter((s: string) => s.trim()),
+  }));
+  const inventoryBatches = (item.newProductInventoryBatches ?? []).length > 0
+    ? (item.newProductInventoryBatches ?? []).map((b: any) => ({
+        ...b,
+        quantity: Number(b.quantity) || 0,
+        shelfLifeDays: Number(b.shelfLifeDays) || 0,
+        entryDate: b.entryDate || undefined,
+        expiryDate: b.expiryDate || undefined,
+      }))
+    : [...existingBatches, buildInventoryBatch(item, purchaseDate)];
   return {
     name: item.productName,
     description: item.description || "",
@@ -267,15 +288,15 @@ function productPayload(item: PurchaseItem, purchaseDate: string, existingBatche
     netWeight: item.netWeight || "",
     pieces: item.pieces || "",
     serves: item.serves || "",
-    quantity: Number(item.quantity) || 0,
+    quantity: Number(item.stockQty) || Number(item.quantity) || 0,
     imageUrl: item.imageUrl || "",
     status: item.productStatus || "available",
-    isArchived: false,
+    isArchived: item.newProductIsArchived ?? false,
     limitedStockNote: item.limitedStockNote || "",
-    recipes: safeJsonArray(item.recipesText, []),
+    recipes: cleanedRecipes,
     sectionId: parseIdList(item.sectionIdsText),
     couponIds: parseIdList(item.couponIdsText),
-    inventoryBatches: [...existingBatches, buildInventoryBatch(item, purchaseDate)],
+    inventoryBatches,
   };
 }
 
@@ -721,6 +742,139 @@ function VendorFormModal({ open, onClose, onSave, initial }: {
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── RECIPE HELPERS (mirrors sub-hub modal) ───────────────────────────────────
+
+const BLANK_RECIPE = () => ({
+  title: "", description: "", image: "",
+  totalTime: "", prepTime: "", cookTime: "",
+  servings: 2, difficulty: "Medium",
+  ingredients: [""], method: [""],
+});
+
+function VendorRecipeEditor({ recipe, onChange, onRemove }: { recipe: any; onChange: (r: any) => void; onRemove: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [imageMode, setImageMode] = useState<"url" | "upload">("url");
+  const [imageUploading, setImageUploading] = useState(false);
+  const upd = (k: string, v: any) => onChange({ ...recipe, [k]: v });
+
+  const handleImageFile = async (file: File) => {
+    setImageUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch(`${getBase()}/api/upload?folder=fishtokri/recipes`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? "Upload failed");
+      upd("image", data.url);
+    } catch (err: any) {
+      alert(err.message ?? "Upload failed");
+    } finally {
+      setImageUploading(false);
+    }
+  };
+  const updList = (k: string, i: number, v: string) => onChange({ ...recipe, [k]: recipe[k].map((x: string, idx: number) => idx === i ? v : x) });
+  const addListItem = (k: string) => onChange({ ...recipe, [k]: [...recipe[k], ""] });
+  const removeListItem = (k: string, i: number) => onChange({ ...recipe, [k]: recipe[k].filter((_: any, idx: number) => idx !== i) });
+
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <button type="button" onClick={() => setOpen(!open)} className="w-full flex items-center justify-between px-4 py-3 bg-gray-50/50 hover:bg-gray-50 transition-colors text-left">
+        <div className="flex items-center gap-2 min-w-0">
+          <Layers className="w-4 h-4 text-gray-300 flex-shrink-0" />
+          <p className="font-medium text-[#162B4D] text-sm truncate">{recipe.title || <span className="text-gray-400 italic font-normal">Untitled Recipe</span>}</p>
+          {recipe.totalTime && <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full flex-shrink-0">{recipe.totalTime}</span>}
+          {recipe.difficulty && <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full flex-shrink-0">{recipe.difficulty}</span>}
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(); }} className="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors">
+            <Trash2 className="w-3 h-3" />
+          </button>
+          {open ? <ChevronDown className="w-4 h-4 text-gray-400 rotate-180" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-4 border-t border-gray-100">
+          <div className="space-y-2">
+            <div className="space-y-1"><Label className="text-xs font-semibold text-gray-500">Recipe Title *</Label><Input value={recipe.title} onChange={(e) => upd("title", e.target.value)} placeholder="e.g. Classic Fish Curry" className="h-8 text-sm" /></div>
+            <div className="space-y-1"><Label className="text-xs font-semibold text-gray-500">Description</Label><textarea value={recipe.description} onChange={(e) => upd("description", e.target.value)} placeholder="Brief description..." className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-16" /></div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-gray-500">Recipe Image</Label>
+              <div className="flex gap-1 p-0.5 bg-gray-100 rounded-lg w-fit mb-1.5">
+                <button type="button" onClick={() => setImageMode("url")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${imageMode === "url" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>URL</button>
+                <button type="button" onClick={() => setImageMode("upload")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${imageMode === "upload" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Upload</button>
+              </div>
+              {imageMode === "url" ? (
+                <Input value={recipe.image} onChange={(e) => upd("image", e.target.value)} placeholder="https://..." className="h-8 text-sm" />
+              ) : (
+                <div className="space-y-1.5">
+                  <label className={`flex items-center justify-center gap-2 h-9 px-3 rounded-lg border-2 border-dashed cursor-pointer text-sm transition-colors ${imageUploading ? "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed" : "border-gray-200 hover:border-[#1A56DB] text-gray-500 hover:text-[#1A56DB]"}`}>
+                    {imageUploading ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg> Uploading...</> : <><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 0L8 8m4-4l4 4" /></svg> Choose image from device</>}
+                    <input type="file" accept="image/*" className="hidden" disabled={imageUploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); e.target.value = ""; }} />
+                  </label>
+                  {recipe.image && <p className="text-[10px] text-green-600 truncate">Uploaded: {recipe.image}</p>}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Timing & Servings</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Prep Time</Label><Input value={recipe.prepTime} onChange={(e) => upd("prepTime", e.target.value)} placeholder="15 min" className="h-8 text-sm" /></div>
+              <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Cook Time</Label><Input value={recipe.cookTime} onChange={(e) => upd("cookTime", e.target.value)} placeholder="35 min" className="h-8 text-sm" /></div>
+              <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Total Time</Label><Input value={recipe.totalTime} onChange={(e) => upd("totalTime", e.target.value)} placeholder="50 min" className="h-8 text-sm" /></div>
+              <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Servings</Label><Input type="number" min="1" value={recipe.servings} onChange={(e) => upd("servings", Number(e.target.value))} className="h-8 text-sm" /></div>
+              <div className="space-y-1 sm:col-span-2"><Label className="text-[10px] font-semibold text-gray-500">Difficulty</Label>
+                <Select value={recipe.difficulty} onValueChange={(v) => upd("difficulty", v)}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="Easy">Easy</SelectItem><SelectItem value="Medium">Medium</SelectItem><SelectItem value="Hard">Hard</SelectItem></SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Ingredients</p>
+              <button type="button" onClick={() => addListItem("ingredients")} className="text-xs text-[#1A56DB] font-medium flex items-center gap-1 hover:underline"><Plus className="w-3 h-3" /> Add</button>
+            </div>
+            <div className="space-y-1.5">
+              {(recipe.ingredients ?? []).map((ing: string, i: number) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-gray-300 w-5 flex-shrink-0 text-right">{i + 1}.</span>
+                  <Input value={ing} onChange={(e) => updList("ingredients", i, e.target.value)} placeholder="e.g. 500g fish" className="h-7 text-sm flex-1" />
+                  {(recipe.ingredients?.length ?? 0) > 1 && <button type="button" onClick={() => removeListItem("ingredients", i)} className="text-gray-300 hover:text-red-500 flex-shrink-0"><X className="w-3 h-3" /></button>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Method Steps</p>
+              <button type="button" onClick={() => addListItem("method")} className="text-xs text-[#1A56DB] font-medium flex items-center gap-1 hover:underline"><Plus className="w-3 h-3" /> Add step</button>
+            </div>
+            <div className="space-y-2">
+              {(recipe.method ?? []).map((step: string, i: number) => (
+                <div key={i} className="flex items-start gap-1.5">
+                  <span className="text-[10px] font-bold text-gray-300 w-5 flex-shrink-0 text-right mt-1.5">{i + 1}.</span>
+                  <textarea value={step} onChange={(e) => updList("method", i, e.target.value)} placeholder={`Step ${i + 1}...`} className="flex-1 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-14" />
+                  {(recipe.method?.length ?? 0) > 1 && <button type="button" onClick={() => removeListItem("method", i)} className="text-gray-300 hover:text-red-500 flex-shrink-0 mt-1.5"><X className="w-3 h-3" /></button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1809,17 +1963,11 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                             <div className="space-y-3">
                               <div className="space-y-1.5">
                                 <Label className="text-xs font-semibold text-gray-600">Product Name *</Label>
-                                <Input value={item.productName} onChange={e => setItem(idx, "productName", e.target.value)}
-                                  placeholder="e.g. Rohu Fish, King Prawns" required className="h-9" />
+                                <Input value={item.productName} onChange={e => setItem(idx, "productName", e.target.value)} placeholder="e.g. Chicken Curry Cut" required className="h-9" />
                               </div>
                               <div className="space-y-1.5">
                                 <Label className="text-xs font-semibold text-gray-600">Description</Label>
-                                <textarea
-                                  value={item.description}
-                                  onChange={e => setItem(idx, "description", e.target.value)}
-                                  placeholder="Describe this product..."
-                                  className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-16"
-                                />
+                                <textarea value={item.description} onChange={e => setItem(idx, "description", e.target.value)} placeholder="Describe this product..." className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-16" />
                               </div>
                               <div className="space-y-1.5">
                                 <Label className="text-xs font-semibold text-gray-600">Category</Label>
@@ -1835,198 +1983,218 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                             </div>
                           </section>
 
-                          {/* ── STATUS ── */}
+                          {/* ── PRICING ── */}
                           <section>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:content-['']">Status & Details</p>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:content-['']">Pricing</p>
                             <div className="space-y-3">
                               <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1.5">
-                                  <Label className="text-xs font-semibold text-gray-600">Sub Category</Label>
-                                  <Input value={item.subCategory} onChange={e => setItem(idx, "subCategory", e.target.value)} placeholder="e.g. Freshwater" className="h-9" />
+                                  <Label className="text-xs font-semibold text-gray-600">Sale Price (₹) *</Label>
+                                  <Input type="number" min="0" value={item.sellingPrice} onChange={e => setItem(idx, "sellingPrice", e.target.value)} placeholder="0" className="h-9" />
                                 </div>
                                 <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Original Price / MRP (₹)</Label>
+                                  <Input type="number" min="0" value={item.originalPrice} onChange={e => setItem(idx, "originalPrice", e.target.value)} placeholder="0" className="h-9" />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Unit</Label>
+                                  <Select value={item.displayUnit} onValueChange={v => setItem(idx, "displayUnit", v)}>
+                                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                                    <SelectContent>{PRODUCT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Weight / Qty Label</Label>
+                                  <Input value={item.weight} onChange={e => setItem(idx, "weight", e.target.value)} placeholder="e.g. 500 g" className="h-9" />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Gross Weight</Label>
+                                  <Input value={item.grossWeight} onChange={e => setItem(idx, "grossWeight", e.target.value)} placeholder="e.g. 550g" className="h-9" />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Net Weight</Label>
+                                  <Input value={item.netWeight} onChange={e => setItem(idx, "netWeight", e.target.value)} placeholder="e.g. 500g" className="h-9" />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Pieces</Label>
+                                  <Input value={item.pieces} onChange={e => setItem(idx, "pieces", e.target.value)} placeholder="e.g. 8–10 Pieces" className="h-9" />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Serves</Label>
+                                  <Input value={item.serves} onChange={e => setItem(idx, "serves", e.target.value)} placeholder="e.g. Serves 4" className="h-9" />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Stock (Qty)</Label>
+                                  <Input type="number" min="0" value={item.stockQty ?? "0"} onChange={e => setItem(idx, "stockQty", e.target.value)} className="h-9" />
+                                </div>
+                              </div>
+                            </div>
+                          </section>
+
+                          {/* ── STATUS & MEDIA ── */}
+                          <section>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:content-['']">Status & Media</p>
+                            <div className="space-y-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold text-gray-600">Product Image</Label>
+                                <div className="flex gap-1 p-0.5 bg-gray-100 rounded-lg w-fit mb-1.5">
+                                  <button type="button" onClick={() => setItem(idx, "imageMode", "url")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${(item.imageMode ?? "url") === "url" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>URL</button>
+                                  <button type="button" onClick={() => setItem(idx, "imageMode", "upload")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${item.imageMode === "upload" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Upload</button>
+                                </div>
+                                {(item.imageMode ?? "url") === "url" ? (
+                                  <div className="space-y-1.5">
+                                    <Input value={item.imageUrl} onChange={e => setItem(idx, "imageUrl", e.target.value)} placeholder="https://..." className="h-9" />
+                                    {item.imageUrl && <img src={item.imageUrl} alt="Preview" className="w-full h-28 object-cover rounded-lg border border-gray-100" onError={(e) => { (e.target as any).style.display = "none"; }} />}
+                                  </div>
+                                ) : (
+                                  <label className="flex items-center justify-center gap-2 h-10 px-3 rounded-lg border-2 border-dashed cursor-pointer text-sm text-gray-500 hover:border-[#1A56DB] hover:text-[#1A56DB] transition-colors border-gray-200">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 0L8 8m4-4l4 4" /></svg>
+                                    Choose image from device
+                                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                                      const f = e.target.files?.[0]; if (!f) return;
+                                      const fd = new FormData(); fd.append("image", f);
+                                      const res = await fetch(`${getBase()}/api/upload?folder=fishtokri/products`, { method: "POST", headers: { Authorization: `Bearer ${getToken()}` }, body: fd });
+                                      const data = await res.json();
+                                      if (res.ok) setItem(idx, "imageUrl", data.url);
+                                      e.target.value = "";
+                                    }} />
+                                  </label>
+                                )}
+                              </div>
+                              <div className="flex gap-3">
+                                <div className="flex-1 space-y-1.5">
                                   <Label className="text-xs font-semibold text-gray-600">Availability</Label>
                                   <Select value={item.productStatus} onValueChange={v => setItem(idx, "productStatus", v)}>
                                     <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="available">Available</SelectItem>
                                       <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-                                      <SelectItem value="coming_soon">Coming Soon</SelectItem>
+                                      <SelectItem value="unavailable">Unavailable</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
+                                <div className="flex items-end pb-0.5">
+                                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100 h-9 px-4">
+                                    <Label className="text-sm text-gray-600">Archived</Label>
+                                    <input
+                                      type="checkbox"
+                                      checked={item.newProductIsArchived ?? false}
+                                      onChange={e => setItem(idx, "newProductIsArchived", e.target.checked)}
+                                      className="w-4 h-4 accent-red-500"
+                                    />
+                                  </div>
+                                </div>
                               </div>
                             </div>
+                          </section>
+
+                          {/* ── PURCHASE DETAILS (from vendor) ── */}
+                          <section>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:content-['']">
+                              Purchase Details <span className="text-gray-400 font-normal normal-case text-[10px]">(from vendor)</span>
+                            </p>
+                            <div className="space-y-3">
+                              <div className="grid grid-cols-5 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Quantity *</Label>
+                                  <Input type="text" inputMode="decimal" value={item.quantity} onChange={e => setItem(idx, "quantity", numOnly(e.target.value))} placeholder="0" className="h-9" />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Unit</Label>
+                                  <Select value={item.unit} onValueChange={v => setItem(idx, "unit", v)}>
+                                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                                    <SelectContent>{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Cost Price *</Label>
+                                  <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+                                    <Input type="text" inputMode="decimal" value={item.pricePerUnit} onChange={e => setItem(idx, "pricePerUnit", numOnly(e.target.value))} placeholder="0.00" className="pl-7 h-9" />
+                                  </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Expiry Date</Label>
+                                  <Input type="date" value={item.expiryDate} onChange={e => setItem(idx, "expiryDate", e.target.value)} className="h-9" />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-semibold text-gray-600">Shelf Life (days)</Label>
+                                  <Input type="text" inputMode="decimal" value={item.shelfLifeDays} onChange={e => setItem(idx, "shelfLifeDays", numOnly(e.target.value))} placeholder="e.g. 3" className="h-9" />
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-sm text-gray-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                <IndianRupee className="w-3.5 h-3.5 text-amber-500" />
+                                <span>Purchase total:</span>
+                                <span className="font-bold text-[#162B4D]">{formatRupees(Number(item.quantity) * Number(item.pricePerUnit))}</span>
+                              </div>
+                            </div>
+                          </section>
+
+                          {/* ── RECIPES ── */}
+                          <section>
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recipes ({(item.newProductRecipes ?? []).length})</p>
+                              <button
+                                type="button"
+                                onClick={() => setItem(idx, "newProductRecipes", [...(item.newProductRecipes ?? []), BLANK_RECIPE()])}
+                                className="text-xs text-[#1A56DB] font-semibold flex items-center gap-1 hover:underline"
+                              >
+                                <Plus className="w-3 h-3" /> Add Recipe
+                              </button>
+                            </div>
+                            {(item.newProductRecipes ?? []).length === 0
+                              ? <div className="text-center py-6 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">No recipes yet. Click "Add Recipe" to include cooking instructions.</div>
+                              : <div className="space-y-2">{(item.newProductRecipes ?? []).map((r: any, rIdx: number) => (
+                                  <VendorRecipeEditor
+                                    key={rIdx}
+                                    recipe={r}
+                                    onChange={(updated: any) => setItem(idx, "newProductRecipes", (item.newProductRecipes ?? []).map((x: any, xi: number) => xi === rIdx ? updated : x))}
+                                    onRemove={() => setItem(idx, "newProductRecipes", (item.newProductRecipes ?? []).filter((_: any, xi: number) => xi !== rIdx))}
+                                  />
+                                ))}</div>}
+                          </section>
+
+                          {/* ── INVENTORY BATCHES ── */}
+                          <section>
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Inventory Batches ({(item.newProductInventoryBatches ?? []).length})</p>
+                              <button
+                                type="button"
+                                onClick={() => setItem(idx, "newProductInventoryBatches", [...(item.newProductInventoryBatches ?? []), { quantity: "0", shelfLifeDays: "", entryDate: "", expiryDate: "" }])}
+                                className="text-xs text-[#1A56DB] font-semibold flex items-center gap-1 hover:underline"
+                              >
+                                <Plus className="w-3 h-3" /> Add Batch
+                              </button>
+                            </div>
+                            {(item.newProductInventoryBatches ?? []).length === 0
+                              ? <div className="text-center py-5 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">No batches yet. Click "Add Batch" to record stock.</div>
+                              : <div className="space-y-2">
+                                  {(item.newProductInventoryBatches ?? []).map((b: any, bIdx: number) => (
+                                    <div key={bIdx} className="border border-gray-200 rounded-xl p-3 space-y-2 bg-gray-50/40">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-gray-500">Batch {bIdx + 1}</span>
+                                        <button type="button" onClick={() => setItem(idx, "newProductInventoryBatches", (item.newProductInventoryBatches ?? []).filter((_: any, xi: number) => xi !== bIdx))} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Qty</Label><Input type="number" min="0" value={b.quantity} onChange={(e) => setItem(idx, "newProductInventoryBatches", (item.newProductInventoryBatches ?? []).map((x: any, xi: number) => xi === bIdx ? { ...x, quantity: e.target.value } : x))} className="h-8 text-sm" /></div>
+                                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Shelf Life (days)</Label><Input type="number" min="0" value={b.shelfLifeDays} onChange={(e) => setItem(idx, "newProductInventoryBatches", (item.newProductInventoryBatches ?? []).map((x: any, xi: number) => xi === bIdx ? { ...x, shelfLifeDays: e.target.value } : x))} className="h-8 text-sm" /></div>
+                                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Entry Date</Label><Input type="date" value={b.entryDate} onChange={(e) => setItem(idx, "newProductInventoryBatches", (item.newProductInventoryBatches ?? []).map((x: any, xi: number) => xi === bIdx ? { ...x, entryDate: e.target.value } : x))} className="h-8 text-sm" /></div>
+                                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Expiry Date</Label><Input type="date" value={b.expiryDate} onChange={(e) => setItem(idx, "newProductInventoryBatches", (item.newProductInventoryBatches ?? []).map((x: any, xi: number) => xi === bIdx ? { ...x, expiryDate: e.target.value } : x))} className="h-8 text-sm" /></div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>}
                           </section>
                         </>
                       )}
                     </div>
                   </div>
-
-                  {/* ── Purchase Details (new products only) ── */}
-                  {item.productMode === "new" && (
-                  <section>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:content-['']">
-                      Purchase Details <span className="text-gray-400 font-normal normal-case text-[10px]">(from vendor)</span>
-                    </p>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-5 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Quantity *</Label>
-                          <Input type="text" inputMode="decimal"
-                            value={item.quantity}
-                            onChange={e => setItem(idx, "quantity", numOnly(e.target.value))}
-                            placeholder="0" className="h-9" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Unit</Label>
-                          <Select value={item.unit} onValueChange={v => setItem(idx, "unit", v)}>
-                            <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                            <SelectContent>{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Cost Price *</Label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
-                            <Input type="text" inputMode="decimal"
-                              value={item.pricePerUnit}
-                              onChange={e => setItem(idx, "pricePerUnit", numOnly(e.target.value))}
-                              placeholder="0.00" className="pl-7 h-9" />
-                          </div>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Expiry Date</Label>
-                          <Input type="date" value={item.expiryDate} onChange={e => setItem(idx, "expiryDate", e.target.value)} className="h-9" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Shelf Life (days)</Label>
-                          <Input type="text" inputMode="decimal" value={item.shelfLifeDays} onChange={e => setItem(idx, "shelfLifeDays", numOnly(e.target.value))} placeholder="e.g. 3" className="h-9" />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-sm text-gray-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                        <IndianRupee className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Purchase total:</span>
-                        <span className="font-bold text-[#162B4D]">{formatRupees(Number(item.quantity) * Number(item.pricePerUnit))}</span>
-                      </div>
-                    </div>
-                  </section>
-                  )}
-
-                  {item.productMode === "new" && (
-                  <section>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:content-['']">
-                      Pricing & Listing <span className="text-gray-400 font-normal normal-case text-[10px]">(for hub menu)</span>
-                    </p>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Sale Price (₹)</Label>
-                          <Input type="text" inputMode="decimal" value={item.sellingPrice}
-                            onChange={e => setItem(idx, "sellingPrice", numOnly(e.target.value))}
-                            placeholder="0" className="h-9" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Original Price / MRP (₹)</Label>
-                          <Input type="text" inputMode="decimal" value={item.originalPrice}
-                            onChange={e => setItem(idx, "originalPrice", numOnly(e.target.value))}
-                            placeholder="0" className="h-9" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Unit</Label>
-                          <Select value={item.displayUnit} onValueChange={v => setItem(idx, "displayUnit", v)}>
-                            <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                            <SelectContent>{PRODUCT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Weight / Qty Label</Label>
-                          <Input value={item.weight} onChange={e => setItem(idx, "weight", e.target.value)} placeholder="e.g. 500g, 1kg" className="h-9" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Gross Weight</Label>
-                          <Input value={item.grossWeight} onChange={e => setItem(idx, "grossWeight", e.target.value)} placeholder="e.g. 550g" className="h-9" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Net Weight</Label>
-                          <Input value={item.netWeight} onChange={e => setItem(idx, "netWeight", e.target.value)} placeholder="e.g. 480g" className="h-9" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Pieces</Label>
-                          <Input value={item.pieces} onChange={e => setItem(idx, "pieces", e.target.value)} placeholder="e.g. 8–10 Pieces" className="h-9" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Serves</Label>
-                          <Input value={item.serves} onChange={e => setItem(idx, "serves", e.target.value)} placeholder="e.g. Serves 4" className="h-9" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Stock (Qty)</Label>
-                          <Input type="text" inputMode="decimal" value={item.stockQty ?? "0"} onChange={e => setItem(idx, "stockQty", numOnly(e.target.value))} placeholder="0" className="h-9" />
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-                  )}
-
-                  {item.productMode === "new" && (
-                  <section>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:content-['']">Product Image</p>
-                    <div className="space-y-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-gray-600">Product Image (optional)</Label>
-                        <div className="flex gap-1 p-0.5 bg-gray-100 rounded-lg w-fit mb-1.5">
-                          <button type="button" onClick={() => setItem(idx, "imageMode", "url")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${(item.imageMode ?? "url") === "url" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>URL</button>
-                          <button type="button" onClick={() => setItem(idx, "imageMode", "upload")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${item.imageMode === "upload" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Upload</button>
-                        </div>
-                        {(item.imageMode ?? "url") === "url" ? (
-                          <div className="space-y-1.5">
-                            <Input value={item.imageUrl} onChange={e => setItem(idx, "imageUrl", e.target.value)} placeholder="https://..." className="h-9" />
-                            {item.imageUrl && <img src={item.imageUrl} alt="Preview" className="w-full h-28 object-cover rounded-lg border border-gray-100" onError={(e) => { (e.target as any).style.display = "none"; }} />}
-                          </div>
-                        ) : (
-                          <label className="flex items-center justify-center gap-2 h-10 px-3 rounded-lg border-2 border-dashed cursor-pointer text-sm text-gray-500 hover:border-[#1A56DB] hover:text-[#1A56DB] transition-colors border-gray-200">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 0L8 8m4-4l4 4" /></svg>
-                            Choose image from device
-                            <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                              const f = e.target.files?.[0]; if (!f) return;
-                              const fd = new FormData(); fd.append("image", f);
-                              const res = await fetch(`${getBase()}/api/upload?folder=fishtokri/products`, { method: "POST", headers: { Authorization: `Bearer ${getToken()}` }, body: fd });
-                              const data = await res.json();
-                              if (res.ok) setItem(idx, "imageUrl", data.url);
-                              e.target.value = "";
-                            }} />
-                          </label>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Section IDs</Label>
-                          <Input value={item.sectionIdsText} onChange={e => setItem(idx, "sectionIdsText", e.target.value)} placeholder="Comma-separated section IDs" className="h-9" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-600">Coupon IDs</Label>
-                          <Input value={item.couponIdsText} onChange={e => setItem(idx, "couponIdsText", e.target.value)} placeholder="Comma-separated coupon IDs" className="h-9" />
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-gray-600">Recipes JSON</Label>
-                        <textarea
-                          value={item.recipesText}
-                          onChange={e => setItem(idx, "recipesText", e.target.value)}
-                          placeholder='[{"title":"Recipe name","ingredients":[],"method":[]}]'
-                          className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                        />
-                        <p className="mt-1 text-[11px] text-gray-400">Existing products keep their recipes automatically. Edit this JSON only when you need to change recipes.</p>
-                      </div>
-                    </div>
-                  </section>
-                  )}
                 </div>
               </div>
             ))}
