@@ -471,7 +471,6 @@ export default function SubHubMenuAdmin() {
 
 // ─── PRODUCTS TAB ─────────────────────────────────────────────────────────────
 const PRODUCT_COLS = [
-  { key: "_id", header: "ID (do not edit)" },
   { key: "name", header: "Name" },
   { key: "description", header: "Description" },
   { key: "category", header: "Category" },
@@ -578,7 +577,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
     const ws = wb.addWorksheet("Products");
 
     ws.columns = [
-      { header: "ID (do not edit)",               key: "id",               width: 28 },
       { header: "Name",                            key: "name",             width: 28 },
       { header: "Description",                     key: "description",      width: 40 },
       { header: "Category",                        key: "category",         width: 18 },
@@ -605,7 +603,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
     // Add data rows
     processed.forEach((p) => {
       ws.addRow({
-        id: String(p._id ?? ""),
         name: p.name ?? "",
         description: p.description ?? "",
         category: p.category ?? "",
@@ -629,8 +626,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
     const validationEndRow = lastDataRow + 200;
 
     for (let row = 2; row <= validationEndRow; row++) {
-      // Unit dropdown — column G (A=ID, B=Name, C=Desc, D=Category, E=Price, F=MRP, G=Unit)
-      ws.getCell(`G${row}`).dataValidation = {
+      // Unit dropdown — column F (A=Name, B=Desc, C=Category, D=Price, E=MRP, F=Unit)
+      ws.getCell(`F${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         showErrorMessage: true,
@@ -640,8 +637,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         formulae: ['"per kg,per 500g,per 250g,per 100g,per tray,per pack,per piece"'],
       };
 
-      // Status dropdown — column N (H=Weight, I=GrossWeight, J=NetWeight, K=Pieces, L=Serves, M=Stock, N=Status)
-      ws.getCell(`N${row}`).dataValidation = {
+      // Status dropdown — column M (G=Weight, H=GrossWeight, I=NetWeight, J=Pieces, K=Serves, L=Stock, M=Status)
+      ws.getCell(`M${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         showErrorMessage: true,
@@ -651,8 +648,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         formulae: ['"available,out_of_stock"'],
       };
 
-      // Archived dropdown — column O
-      ws.getCell(`O${row}`).dataValidation = {
+      // Archived dropdown — column N
+      ws.getCell(`N${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         showErrorMessage: true,
@@ -662,9 +659,9 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         formulae: ['"yes,no"'],
       };
 
-      // Category dropdown — column D (uses hidden sheet reference to avoid 255-char limit)
+      // Category dropdown — column C (uses hidden sheet reference to avoid 255-char limit)
       if (catNames.length > 0) {
-        ws.getCell(`D${row}`).dataValidation = {
+        ws.getCell(`C${row}`).dataValidation = {
           type: "list",
           allowBlank: true,
           showErrorMessage: false,
@@ -1082,7 +1079,6 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
   useEffect(() => { load(); }, [load]);
 
   const catColumns = [
-    { header: "ID (do not edit)", key: "_id", width: 28 },
     { header: "Name", key: "name", width: 24 },
     { header: "Image URL", key: "imageUrl", width: 40 },
     { header: "Active (yes/no)", key: "isActive", width: 16 },
@@ -1090,7 +1086,6 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
     { header: "Sub Categories (pipe-separated names)", key: "subCategories", width: 46 },
   ];
   const catRow = (c: any) => ({
-    _id: String(c._id ?? ""),
     name: c.name ?? "",
     imageUrl: c.imageUrl ?? "",
     isActive: c.isActive !== false ? "yes" : "no",
@@ -1102,7 +1097,7 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
     setXlsxBusy(true);
     try {
       await buildAndDownloadExcel(processed, catColumns, catRow, "categories.xlsx", "Categories", "FFCE93D8",
-        [{ col: "D", formulae: ['"yes,no"'] }]);
+        [{ col: "C", formulae: ['"yes,no"'] }]);
     } catch (err: any) { toast({ title: "Export failed", description: err.message, variant: "destructive" }); }
     finally { setXlsxBusy(false); }
   };
@@ -1280,7 +1275,6 @@ function CombosTab({ subHubId }: { subHubId: string }) {
   useEffect(() => { load(); }, [load]);
 
   const comboColumns = [
-    { header: "ID (do not edit)", key: "_id", width: 28 },
     { header: "Name", key: "name", width: 28 },
     { header: "Description", key: "description", width: 40 },
     { header: "Serves", key: "serves", width: 14 },
@@ -1294,7 +1288,7 @@ function CombosTab({ subHubId }: { subHubId: string }) {
     { header: "Sort Order", key: "sortOrder", width: 12 },
   ];
   const comboRow = (c: any) => ({
-    _id: String(c._id ?? ""), name: c.name ?? "", description: c.description ?? "",
+    name: c.name ?? "", description: c.description ?? "",
     serves: c.serves ?? "", weight: c.weight ?? "",
     discountedPrice: c.discountedPrice ?? 0, originalPrice: c.originalPrice ?? 0, discount: c.discount ?? 0,
     includes: Array.isArray(c.includes) ? c.includes.join("|") : "",
@@ -1313,7 +1307,7 @@ function CombosTab({ subHubId }: { subHubId: string }) {
     setXlsxBusy(true);
     try {
       await buildAndDownloadExcel(processed, comboColumns, comboRow, "combos.xlsx", "Combos", "FFB8CCE4",
-        [{ col: "K", formulae: ['"yes,no"'] }]);
+        [{ col: "J", formulae: ['"yes,no"'] }]);
     } catch (err: any) { toast({ title: "Export failed", description: err.message, variant: "destructive" }); }
     finally { setXlsxBusy(false); }
   };
@@ -1499,7 +1493,6 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
   useEffect(() => { load(); }, [load]);
 
   const couponColumns = [
-    { header: "ID (do not edit)", key: "_id", width: 28 },
     { header: "Code", key: "code", width: 18 },
     { header: "Title", key: "title", width: 28 },
     { header: "Description", key: "description", width: 40 },
@@ -1512,7 +1505,7 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
     { header: "Expires At", key: "expiresAt", width: 20 },
   ];
   const couponRow = (c: any) => ({
-    _id: String(c._id ?? ""), code: c.code ?? "", title: c.title ?? "", description: c.description ?? "",
+    code: c.code ?? "", title: c.title ?? "", description: c.description ?? "",
     type: c.type ?? "percentage", discountValue: c.discountValue ?? 0, minOrderAmount: c.minOrderAmount ?? 0,
     maxUsage: c.maxUsage ?? "", isFirstTimeOnly: c.isFirstTimeOnly ? "yes" : "no",
     isActive: c.isActive !== false ? "yes" : "no",
@@ -1529,7 +1522,7 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
     setXlsxBusy(true);
     try {
       await buildAndDownloadExcel(processed, couponColumns, couponRow, "coupons.xlsx", "Coupons", "FFFCE4D6",
-        [{ col: "E", formulae: ['"percentage,flat"'] }, { col: "I", formulae: ['"yes,no"'] }, { col: "J", formulae: ['"yes,no"'] }]);
+        [{ col: "D", formulae: ['"percentage,flat"'] }, { col: "H", formulae: ['"yes,no"'] }, { col: "I", formulae: ['"yes,no"'] }]);
     } catch (err: any) { toast({ title: "Export failed", description: err.message, variant: "destructive" }); }
     finally { setXlsxBusy(false); }
   };
@@ -1844,20 +1837,19 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
   }, [subHubId, toast]);
 
   const sectionColumns = [
-    { header: "ID (do not edit)", key: "_id", width: 28 },
     { header: "Title", key: "title", width: 28 },
     { header: "Type (products/combos/categories/carousels)", key: "type", width: 42 },
     { header: "Sort Order", key: "sortOrder", width: 12 },
     { header: "Active (yes/no)", key: "isActive", width: 16 },
   ];
-  const sectionRow = (s: any) => ({ _id: String(s._id ?? ""), title: s.title ?? "", type: s.type ?? "products", sortOrder: s.sortOrder ?? 0, isActive: s.isActive !== false ? "yes" : "no" });
+  const sectionRow = (s: any) => ({ title: s.title ?? "", type: s.type ?? "products", sortOrder: s.sortOrder ?? 0, isActive: s.isActive !== false ? "yes" : "no" });
   const parseSectionRow = (r: any) => ({ _id: r["ID (do not edit)"] ?? "", title: r["Title"], type: r["Type (products/combos/categories/carousels)"], sortOrder: r["Sort Order"], isActive: String(r["Active (yes/no)"] ?? "yes") });
 
   const handleSectionExport = async () => {
     setXlsxBusy(true);
     try {
       await buildAndDownloadExcel(processed, sectionColumns, sectionRow, "sections.xlsx", "Sections", "FFD9EAD3",
-        [{ col: "C", formulae: ['"products,combos,categories,carousels"'] }, { col: "E", formulae: ['"yes,no"'] }]);
+        [{ col: "B", formulae: ['"products,combos,categories,carousels"'] }, { col: "D", formulae: ['"yes,no"'] }]);
     } catch (err: any) { toast({ title: "Export failed", description: err.message, variant: "destructive" }); }
     finally { setXlsxBusy(false); }
   };
@@ -3224,7 +3216,6 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
   }, [subHubId]);
 
   const slotColumns = [
-    { header: "ID (do not edit)", key: "_id", width: 28 },
     { header: "Label", key: "label", width: 24 },
     { header: "Start Time (HH:MM)", key: "startTime", width: 20 },
     { header: "End Time (HH:MM)", key: "endTime", width: 20 },
@@ -3233,14 +3224,14 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
     { header: "Active (yes/no)", key: "isActive", width: 16 },
     { header: "Sort Order", key: "sortOrder", width: 12 },
   ];
-  const slotRow = (s: any) => ({ _id: String(s._id ?? ""), label: s.label ?? "", startTime: s.startTime ?? "", endTime: s.endTime ?? "", isInstant: s.isInstant ? "yes" : "no", extraCharge: s.extraCharge ?? 0, isActive: s.isActive !== false ? "yes" : "no", sortOrder: s.sortOrder ?? 0 });
+  const slotRow = (s: any) => ({ label: s.label ?? "", startTime: s.startTime ?? "", endTime: s.endTime ?? "", isInstant: s.isInstant ? "yes" : "no", extraCharge: s.extraCharge ?? 0, isActive: s.isActive !== false ? "yes" : "no", sortOrder: s.sortOrder ?? 0 });
   const parseSlotRow = (r: any) => ({ _id: r["ID (do not edit)"] ?? "", label: r["Label"], startTime: r["Start Time (HH:MM)"], endTime: r["End Time (HH:MM)"], isInstant: String(r["Instant (yes/no)"] ?? "no"), extraCharge: r["Extra Charge"], isActive: String(r["Active (yes/no)"] ?? "yes"), sortOrder: r["Sort Order"] });
 
   const handleSlotExport = async () => {
     setXlsxBusy(true);
     try {
       await buildAndDownloadExcel(processed, slotColumns, slotRow, "timeslots.xlsx", "Time Slots", "FFFFF2CC",
-        [{ col: "E", formulae: ['"yes,no"'] }, { col: "G", formulae: ['"yes,no"'] }]);
+        [{ col: "D", formulae: ['"yes,no"'] }, { col: "F", formulae: ['"yes,no"'] }]);
     } catch (err: any) { toast({ title: "Export failed", description: err.message, variant: "destructive" }); }
     finally { setXlsxBusy(false); }
   };
