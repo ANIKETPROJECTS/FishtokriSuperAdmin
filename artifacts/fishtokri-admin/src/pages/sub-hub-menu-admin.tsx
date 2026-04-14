@@ -2868,7 +2868,8 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
       applicableProducts: selectedProductIds,
       isFirstTimeOnly, isActive,
     };
-    if (maxUsage) payload.maxUsage = Number(maxUsage);
+    if (isFirstTimeOnly) payload.maxUsage = 1;
+    else if (maxUsage) payload.maxUsage = Number(maxUsage);
     if (expiresAt) payload.expiresAt = expiresAt;
     try {
       if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons/${coupon._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Coupon updated" }); }
@@ -2894,7 +2895,7 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Min Order (₹)</Label><Input type="number" min="0" value={minOrderAmount} onChange={(e) => setMinOrderAmount(e.target.value)} placeholder="0" className="h-9" /></div>
-            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Max Usage</Label><Input type="number" min="0" value={maxUsage} onChange={(e) => setMaxUsage(e.target.value)} placeholder="Unlimited" className="h-9" /></div>
+            <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Max Usage</Label><Input type="number" min="0" value={isFirstTimeOnly ? "1" : maxUsage} onChange={(e) => setMaxUsage(e.target.value)} placeholder="Unlimited" disabled={isFirstTimeOnly} className="h-9 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-50" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Color Class</Label><Input value={color} onChange={(e) => setColor(e.target.value)} placeholder="e.g. bg-orange-400" className="h-9" /></div>
