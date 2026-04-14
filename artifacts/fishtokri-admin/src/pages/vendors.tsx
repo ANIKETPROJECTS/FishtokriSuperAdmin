@@ -2094,22 +2094,6 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                             </div>
                           </section>
 
-                          {/* ── PURCHASE DETAILS (from vendor) ── */}
-                          <section>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:content-['']">
-                              Purchase Details <span className="text-gray-400 font-normal normal-case text-[10px]">(from vendor)</span>
-                            </p>
-                            <div className="space-y-3">
-                              <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold text-gray-600">Cost Price *</Label>
-                                <div className="relative max-w-xs">
-                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
-                                  <Input type="text" inputMode="decimal" value={item.pricePerUnit} onChange={e => setItem(idx, "pricePerUnit", numOnly(e.target.value))} placeholder="0.00" className="pl-7 h-9" />
-                                </div>
-                              </div>
-                            </div>
-                          </section>
-
                           {/* ── RECIPES ── */}
                           <section>
                             <div className="flex items-center justify-between mb-3">
