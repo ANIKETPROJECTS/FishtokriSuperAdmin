@@ -115,6 +115,7 @@ export default function Orders() {
   const [deliveryPersons, setDeliveryPersons] = useState<any[]>([]);
   const [assigningDelivery, setAssigningDelivery] = useState(false);
   const [selectedDeliveryPersonId, setSelectedDeliveryPersonId] = useState("");
+  const [inlineAssigningId, setInlineAssigningId] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch("/api/users?role=delivery_person&limit=100")
@@ -183,6 +184,22 @@ export default function Orders() {
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally { setSavingStatus(false); }
+  };
+
+  const inlineAssign = async (orderId: string, personId: string) => {
+    setInlineAssigningId(orderId);
+    try {
+      const person = deliveryPersons.find((p) => p.id === personId);
+      const payload = personId
+        ? { assignedDeliveryPersonId: personId, assignedDeliveryPersonName: person?.name ?? "" }
+        : { assignedDeliveryPersonId: "", assignedDeliveryPersonName: "" };
+      await apiFetch(`/api/orders/${orderId}`, { method: "PUT", body: JSON.stringify(payload) });
+      toast({ title: personId ? `Assigned to ${person?.name}` : "Assignment removed" });
+      setOrders((prev) => prev.map((o) => String(o._id) === orderId ? { ...o, ...payload } : o));
+      if (selectedOrder && String(selectedOrder._id) === orderId) setSelectedOrder((o: any) => ({ ...o, ...payload }));
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally { setInlineAssigningId(null); }
   };
 
   const handleAssignDelivery = async (overrideId?: string) => {
@@ -416,15 +433,28 @@ export default function Orders() {
                       <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
                       <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(o.createdAt)}</td>
                       <td className="px-4 py-3">
-                        {o.assignedDeliveryPersonName ? (
+                        {deliveryPersons.length > 0 ? (
                           <div className="flex items-center gap-1.5">
-                            <div className="w-5 h-5 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-                              <Truck className="w-3 h-3 text-orange-500" />
-                            </div>
-                            <span className="text-xs font-medium text-gray-700 truncate max-w-[100px]">{o.assignedDeliveryPersonName}</span>
+                            {inlineAssigningId === String(o._id) ? (
+                              <span className="text-[11px] text-gray-400 animate-pulse">Saving...</span>
+                            ) : (
+                              <select
+                                value={o.assignedDeliveryPersonId ?? ""}
+                                onChange={(e) => inlineAssign(String(o._id), e.target.value)}
+                                className={`text-xs rounded-lg border px-2 py-1 pr-6 h-7 bg-white outline-none cursor-pointer transition-colors appearance-none max-w-[140px] ${o.assignedDeliveryPersonId ? "border-orange-200 text-orange-700 bg-orange-50 font-medium" : "border-gray-200 text-gray-400"}`}
+                                title="Assign delivery partner"
+                              >
+                                <option value="">— Unassigned —</option>
+                                {deliveryPersons.map((p) => (
+                                  <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                              </select>
+                            )}
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-300 italic">Unassigned</span>
+                          o.assignedDeliveryPersonName
+                            ? <span className="text-xs font-medium text-orange-700">{o.assignedDeliveryPersonName}</span>
+                            : <span className="text-xs text-gray-300 italic">Unassigned</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
