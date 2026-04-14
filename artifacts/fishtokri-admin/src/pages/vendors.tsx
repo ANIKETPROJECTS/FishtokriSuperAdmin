@@ -1801,33 +1801,50 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                         </div>
                       ) : (
                         <>
-                          <div>
-                            <FieldLabel required>Product Name</FieldLabel>
-                            <Input value={item.productName} onChange={e => setItem(idx, "productName", e.target.value)}
-                              placeholder="e.g. Rohu Fish, King Prawns" required />
-                          </div>
-                          <div className="grid grid-cols-3 gap-4">
-                            <div>
-                              <FieldLabel>Category</FieldLabel>
-                              <Input value={item.category} onChange={e => setItem(idx, "category", e.target.value)} placeholder="e.g. Fish" />
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100">Basic Info</p>
+                          <div className="space-y-3">
+                            <div className="space-y-1.5">
+                              <FieldLabel required>Product Name</FieldLabel>
+                              <Input value={item.productName} onChange={e => setItem(idx, "productName", e.target.value)}
+                                placeholder="e.g. Rohu Fish, King Prawns" required className="h-9" />
                             </div>
-                            <div>
-                              <FieldLabel>Sub Category</FieldLabel>
-                              <Input value={item.subCategory} onChange={e => setItem(idx, "subCategory", e.target.value)} placeholder="e.g. Freshwater" />
+                            <div className="space-y-1.5">
+                              <FieldLabel>Description</FieldLabel>
+                              <textarea
+                                value={item.description}
+                                onChange={e => setItem(idx, "description", e.target.value)}
+                                placeholder="Describe this product..."
+                                className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-16"
+                              />
                             </div>
-                            <div>
-                              <FieldLabel>Status</FieldLabel>
-                              <select value={item.productStatus} onChange={e => setItem(idx, "productStatus", e.target.value)}
-                                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                                <option value="available">Available</option>
-                                <option value="out_of_stock">Out of Stock</option>
-                                <option value="coming_soon">Coming Soon</option>
-                              </select>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="space-y-1.5">
+                                <FieldLabel>Category</FieldLabel>
+                                <Select value={item.category || "__none__"} onValueChange={v => setItem(idx, "category", v === "__none__" ? "" : v)}>
+                                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select category..." /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">Select category...</SelectItem>
+                                    {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                                    <SelectItem value={CATEGORY_OTHER}>{CATEGORY_OTHER}</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1.5">
+                                <FieldLabel>Sub Category</FieldLabel>
+                                <Input value={item.subCategory} onChange={e => setItem(idx, "subCategory", e.target.value)} placeholder="e.g. Freshwater" className="h-9" />
+                              </div>
+                              <div className="space-y-1.5">
+                                <FieldLabel>Status</FieldLabel>
+                                <Select value={item.productStatus} onValueChange={v => setItem(idx, "productStatus", v)}>
+                                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="available">Available</SelectItem>
+                                    <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                                    <SelectItem value="coming_soon">Coming Soon</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             </div>
-                          </div>
-                          <div>
-                            <FieldLabel>Description</FieldLabel>
-                            <Input value={item.description} onChange={e => setItem(idx, "description", e.target.value)} placeholder="Short description (optional)" />
                           </div>
                         </>
                       )}
@@ -1840,38 +1857,38 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                     <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                       <span className="w-4 h-px bg-amber-300 inline-block" />Purchase Details <span className="text-gray-400 font-normal normal-case">(from vendor)</span>
                     </p>
-                    <div className="grid grid-cols-5 gap-4">
-                      <div>
+                    <div className="grid grid-cols-5 gap-3">
+                      <div className="space-y-1.5">
                         <FieldLabel required>Quantity</FieldLabel>
                         <Input type="text" inputMode="decimal"
                           value={item.quantity}
                           onChange={e => setItem(idx, "quantity", numOnly(e.target.value))}
-                          placeholder="0" />
+                          placeholder="0" className="h-9" />
                       </div>
-                      <div>
+                      <div className="space-y-1.5">
                         <FieldLabel>Unit</FieldLabel>
-                        <select value={item.unit} onChange={e => setItem(idx, "unit", e.target.value)}
-                          className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                          {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                        </select>
+                        <Select value={item.unit} onValueChange={v => setItem(idx, "unit", v)}>
+                          <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                        </Select>
                       </div>
-                      <div>
+                      <div className="space-y-1.5">
                         <FieldLabel required>Cost Price</FieldLabel>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
                           <Input type="text" inputMode="decimal"
                             value={item.pricePerUnit}
                             onChange={e => setItem(idx, "pricePerUnit", numOnly(e.target.value))}
-                            placeholder="0.00" className="pl-7" />
+                            placeholder="0.00" className="pl-7 h-9" />
                         </div>
                       </div>
-                      <div>
+                      <div className="space-y-1.5">
                         <FieldLabel>Expiry Date</FieldLabel>
-                        <Input type="date" value={item.expiryDate} onChange={e => setItem(idx, "expiryDate", e.target.value)} />
+                        <Input type="date" value={item.expiryDate} onChange={e => setItem(idx, "expiryDate", e.target.value)} className="h-9" />
                       </div>
-                      <div>
+                      <div className="space-y-1.5">
                         <FieldLabel>Shelf Life Days</FieldLabel>
-                        <Input type="text" inputMode="decimal" value={item.shelfLifeDays} onChange={e => setItem(idx, "shelfLifeDays", numOnly(e.target.value))} placeholder="e.g. 3" />
+                        <Input type="text" inputMode="decimal" value={item.shelfLifeDays} onChange={e => setItem(idx, "shelfLifeDays", numOnly(e.target.value))} placeholder="e.g. 3" className="h-9" />
                       </div>
                     </div>
                     <div className="mt-2 flex items-center gap-1.5 text-sm text-gray-500">
@@ -1888,55 +1905,55 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                       <span className="w-4 h-px bg-emerald-300 inline-block" />Listing Details <span className="text-gray-400 font-normal normal-case">(for hub menu)</span>
                     </p>
                     <div className="space-y-3">
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1.5">
                           <FieldLabel>Selling Price</FieldLabel>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
                             <Input type="text" inputMode="decimal" value={item.sellingPrice}
                               onChange={e => setItem(idx, "sellingPrice", numOnly(e.target.value))}
-                              placeholder="0.00" className="pl-7" />
+                              placeholder="0.00" className="pl-7 h-9" />
                           </div>
                         </div>
-                        <div>
+                        <div className="space-y-1.5">
                           <FieldLabel>MRP / Original Price</FieldLabel>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
                             <Input type="text" inputMode="decimal" value={item.originalPrice}
                               onChange={e => setItem(idx, "originalPrice", numOnly(e.target.value))}
-                              placeholder="0.00" className="pl-7" />
+                              placeholder="0.00" className="pl-7 h-9" />
                           </div>
                         </div>
-                        <div>
+                        <div className="space-y-1.5">
                           <FieldLabel>Display Unit</FieldLabel>
-                          <select value={item.displayUnit} onChange={e => setItem(idx, "displayUnit", e.target.value)}
-                            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                            {PRODUCT_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                          </select>
+                          <Select value={item.displayUnit} onValueChange={v => setItem(idx, "displayUnit", v)}>
+                            <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                            <SelectContent>{PRODUCT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                          </Select>
                         </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1.5">
                           <FieldLabel>Weight</FieldLabel>
-                          <Input value={item.weight} onChange={e => setItem(idx, "weight", e.target.value)} placeholder="e.g. 500g, 1kg" />
+                          <Input value={item.weight} onChange={e => setItem(idx, "weight", e.target.value)} placeholder="e.g. 500g, 1kg" className="h-9" />
                         </div>
-                        <div>
+                        <div className="space-y-1.5">
                           <FieldLabel>Gross Weight</FieldLabel>
-                          <Input value={item.grossWeight} onChange={e => setItem(idx, "grossWeight", e.target.value)} placeholder="e.g. 550g" />
+                          <Input value={item.grossWeight} onChange={e => setItem(idx, "grossWeight", e.target.value)} placeholder="e.g. 550g" className="h-9" />
                         </div>
-                        <div>
+                        <div className="space-y-1.5">
                           <FieldLabel>Net Weight</FieldLabel>
-                          <Input value={item.netWeight} onChange={e => setItem(idx, "netWeight", e.target.value)} placeholder="e.g. 480g" />
+                          <Input value={item.netWeight} onChange={e => setItem(idx, "netWeight", e.target.value)} placeholder="e.g. 480g" className="h-9" />
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
                           <FieldLabel>Pieces</FieldLabel>
-                          <Input value={item.pieces} onChange={e => setItem(idx, "pieces", e.target.value)} placeholder="e.g. 4-5 pcs" />
+                          <Input value={item.pieces} onChange={e => setItem(idx, "pieces", e.target.value)} placeholder="e.g. 4-5 pcs" className="h-9" />
                         </div>
-                        <div>
+                        <div className="space-y-1.5">
                           <FieldLabel>Serves</FieldLabel>
-                          <Input value={item.serves} onChange={e => setItem(idx, "serves", e.target.value)} placeholder="e.g. 2-3 people" />
+                          <Input value={item.serves} onChange={e => setItem(idx, "serves", e.target.value)} placeholder="e.g. 2-3 people" className="h-9" />
                         </div>
                       </div>
                       <ImageUpload
@@ -1946,17 +1963,17 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                         label="Product Image (optional)"
                         previewClassName="w-14 h-14 rounded-lg"
                       />
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
                           <FieldLabel>Section IDs</FieldLabel>
-                          <Input value={item.sectionIdsText} onChange={e => setItem(idx, "sectionIdsText", e.target.value)} placeholder="Comma-separated section IDs" />
+                          <Input value={item.sectionIdsText} onChange={e => setItem(idx, "sectionIdsText", e.target.value)} placeholder="Comma-separated section IDs" className="h-9" />
                         </div>
-                        <div>
+                        <div className="space-y-1.5">
                           <FieldLabel>Coupon IDs</FieldLabel>
-                          <Input value={item.couponIdsText} onChange={e => setItem(idx, "couponIdsText", e.target.value)} placeholder="Comma-separated coupon IDs" />
+                          <Input value={item.couponIdsText} onChange={e => setItem(idx, "couponIdsText", e.target.value)} placeholder="Comma-separated coupon IDs" className="h-9" />
                         </div>
                       </div>
-                      <div>
+                      <div className="space-y-1.5">
                         <FieldLabel>Recipes JSON</FieldLabel>
                         <textarea
                           value={item.recipesText}
