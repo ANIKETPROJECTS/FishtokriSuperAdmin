@@ -3,7 +3,7 @@ import {
   Search, X, RefreshCw, ClipboardList, Clock, CheckCircle2, XCircle,
   Truck, Package, ChevronLeft, ChevronRight, Eye, MapPin,
   Phone, User, SlidersHorizontal, ArrowUpDown, UserCheck,
-  ShoppingBag, Building2, AlertCircle, ChevronDown,
+  ShoppingBag, Building2, AlertCircle, ChevronDown, Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 
 function getToken() {
@@ -133,49 +134,120 @@ function InlineDeliverySelect({
   saving: boolean;
   onAssign: (orderId: string, personId: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const { persons: filtered, filtered: isFiltered } = getDeliveryPersonsForOrder(order, persons);
   const assigned = order.assignedDeliveryPersonId;
   const assignedName = order.assignedDeliveryPersonName;
 
   if (saving) {
-    return <span className="text-[11px] text-gray-400 animate-pulse px-2">Saving...</span>;
+    return (
+      <div className="flex items-center gap-2 px-2 py-1.5">
+        <div className="w-4 h-4 rounded-full border-2 border-orange-300 border-t-orange-600 animate-spin" />
+        <span className="text-[11px] text-gray-400">Saving…</span>
+      </div>
+    );
   }
 
   return (
-    <div className="min-w-[150px]">
-      <div className="relative">
-        <select
-          value={assigned ?? ""}
-          onChange={(e) => onAssign(String(order._id), e.target.value)}
-          className={`w-full text-xs rounded-lg border pl-2 pr-7 py-1.5 h-8 bg-white outline-none cursor-pointer transition-all appearance-none font-medium
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={`group flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition-all w-full max-w-[175px] hover:shadow-sm
             ${assigned
-              ? "border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100"
-              : "border-gray-200 text-gray-400 hover:border-gray-300 hover:bg-gray-50"
+              ? "bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
+              : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-white hover:border-gray-300"
             }`}
-          title={isFiltered ? "Showing only delivery persons from this order's hub" : "Assign delivery partner"}
         >
-          <option value="">— Unassigned —</option>
-          {filtered.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}{p.phone ? ` · ${p.phone}` : ""}
-            </option>
-          ))}
-          {filtered.length === 0 && persons.length > 0 && (
-            <option disabled value="">No partners for this hub</option>
+          {assigned ? (
+            <div className="w-5 h-5 rounded-full bg-orange-200 flex items-center justify-center flex-shrink-0">
+              <Truck className="w-3 h-3 text-orange-600" />
+            </div>
+          ) : (
+            <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+              <User className="w-3 h-3 text-gray-400" />
+            </div>
           )}
-        </select>
-        <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none ${assigned ? "text-orange-400" : "text-gray-300"}`} />
-      </div>
-      {isFiltered && filtered.length === 0 && assignedName && (
-        <p className="text-[9px] text-gray-400 mt-0.5 px-0.5 truncate">{assignedName}</p>
-      )}
-      {isFiltered && (
-        <p className="text-[9px] text-blue-400 mt-0.5 px-0.5 flex items-center gap-0.5">
-          <Building2 className="w-2.5 h-2.5" />
-          Hub-filtered · {filtered.length} partner{filtered.length !== 1 ? "s" : ""}
-        </p>
-      )}
-    </div>
+          <span className="flex-1 text-left truncate leading-tight">
+            {assigned ? assignedName || "Assigned" : "Unassigned"}
+          </span>
+          <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""} ${assigned ? "text-orange-400" : "text-gray-300"}`} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-64 shadow-xl border border-gray-100 rounded-2xl overflow-hidden" align="start" sideOffset={6}>
+        {/* Header */}
+        <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/80">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Assign Delivery Partner</p>
+          {isFiltered && (
+            <p className="text-[10px] text-blue-500 flex items-center gap-0.5 mt-0.5">
+              <Building2 className="w-2.5 h-2.5" />
+              {filtered.length} hub partner{filtered.length !== 1 ? "s" : ""}
+            </p>
+          )}
+        </div>
+
+        {/* Options list */}
+        <div className="max-h-56 overflow-y-auto py-1">
+          {/* Unassign option */}
+          <button
+            onClick={() => { onAssign(String(order._id), ""); setOpen(false); }}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 hover:bg-red-50 transition-colors group ${!assigned ? "bg-gray-50/50" : ""}`}
+          >
+            <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 group-hover:bg-red-100">
+              <X className="w-3.5 h-3.5 text-gray-400 group-hover:text-red-400" />
+            </div>
+            <span className="text-xs font-medium text-gray-400 group-hover:text-red-500">Remove assignment</span>
+            {!assigned && <Check className="w-3 h-3 text-gray-300 ml-auto" />}
+          </button>
+
+          {/* Divider */}
+          <div className="mx-3 my-1 border-t border-gray-100" />
+
+          {filtered.length === 0 ? (
+            <div className="px-3 py-4 text-center">
+              <User className="w-6 h-6 text-gray-200 mx-auto mb-1" />
+              <p className="text-[11px] text-gray-400">No partners for this hub</p>
+            </div>
+          ) : (
+            filtered.map((p) => {
+              const isSelected = assigned === p.id;
+              const hubs = [
+                ...(p.superHubNames ?? (p.superHubName ? [p.superHubName] : [])),
+                ...(p.subHubNames ?? (p.subHubName ? [p.subHubName] : [])),
+              ].filter(Boolean);
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => { onAssign(String(order._id), p.id); setOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 hover:bg-orange-50 transition-colors text-left
+                    ${isSelected ? "bg-orange-50/80" : ""}`}
+                >
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs
+                    ${isSelected ? "bg-orange-200 text-orange-700" : "bg-[#162B4D]/10 text-[#162B4D]"}`}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-semibold truncate ${isSelected ? "text-orange-700" : "text-[#162B4D]"}`}>{p.name}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                      {p.phone && (
+                        <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                          <Phone className="w-2.5 h-2.5" />{p.phone}
+                        </span>
+                      )}
+                      {hubs.length > 0 && (
+                        <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-1 py-0.5 rounded-full flex items-center gap-0.5">
+                          <Building2 className="w-2 h-2" />{hubs[0]}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {isSelected && <Check className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
