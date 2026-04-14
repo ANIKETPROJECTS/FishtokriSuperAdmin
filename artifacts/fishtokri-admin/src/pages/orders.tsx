@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   Search, X, RefreshCw, ClipboardList, Clock, CheckCircle2, XCircle,
-  Truck, Package, ChevronLeft, ChevronRight, Eye, Edit2, MapPin,
-  Phone, User, SlidersHorizontal, ArrowUpDown, Calendar, AlertCircle,
+  Truck, Package, ChevronLeft, ChevronRight, Eye, MapPin,
+  Phone, User, SlidersHorizontal, ArrowUpDown, UserCheck,
   ShoppingBag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -111,6 +111,17 @@ export default function Orders() {
   const [editStatus, setEditStatus] = useState("");
   const [savingStatus, setSavingStatus] = useState(false);
 
+  // Delivery assignment
+  const [deliveryPersons, setDeliveryPersons] = useState<any[]>([]);
+  const [assigningDelivery, setAssigningDelivery] = useState(false);
+  const [selectedDeliveryPersonId, setSelectedDeliveryPersonId] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/users?role=delivery_person&limit=100")
+      .then((d) => setDeliveryPersons(d.users ?? []))
+      .catch(() => {});
+  }, []);
+
   // Build effective status filter based on active tab
   const effectiveStatus = useMemo(() => {
     if (statusFilter) return statusFilter;
@@ -172,6 +183,24 @@ export default function Orders() {
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally { setSavingStatus(false); }
+  };
+
+  const handleAssignDelivery = async (overrideId?: string) => {
+    if (!selectedOrder) return;
+    setAssigningDelivery(true);
+    const resolvedId = overrideId !== undefined ? overrideId : (selectedDeliveryPersonId === "__none__" ? "" : selectedDeliveryPersonId);
+    try {
+      const person = deliveryPersons.find((p) => p.id === resolvedId);
+      const payload = resolvedId
+        ? { assignedDeliveryPersonId: resolvedId, assignedDeliveryPersonName: person?.name ?? "" }
+        : { assignedDeliveryPersonId: "", assignedDeliveryPersonName: "" };
+      await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify(payload) });
+      toast({ title: resolvedId ? `Assigned to ${person?.name}` : "Assignment removed" });
+      setSelectedOrder((o: any) => ({ ...o, ...payload }));
+      load();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally { setAssigningDelivery(false); }
   };
 
   const clearFilters = () => {
@@ -351,6 +380,7 @@ export default function Orders() {
                   <th className="px-4 py-3 text-left">Delivery</th>
                   <th className="px-4 py-3 text-left">Status</th>
                   <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-left">Delivery Partner</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -385,9 +415,21 @@ export default function Orders() {
                       </td>
                       <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
                       <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(o.createdAt)}</td>
+                      <td className="px-4 py-3">
+                        {o.assignedDeliveryPersonName ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                              <Truck className="w-3 h-3 text-orange-500" />
+                            </div>
+                            <span className="text-xs font-medium text-gray-700 truncate max-w-[100px]">{o.assignedDeliveryPersonName}</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-300 italic">Unassigned</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <button
-                          onClick={() => { setSelectedOrder(o); setEditStatus(o.status); }}
+                          onClick={() => { setSelectedOrder(o); setEditStatus(o.status); setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? ""); }}
                           className="inline-flex items-center gap-1 text-xs font-semibold text-[#1A56DB] hover:text-[#1447B4] bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors"
                         >
                           <Eye className="w-3.5 h-3.5" /> View
@@ -524,6 +566,51 @@ export default function Orders() {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Assign Delivery Partner */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Assign Delivery Partner</p>
+                  {selectedOrder.assignedDeliveryPersonName && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-100 rounded-lg">
+                      <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                        <Truck className="w-3.5 h-3.5 text-orange-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-orange-700">{selectedOrder.assignedDeliveryPersonName}</p>
+                        <p className="text-[10px] text-orange-500">Currently assigned</p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Select value={selectedDeliveryPersonId} onValueChange={setSelectedDeliveryPersonId}>
+                      <SelectTrigger className="h-9 flex-1 text-sm">
+                        <UserCheck className="w-3.5 h-3.5 text-gray-400 mr-1 flex-shrink-0" />
+                        <SelectValue placeholder="Select delivery person..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— Remove assignment —</SelectItem>
+                        {deliveryPersons.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            <div className="flex flex-col">
+                              <span>{p.name}</span>
+                              {p.phone && <span className="text-[10px] text-gray-400">{p.phone}</span>}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      onClick={() => handleAssignDelivery()}
+                      disabled={assigningDelivery || !selectedDeliveryPersonId}
+                      className="bg-orange-500 hover:bg-orange-600 h-9 px-4 text-white"
+                    >
+                      {assigningDelivery ? "Saving..." : selectedDeliveryPersonId === "__none__" ? "Remove" : "Assign"}
+                    </Button>
+                  </div>
+                  {deliveryPersons.length === 0 && (
+                    <p className="text-[11px] text-gray-400 italic">No delivery persons found. Add them via Admin Users.</p>
+                  )}
                 </div>
 
                 {/* Status Update */}

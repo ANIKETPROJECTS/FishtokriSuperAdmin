@@ -31,6 +31,7 @@ router.get("/", async (req, res) => {
       limit = "20",
       from = "",
       to = "",
+      assignedTo = "",
     } = req.query as Record<string, string>;
 
     const filter: any = {};
@@ -51,6 +52,7 @@ router.get("/", async (req, res) => {
       filter.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
     }
     if (deliveryType) filter.deliveryType = deliveryType;
+    if (assignedTo) filter.assignedDeliveryPersonId = assignedTo;
 
     if (from || to) {
       filter.createdAt = {};
@@ -118,10 +120,12 @@ router.put("/:id", async (req, res) => {
   try {
     const oid = toId(req.params.id);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
-    const { status, notes } = req.body;
+    const { status, notes, assignedDeliveryPersonId, assignedDeliveryPersonName } = req.body;
     const update: any = { updatedAt: new Date() };
     if (status !== undefined) update.status = status;
     if (notes !== undefined) update.notes = notes;
+    if (assignedDeliveryPersonId !== undefined) update.assignedDeliveryPersonId = assignedDeliveryPersonId;
+    if (assignedDeliveryPersonName !== undefined) update.assignedDeliveryPersonName = assignedDeliveryPersonName;
     const conn = await getOrdersDb();
     const result = await conn.db.collection(COLLECTION).findOneAndUpdate(
       { _id: oid },
