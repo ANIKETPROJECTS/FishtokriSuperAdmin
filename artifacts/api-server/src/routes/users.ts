@@ -50,9 +50,14 @@ router.get("/", async (req, res) => {
   try {
     const roleFilter = req.query.role as string | undefined;
     const superHubIdFilter = req.query.superHubId as string | undefined;
+    const subHubIdFilter = req.query.subHubId as string | undefined;
     const filter: Record<string, any> = {};
     if (roleFilter) filter.role = roleFilter;
     if (superHubIdFilter) filter.$or = [{ superHubId: superHubIdFilter }, { superHubIds: superHubIdFilter }];
+    if (subHubIdFilter) {
+      const subConditions = [{ subHubId: subHubIdFilter }, { subHubIds: subHubIdFilter }];
+      filter.$or = filter.$or ? [...filter.$or, ...subConditions] : subConditions;
+    }
     const users = await HubUser.find(filter).sort({ createdAt: 1 });
     const enriched = await Promise.all(users.map(enrichUser));
     res.json({ users: enriched, total: enriched.length });

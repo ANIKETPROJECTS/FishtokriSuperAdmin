@@ -3,7 +3,7 @@ import {
   Search, X, RefreshCw, ClipboardList, Clock, CheckCircle2, XCircle,
   Truck, Package, ChevronLeft, ChevronRight, Eye, MapPin,
   Phone, User, SlidersHorizontal, ArrowUpDown, UserCheck,
-  ShoppingBag,
+  ShoppingBag, Building2, AlertCircle, ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,11 +78,111 @@ function orderTotal(items: any[]) {
   return (items ?? []).reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
 }
 
+// ─── FILTER DELIVERY PERSONS BY HUB ───────────────────────────────────────────
+function getDeliveryPersonsForOrder(order: any, allPersons: any[]) {
+  const orderSuperIds: string[] = [
+    ...(Array.isArray(order.superHubIds) ? order.superHubIds : []),
+    ...(order.superHubId ? [String(order.superHubId)] : []),
+  ].map(String).filter(Boolean);
+
+  const orderSubIds: string[] = [
+    ...(Array.isArray(order.subHubIds) ? order.subHubIds : []),
+    ...(order.subHubId ? [String(order.subHubId)] : []),
+  ].map(String).filter(Boolean);
+
+  if (orderSuperIds.length === 0 && orderSubIds.length === 0) {
+    return { persons: allPersons, filtered: false };
+  }
+
+  const matched = allPersons.filter((p) => {
+    const pSuperIds = (p.superHubIds ?? []).map(String);
+    const pSubIds = (p.subHubIds ?? []).map(String);
+    const matchesSuper = orderSuperIds.some((id) => pSuperIds.includes(id) || String(p.superHubId) === id);
+    const matchesSub = orderSubIds.some((id) => pSubIds.includes(id) || String(p.subHubId) === id);
+    return matchesSuper || matchesSub;
+  });
+
+  return { persons: matched, filtered: true };
+}
+
+// ─── HUB BADGE ─────────────────────────────────────────────────────────────────
+function HubBadge({ person }: { person: any }) {
+  const hubs = [
+    ...(person.superHubNames ?? (person.superHubName ? [person.superHubName] : [])),
+    ...(person.subHubNames ?? (person.subHubName ? [person.subHubName] : [])),
+  ].filter(Boolean);
+
+  if (hubs.length === 0) return null;
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full">
+      <Building2 className="w-2.5 h-2.5" />
+      {hubs[0]}{hubs.length > 1 ? ` +${hubs.length - 1}` : ""}
+    </span>
+  );
+}
+
+// ─── INLINE DELIVERY ASSIGN ───────────────────────────────────────────────────
+function InlineDeliverySelect({
+  order,
+  persons,
+  saving,
+  onAssign,
+}: {
+  order: any;
+  persons: any[];
+  saving: boolean;
+  onAssign: (orderId: string, personId: string) => void;
+}) {
+  const { persons: filtered, filtered: isFiltered } = getDeliveryPersonsForOrder(order, persons);
+  const assigned = order.assignedDeliveryPersonId;
+  const assignedName = order.assignedDeliveryPersonName;
+
+  if (saving) {
+    return <span className="text-[11px] text-gray-400 animate-pulse px-2">Saving...</span>;
+  }
+
+  return (
+    <div className="min-w-[150px]">
+      <div className="relative">
+        <select
+          value={assigned ?? ""}
+          onChange={(e) => onAssign(String(order._id), e.target.value)}
+          className={`w-full text-xs rounded-lg border pl-2 pr-7 py-1.5 h-8 bg-white outline-none cursor-pointer transition-all appearance-none font-medium
+            ${assigned
+              ? "border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100"
+              : "border-gray-200 text-gray-400 hover:border-gray-300 hover:bg-gray-50"
+            }`}
+          title={isFiltered ? "Showing only delivery persons from this order's hub" : "Assign delivery partner"}
+        >
+          <option value="">— Unassigned —</option>
+          {filtered.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}{p.phone ? ` · ${p.phone}` : ""}
+            </option>
+          ))}
+          {filtered.length === 0 && persons.length > 0 && (
+            <option disabled value="">No partners for this hub</option>
+          )}
+        </select>
+        <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none ${assigned ? "text-orange-400" : "text-gray-300"}`} />
+      </div>
+      {isFiltered && filtered.length === 0 && assignedName && (
+        <p className="text-[9px] text-gray-400 mt-0.5 px-0.5 truncate">{assignedName}</p>
+      )}
+      {isFiltered && (
+        <p className="text-[9px] text-blue-400 mt-0.5 px-0.5 flex items-center gap-0.5">
+          <Building2 className="w-2.5 h-2.5" />
+          Hub-filtered · {filtered.length} partner{filtered.length !== 1 ? "s" : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── MAIN PAGE ─────────────────────────────────────────────────────────────────
 export default function Orders() {
   const { toast } = useToast();
 
-  // Tabs: "current" | "history" | "all"
   const [activeTab, setActiveTab] = useState<"current" | "history" | "all">("current");
 
   // Filters
@@ -116,6 +216,7 @@ export default function Orders() {
   const [assigningDelivery, setAssigningDelivery] = useState(false);
   const [selectedDeliveryPersonId, setSelectedDeliveryPersonId] = useState("");
   const [inlineAssigningId, setInlineAssigningId] = useState<string | null>(null);
+  const [showAllPersons, setShowAllPersons] = useState(false);
 
   useEffect(() => {
     apiFetch("/api/users?role=delivery_person&limit=100")
@@ -123,7 +224,26 @@ export default function Orders() {
       .catch(() => {});
   }, []);
 
-  // Build effective status filter based on active tab
+  // Persons to show in the modal (hub-filtered or all)
+  const modalPersons = useMemo(() => {
+    if (!selectedOrder) return deliveryPersons;
+    const { persons, filtered } = getDeliveryPersonsForOrder(selectedOrder, deliveryPersons);
+    if (showAllPersons || !filtered) return deliveryPersons;
+    return persons;
+  }, [selectedOrder, deliveryPersons, showAllPersons]);
+
+  const modalFiltered = useMemo(() => {
+    if (!selectedOrder) return false;
+    const { filtered } = getDeliveryPersonsForOrder(selectedOrder, deliveryPersons);
+    return filtered;
+  }, [selectedOrder, deliveryPersons]);
+
+  const modalFilteredCount = useMemo(() => {
+    if (!selectedOrder) return deliveryPersons.length;
+    const { persons } = getDeliveryPersonsForOrder(selectedOrder, deliveryPersons);
+    return persons.length;
+  }, [selectedOrder, deliveryPersons]);
+
   const effectiveStatus = useMemo(() => {
     if (statusFilter) return statusFilter;
     if (activeTab === "current") return ACTIVE_STATUSES.join(",");
@@ -202,10 +322,10 @@ export default function Orders() {
     } finally { setInlineAssigningId(null); }
   };
 
-  const handleAssignDelivery = async (overrideId?: string) => {
+  const handleAssignDelivery = async () => {
     if (!selectedOrder) return;
     setAssigningDelivery(true);
-    const resolvedId = overrideId !== undefined ? overrideId : (selectedDeliveryPersonId === "__none__" ? "" : selectedDeliveryPersonId);
+    const resolvedId = selectedDeliveryPersonId === "__none__" ? "" : selectedDeliveryPersonId;
     try {
       const person = deliveryPersons.find((p) => p.id === resolvedId);
       const payload = resolvedId
@@ -214,7 +334,8 @@ export default function Orders() {
       await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify(payload) });
       toast({ title: resolvedId ? `Assigned to ${person?.name}` : "Assignment removed" });
       setSelectedOrder((o: any) => ({ ...o, ...payload }));
-      load();
+      setOrders((prev) => prev.map((o) => String(o._id) === String(selectedOrder._id) ? { ...o, ...payload } : o));
+      setSelectedDeliveryPersonId("");
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally { setAssigningDelivery(false); }
@@ -227,7 +348,6 @@ export default function Orders() {
 
   const hasFilters = !!(search || statusFilter || deliveryTypeFilter || dateFrom || dateTo);
 
-  // Stat totals
   const totalAll = Object.values(statsData).reduce((a, b) => a + b, 0);
   const totalActive = ACTIVE_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0);
   const totalHistory = HISTORY_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0);
@@ -304,7 +424,6 @@ export default function Orders() {
             {search && <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="w-3.5 h-3.5" /></button>}
           </div>
 
-          {/* Sort */}
           <Select value={`${sortField}:${sortDir}`} onValueChange={(v) => { const [f, d] = v.split(":"); setSortField(f); setSortDir(d as any); }}>
             <SelectTrigger className="h-9 w-44 text-sm gap-1">
               <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
@@ -434,23 +553,12 @@ export default function Orders() {
                       <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(o.createdAt)}</td>
                       <td className="px-4 py-3">
                         {deliveryPersons.length > 0 ? (
-                          <div className="flex items-center gap-1.5">
-                            {inlineAssigningId === String(o._id) ? (
-                              <span className="text-[11px] text-gray-400 animate-pulse">Saving...</span>
-                            ) : (
-                              <select
-                                value={o.assignedDeliveryPersonId ?? ""}
-                                onChange={(e) => inlineAssign(String(o._id), e.target.value)}
-                                className={`text-xs rounded-lg border px-2 py-1 pr-6 h-7 bg-white outline-none cursor-pointer transition-colors appearance-none max-w-[140px] ${o.assignedDeliveryPersonId ? "border-orange-200 text-orange-700 bg-orange-50 font-medium" : "border-gray-200 text-gray-400"}`}
-                                title="Assign delivery partner"
-                              >
-                                <option value="">— Unassigned —</option>
-                                {deliveryPersons.map((p) => (
-                                  <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
+                          <InlineDeliverySelect
+                            order={o}
+                            persons={deliveryPersons}
+                            saving={inlineAssigningId === String(o._id)}
+                            onAssign={inlineAssign}
+                          />
                         ) : (
                           o.assignedDeliveryPersonName
                             ? <span className="text-xs font-medium text-orange-700">{o.assignedDeliveryPersonName}</span>
@@ -459,7 +567,12 @@ export default function Orders() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
-                          onClick={() => { setSelectedOrder(o); setEditStatus(o.status); setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? ""); }}
+                          onClick={() => {
+                            setSelectedOrder(o);
+                            setEditStatus(o.status);
+                            setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? "");
+                            setShowAllPersons(false);
+                          }}
                           className="inline-flex items-center gap-1 text-xs font-semibold text-[#1A56DB] hover:text-[#1447B4] bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors"
                         >
                           <Eye className="w-3.5 h-3.5" /> View
@@ -504,7 +617,7 @@ export default function Orders() {
       </div>
 
       {/* Order Detail Modal */}
-      <Dialog open={!!selectedOrder} onOpenChange={(o) => !o && setSelectedOrder(null)}>
+      <Dialog open={!!selectedOrder} onOpenChange={(o) => { if (!o) { setSelectedOrder(null); setShowAllPersons(false); } }}>
         <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
           {selectedOrder && (
             <>
@@ -599,45 +712,112 @@ export default function Orders() {
                 </div>
 
                 {/* Assign Delivery Partner */}
-                <div className="space-y-2">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Assign Delivery Partner</p>
-                  {selectedOrder.assignedDeliveryPersonName && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-100 rounded-lg">
-                      <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-                        <Truck className="w-3.5 h-3.5 text-orange-500" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-orange-700">{selectedOrder.assignedDeliveryPersonName}</p>
-                        <p className="text-[10px] text-orange-500">Currently assigned</p>
-                      </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Assign Delivery Partner</p>
+                    {modalFiltered && (
+                      <button
+                        onClick={() => setShowAllPersons((v) => !v)}
+                        className="text-[10px] font-semibold text-blue-500 hover:text-blue-700 flex items-center gap-1"
+                      >
+                        <Building2 className="w-3 h-3" />
+                        {showAllPersons ? "Show hub-only" : `Hub: ${modalFilteredCount} partner${modalFilteredCount !== 1 ? "s" : ""} · Show all`}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Hub filter notice */}
+                  {modalFiltered && !showAllPersons && (
+                    <div className="flex items-start gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
+                      <Building2 className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-blue-600">
+                        Showing <strong>{modalFilteredCount}</strong> delivery partner{modalFilteredCount !== 1 ? "s" : ""} assigned to this order's hub.
+                        {modalFilteredCount === 0 && " No partners available for this hub."}
+                      </p>
                     </div>
                   )}
+                  {showAllPersons && (
+                    <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-amber-700">
+                        Showing all delivery partners. For best practice, assign only hub-specific partners.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Currently assigned */}
+                  {selectedOrder.assignedDeliveryPersonName && (
+                    <div className="flex items-center gap-2 px-3 py-2.5 bg-orange-50 border border-orange-100 rounded-xl">
+                      <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                        <Truck className="w-4 h-4 text-orange-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-orange-700">{selectedOrder.assignedDeliveryPersonName}</p>
+                        <p className="text-[10px] text-orange-400 font-medium">Currently assigned</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedDeliveryPersonId("__none__");
+                          setTimeout(() => handleAssignDelivery(), 0);
+                        }}
+                        disabled={assigningDelivery}
+                        className="text-[10px] font-semibold text-red-400 hover:text-red-600 border border-red-100 hover:border-red-200 bg-white px-2 py-1 rounded-lg transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Select + Assign */}
                   <div className="flex gap-2">
                     <Select value={selectedDeliveryPersonId} onValueChange={setSelectedDeliveryPersonId}>
-                      <SelectTrigger className="h-9 flex-1 text-sm">
+                      <SelectTrigger className="h-10 flex-1 text-sm">
                         <UserCheck className="w-3.5 h-3.5 text-gray-400 mr-1 flex-shrink-0" />
-                        <SelectValue placeholder="Select delivery person..." />
+                        <SelectValue placeholder="Select delivery partner..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">— Remove assignment —</SelectItem>
-                        {deliveryPersons.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            <div className="flex flex-col">
-                              <span>{p.name}</span>
-                              {p.phone && <span className="text-[10px] text-gray-400">{p.phone}</span>}
-                            </div>
-                          </SelectItem>
-                        ))}
+                        {modalPersons.length === 0 && (
+                          <div className="py-4 text-center text-xs text-gray-400">
+                            No delivery partners {modalFiltered && !showAllPersons ? "for this hub" : "available"}
+                          </div>
+                        )}
+                        {modalPersons.map((p) => {
+                          const hubs = [
+                            ...(p.superHubNames ?? (p.superHubName ? [p.superHubName] : [])),
+                            ...(p.subHubNames ?? (p.subHubName ? [p.subHubName] : [])),
+                          ].filter(Boolean);
+                          return (
+                            <SelectItem key={p.id} value={p.id}>
+                              <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 rounded-full bg-[#162B4D]/10 flex items-center justify-center flex-shrink-0">
+                                  <User className="w-3 h-3 text-[#162B4D]" />
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-[#162B4D]">{p.name}</span>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {p.phone && <span className="text-[10px] text-gray-400 flex items-center gap-0.5"><Phone className="w-2.5 h-2.5" />{p.phone}</span>}
+                                    {hubs.length > 0 && (
+                                      <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                        <Building2 className="w-2.5 h-2.5" />{hubs.slice(0, 2).join(", ")}{hubs.length > 2 ? ` +${hubs.length - 2}` : ""}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                     <Button
-                      onClick={() => handleAssignDelivery()}
+                      onClick={handleAssignDelivery}
                       disabled={assigningDelivery || !selectedDeliveryPersonId}
-                      className="bg-orange-500 hover:bg-orange-600 h-9 px-4 text-white"
+                      className="bg-orange-500 hover:bg-orange-600 h-10 px-4 text-white font-semibold"
                     >
-                      {assigningDelivery ? "Saving..." : selectedDeliveryPersonId === "__none__" ? "Remove" : "Assign"}
+                      {assigningDelivery ? "Saving..." : "Assign"}
                     </Button>
                   </div>
+
                   {deliveryPersons.length === 0 && (
                     <p className="text-[11px] text-gray-400 italic">No delivery persons found. Add them via Admin Users.</p>
                   )}
@@ -652,9 +832,7 @@ export default function Orders() {
                       <SelectContent>
                         {ALL_STATUSES.map((s) => (
                           <SelectItem key={s} value={s}>
-                            <span className="flex items-center gap-2">
-                              {STATUS_CONFIG[s].label}
-                            </span>
+                            <span className="flex items-center gap-2">{STATUS_CONFIG[s].label}</span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -675,7 +853,7 @@ export default function Orders() {
               </div>
 
               <DialogFooter>
-                <Button variant="outline" onClick={() => setSelectedOrder(null)} className="h-9">Close</Button>
+                <Button variant="outline" onClick={() => { setSelectedOrder(null); setShowAllPersons(false); }} className="h-9">Close</Button>
               </DialogFooter>
             </>
           )}
