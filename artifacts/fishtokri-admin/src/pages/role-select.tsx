@@ -2,6 +2,53 @@ import { useLocation } from "wouter";
 import { ShieldCheck, Warehouse, Store, Truck } from "lucide-react";
 import { useEffect } from "react";
 
+const roles = [
+  {
+    key: "master_admin",
+    label: "Master Admin",
+    desc: "Full system access",
+    icon: ShieldCheck,
+    route: "/login?role=master_admin",
+    accent: "text-amber-400",
+    hover: "hover:border-amber-400 hover:shadow-amber-100",
+    iconBg: "bg-amber-50",
+    iconColor: "text-amber-500",
+  },
+  {
+    key: "super_hub",
+    label: "Super Hub",
+    desc: "Hub management access",
+    icon: Warehouse,
+    route: "/login?role=super_hub",
+    accent: "text-blue-500",
+    hover: "hover:border-blue-400 hover:shadow-blue-100",
+    iconBg: "bg-blue-50",
+    iconColor: "text-blue-500",
+  },
+  {
+    key: "sub_hub",
+    label: "Sub Hub",
+    desc: "Local hub access",
+    icon: Store,
+    route: "/login?role=sub_hub",
+    accent: "text-teal-500",
+    hover: "hover:border-teal-400 hover:shadow-teal-100",
+    iconBg: "bg-teal-50",
+    iconColor: "text-teal-500",
+  },
+  {
+    key: "delivery_person",
+    label: "Delivery",
+    desc: "Delivery access",
+    icon: Truck,
+    route: "/login?role=delivery_person",
+    accent: "text-orange-500",
+    hover: "hover:border-orange-400 hover:shadow-orange-100",
+    iconBg: "bg-orange-50",
+    iconColor: "text-orange-500",
+  },
+];
+
 export default function RoleSelect() {
   const [, setLocation] = useLocation();
 
@@ -19,83 +66,44 @@ export default function RoleSelect() {
   }, [setLocation]);
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden bg-[#1E3A5F]">
+    <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden">
       <div className="absolute inset-0 z-0">
-        <img
-          src="/bg.jpg"
-          alt="FishTokri Background"
-          className="w-full h-full object-cover"
-        />
+        <img src="/bg.jpg" alt="" className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-[#0D1F3C]/80" />
       </div>
 
-      <div className="z-10 w-full max-w-2xl mx-4">
-        <div className="rounded-3xl bg-sky-200/90 border border-sky-300/60 shadow-2xl px-8 py-10">
-          <div className="flex flex-col items-center mb-8">
-            <img
-              src="/logo.png"
-              alt="FishTokri Logo"
-              className="w-40 h-40 mb-4 drop-shadow-xl object-contain"
-            />
-            <h1 className="text-3xl font-bold text-[#162B4D] tracking-tight text-center">
-              FishTokri Admin
-            </h1>
-            <p className="mt-2 text-slate-500 text-sm text-center">
-              Select your role to continue
-            </p>
+      <div className="z-10 w-full max-w-lg mx-4">
+        <div className="rounded-2xl bg-white shadow-2xl overflow-hidden">
+          <div className="bg-[#162B4D] px-8 py-8 flex flex-col items-center">
+            <div className="w-28 h-28 rounded-2xl bg-white flex items-center justify-center shadow-lg mb-5">
+              <img src="/logo.png" alt="FishTokri Logo" className="w-24 h-24 object-contain" />
+            </div>
+            <h1 className="text-2xl font-bold text-white tracking-tight text-center">FishTokri Admin</h1>
+            <p className="mt-1.5 text-white/50 text-sm text-center">Select your role to continue</p>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <button
-              onClick={() => setLocation("/login?role=master_admin")}
-              className="group flex flex-col items-center gap-4 p-6 rounded-2xl bg-white/60 border border-sky-300/50 hover:bg-white/80 hover:border-amber-400 transition-all duration-200 cursor-pointer"
-            >
-              <div className="w-14 h-14 rounded-xl bg-[#162B4D] flex items-center justify-center shadow-lg group-hover:bg-amber-400/20 transition-colors duration-200">
-                <ShieldCheck className="w-7 h-7 text-amber-400" />
-              </div>
-              <div className="text-center">
-                <p className="text-[#162B4D] font-bold text-base leading-tight">Master Admin</p>
-                <p className="text-slate-500 text-xs mt-1">Full system access</p>
-              </div>
-            </button>
+          <div className="p-6">
+            <div className="grid grid-cols-2 gap-3">
+              {roles.map(({ key, label, desc, icon: Icon, route, hover, iconBg, iconColor }) => (
+                <button
+                  key={key}
+                  onClick={() => setLocation(route)}
+                  className={`group flex flex-col items-center gap-3 p-5 rounded-xl bg-white border-2 border-gray-100 shadow-sm transition-all duration-200 cursor-pointer hover:shadow-md ${hover}`}
+                >
+                  <div className={`w-12 h-12 rounded-xl ${iconBg} flex items-center justify-center`}>
+                    <Icon className={`w-6 h-6 ${iconColor}`} />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[#162B4D] font-bold text-sm leading-tight">{label}</p>
+                    <p className="text-gray-400 text-xs mt-1">{desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
 
-            <button
-              onClick={() => setLocation("/login?role=super_hub")}
-              className="group flex flex-col items-center gap-4 p-6 rounded-2xl bg-white/60 border border-sky-300/50 hover:bg-white/80 hover:border-[#1A56DB] transition-all duration-200 cursor-pointer"
-            >
-              <div className="w-14 h-14 rounded-xl bg-[#162B4D] flex items-center justify-center shadow-lg group-hover:bg-[#1A56DB]/20 transition-colors duration-200">
-                <Warehouse className="w-7 h-7 text-[#4B9EFF]" />
-              </div>
-              <div className="text-center">
-                <p className="text-[#162B4D] font-bold text-base leading-tight">Super Hub</p>
-                <p className="text-slate-500 text-xs mt-1">Hub management access</p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setLocation("/login?role=sub_hub")}
-              className="group flex flex-col items-center gap-4 p-6 rounded-2xl bg-white/60 border border-sky-300/50 hover:bg-white/80 hover:border-teal-500 transition-all duration-200 cursor-pointer"
-            >
-              <div className="w-14 h-14 rounded-xl bg-[#162B4D] flex items-center justify-center shadow-lg group-hover:bg-teal-500/20 transition-colors duration-200">
-                <Store className="w-7 h-7 text-teal-400" />
-              </div>
-              <div className="text-center">
-                <p className="text-[#162B4D] font-bold text-base leading-tight">Sub Hub</p>
-                <p className="text-slate-500 text-xs mt-1">Local hub access</p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setLocation("/login?role=delivery_person")}
-              className="group flex flex-col items-center gap-4 p-6 rounded-2xl bg-white/60 border border-sky-300/50 hover:bg-white/80 hover:border-orange-400 transition-all duration-200 cursor-pointer"
-            >
-              <div className="w-14 h-14 rounded-xl bg-[#162B4D] flex items-center justify-center shadow-lg group-hover:bg-orange-400/20 transition-colors duration-200">
-                <Truck className="w-7 h-7 text-orange-400" />
-              </div>
-              <div className="text-center">
-                <p className="text-[#162B4D] font-bold text-base leading-tight">Delivery</p>
-                <p className="text-slate-500 text-xs mt-1">Delivery access</p>
-              </div>
-            </button>
+          <div className="px-6 pb-5 text-center">
+            <p className="text-xs text-gray-300">FishTokri Admin System</p>
           </div>
         </div>
       </div>
