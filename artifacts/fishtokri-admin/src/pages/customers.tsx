@@ -709,50 +709,150 @@ function CollapsibleDetailSection({ title, icon: Icon, children, defaultOpen = t
 }
 
 function UsedCouponsList({ coupons }: { coupons: any[] }) {
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("used_desc");
+  const [locationFilter, setLocationFilter] = useState("all");
+  const [layout, setLayout] = useState<"grid" | "list">("grid");
+
+  const allLocations = useMemo(() => {
+    const s = new Set<string>();
+    coupons.forEach((c) => { const loc = c.location || c.subHub || c.area || ""; if (loc) s.add(loc); });
+    return Array.from(s);
+  }, [coupons]);
+
+  const filtered = useMemo(() => {
+    let result = coupons;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter((c) => {
+        const code = (c.code || c.couponCode || "").toLowerCase();
+        const loc = (c.location || c.subHub || c.area || "").toLowerCase();
+        return code.includes(q) || loc.includes(q);
+      });
+    }
+    if (locationFilter !== "all") {
+      result = result.filter((c) => (c.location || c.subHub || c.area || "") === locationFilter);
+    }
+    result = [...result].sort((a, b) => {
+      const aUsed = a.usedCount ?? a.used ?? 0;
+      const bUsed = b.usedCount ?? b.used ?? 0;
+      if (sort === "used_asc") return aUsed - bUsed;
+      if (sort === "code_asc") return (a.code || "").localeCompare(b.code || "");
+      if (sort === "recent") return new Date(b.lastUsedAt || 0).getTime() - new Date(a.lastUsedAt || 0).getTime();
+      return bUsed - aUsed;
+    });
+    return result;
+  }, [coupons, search, sort, locationFilter]);
+
   if (!coupons.length) return <EmptyPanel text="No coupons used by this customer." />;
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {coupons.map((coupon: any, index: number) => {
-        const code = coupon.code || coupon.couponCode || "—";
-        const usedCount = coupon.usedCount ?? coupon.used ?? 0;
-        const maxAllowed = coupon.maxAllowed ?? coupon.maxUses ?? null;
-        const location = coupon.location || coupon.subHub || coupon.area || "";
-        const lastUsedAt = coupon.lastUsedAt || coupon.lastUsed || "";
-        const couponId = String(coupon.couponId || coupon._id || "");
-        return (
-          <div key={index} className="rounded-xl border border-gray-100 bg-white p-4 flex items-start gap-3">
-            <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Tag className="w-4 h-4 text-green-600" />
-            </div>
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="inline-block bg-green-50 text-green-700 text-sm font-bold px-2.5 py-1 rounded-lg tracking-wider font-mono border border-green-100">
-                  {code}
-                </span>
-                <span className="inline-block bg-gray-50 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full border border-gray-100">
-                  Used {usedCount} time{usedCount !== 1 ? "s" : ""}
-                  {maxAllowed !== null ? ` / ${maxAllowed} max` : ""}
-                </span>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[160px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search coupons..."
+            className="w-full pl-8 pr-8 py-1.5 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:ring-1 focus:ring-[#1A56DB] focus:border-[#1A56DB]"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+          className="h-7 px-2 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 outline-none focus:ring-1 focus:ring-[#1A56DB]"
+        >
+          <option value="used_desc">Most used</option>
+          <option value="used_asc">Least used</option>
+          <option value="recent">Recently used</option>
+          <option value="code_asc">Code (A → Z)</option>
+        </select>
+        {allLocations.length > 0 && (
+          <select
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            className="h-7 px-2 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 outline-none focus:ring-1 focus:ring-[#1A56DB]"
+          >
+            <option value="all">All locations</option>
+            {allLocations.map((loc) => <option key={loc} value={loc}>{loc}</option>)}
+          </select>
+        )}
+        <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white ml-auto">
+          <button
+            onClick={() => setLayout("grid")}
+            className={`w-7 h-7 flex items-center justify-center transition-colors ${layout === "grid" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+            title="Grid view"
+          >
+            <LayoutGrid className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => setLayout("list")}
+            className={`w-7 h-7 flex items-center justify-center transition-colors ${layout === "list" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+            title="List view"
+          >
+            <LayoutList className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <EmptyPanel text="No coupons match your search or filters." />
+      ) : (
+        <div className={layout === "grid" ? "grid grid-cols-1 md:grid-cols-2 gap-3" : "space-y-2"}>
+          {filtered.map((coupon: any, index: number) => {
+            const code = coupon.code || coupon.couponCode || "—";
+            const usedCount = coupon.usedCount ?? coupon.used ?? 0;
+            const maxAllowed = coupon.maxAllowed ?? coupon.maxUses ?? null;
+            const location = coupon.location || coupon.subHub || coupon.area || "";
+            const lastUsedAt = coupon.lastUsedAt || coupon.lastUsed || "";
+            const couponId = String(coupon.couponId || coupon._id || "");
+            return (
+              <div key={index} className="rounded-xl border border-gray-100 bg-white p-4 flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Tag className="w-4 h-4 text-green-600" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-block bg-green-50 text-green-700 text-sm font-bold px-2.5 py-1 rounded-lg tracking-wider font-mono border border-green-100">
+                      {code}
+                    </span>
+                    <span className="inline-block bg-gray-50 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full border border-gray-100">
+                      Used {usedCount} time{usedCount !== 1 ? "s" : ""}
+                      {maxAllowed !== null ? ` / ${maxAllowed} max` : ""}
+                    </span>
+                  </div>
+                  {location && (
+                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      <span>{location}</span>
+                    </div>
+                  )}
+                  {lastUsedAt && (
+                    <div className="flex items-center gap-1 text-xs text-gray-400">
+                      <Clock className="w-3 h-3 flex-shrink-0" />
+                      <span>Last used: {formatDateTime(lastUsedAt)}</span>
+                    </div>
+                  )}
+                  {couponId && (
+                    <p className="text-[10px] text-gray-300 font-mono">ID: {couponId}</p>
+                  )}
+                </div>
               </div>
-              {location && (
-                <div className="flex items-center gap-1 text-xs text-gray-500">
-                  <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                  <span>{location}</span>
-                </div>
-              )}
-              {lastUsedAt && (
-                <div className="flex items-center gap-1 text-xs text-gray-400">
-                  <Clock className="w-3 h-3 flex-shrink-0" />
-                  <span>Last used: {formatDateTime(lastUsedAt)}</span>
-                </div>
-              )}
-              {couponId && (
-                <p className="text-[10px] text-gray-300 font-mono">ID: {couponId}</p>
-              )}
-            </div>
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
+
+      {filtered.length < coupons.length && (
+        <p className="text-xs text-gray-400 text-center">Showing {filtered.length} of {coupons.length} coupons</p>
+      )}
     </div>
   );
 }
@@ -826,13 +926,148 @@ function AddressCard({ address, index }: { address: any; index: number }) {
   );
 }
 
+const ORDER_SORT_OPTIONS = [
+  { value: "date_desc", label: "Newest first" },
+  { value: "date_asc", label: "Oldest first" },
+  { value: "amount_desc", label: "Highest amount" },
+  { value: "amount_asc", label: "Lowest amount" },
+  { value: "status_asc", label: "Status (A → Z)" },
+];
+
 function OrderList({ orders, empty }: { orders: any[]; empty: string }) {
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("date_desc");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [layout, setLayout] = useState<"list" | "grid">("list");
+
+  const allStatuses = useMemo(() => {
+    const s = new Set<string>();
+    orders.forEach((o) => { if (o.status) s.add(normalize(o.status)); });
+    return Array.from(s);
+  }, [orders]);
+
+  const filtered = useMemo(() => {
+    let result = orders;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter((o) => {
+        const ref = shortOrderRef(o, 0).toLowerCase();
+        const items = (Array.isArray(o.items) ? o.items : []).map((i: any) => (i.name || i.productName || "").toLowerCase()).join(" ");
+        const addr = addressText(o.deliveryAddress || o.address || "").toLowerCase();
+        return ref.includes(q) || items.includes(q) || addr.includes(q) || normalize(o.status).includes(q);
+      });
+    }
+    if (statusFilter !== "all") {
+      result = result.filter((o) => normalize(o.status) === statusFilter);
+    }
+    result = [...result].sort((a, b) => {
+      if (sort === "date_asc") return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+      if (sort === "amount_desc") return getOrderTotal(b) - getOrderTotal(a);
+      if (sort === "amount_asc") return getOrderTotal(a) - getOrderTotal(b);
+      if (sort === "status_asc") return normalize(a.status).localeCompare(normalize(b.status));
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+    return result;
+  }, [orders, search, sort, statusFilter]);
+
   if (!orders.length) return <EmptyPanel text={empty} />;
+
   return (
     <div className="space-y-3">
-      {orders.map((order, index) => (
-        <OrderCard key={getOrderId(order) || index} order={order} index={index} />
-      ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[160px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search orders..."
+            className="w-full pl-8 pr-8 py-1.5 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:ring-1 focus:ring-[#1A56DB] focus:border-[#1A56DB]"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+          className="h-7 px-2 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 outline-none focus:ring-1 focus:ring-[#1A56DB]"
+        >
+          {ORDER_SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="h-7 px-2 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 outline-none focus:ring-1 focus:ring-[#1A56DB]"
+        >
+          <option value="all">All statuses</option>
+          {allStatuses.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
+        </select>
+        <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white ml-auto">
+          <button
+            onClick={() => setLayout("list")}
+            className={`w-7 h-7 flex items-center justify-center transition-colors ${layout === "list" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+            title="List view"
+          >
+            <LayoutList className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => setLayout("grid")}
+            className={`w-7 h-7 flex items-center justify-center transition-colors ${layout === "grid" ? "bg-[#162B4D] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+            title="Grid view"
+          >
+            <LayoutGrid className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <EmptyPanel text="No orders match your search or filters." />
+      ) : layout === "grid" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {filtered.map((order, index) => (
+            <OrderCardCompact key={getOrderId(order) || index} order={order} index={index} />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((order, index) => (
+            <OrderCard key={getOrderId(order) || index} order={order} index={index} />
+          ))}
+        </div>
+      )}
+
+      {filtered.length < orders.length && (
+        <p className="text-xs text-gray-400 text-center">Showing {filtered.length} of {orders.length} orders</p>
+      )}
+    </div>
+  );
+}
+
+function OrderCardCompact({ order, index }: { order: any; index: number }) {
+  const ref = shortOrderRef(order, index);
+  const items = Array.isArray(order.items) ? order.items : [];
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-3">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <p className="font-bold text-[#162B4D] text-xs flex items-center gap-1.5">
+          <Package className="w-3.5 h-3.5 text-gray-400" />{ref}
+        </p>
+        <span className={`inline-flex border items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold capitalize ${getStatusStyle(order.status)}`}>
+          {statusLabel(order.status)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] text-gray-400">{formatDateTime(order.createdAt || order.orderDate)}</p>
+        <span className="text-xs font-bold text-[#162B4D]">{formatRupees(getOrderTotal(order))}</span>
+      </div>
+      {items.length > 0 && (
+        <p className="text-[10px] text-gray-500 mt-1.5 truncate">
+          {items.map((i: any) => i.name || i.productName || "Item").join(", ")}
+        </p>
+      )}
     </div>
   );
 }
