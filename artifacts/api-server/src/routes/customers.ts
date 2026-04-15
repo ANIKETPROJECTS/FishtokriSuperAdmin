@@ -17,6 +17,7 @@ const customerSchema = new mongoose.Schema(
     dateOfBirth: String,
     addresses: { type: Array, default: [] },
     orders: { type: Array, default: [] },
+    usedCoupons: { type: Array, default: [] },
   },
   { timestamps: true }
 );
@@ -36,6 +37,7 @@ function serializeCustomer(doc: any) {
     dateOfBirth: doc.dateOfBirth ?? "",
     addresses: doc.addresses ?? [],
     orders: doc.orders ?? [],
+    usedCoupons: doc.usedCoupons ?? [],
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };

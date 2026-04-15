@@ -5,7 +5,7 @@ import {
   ArrowUpDown, SlidersHorizontal, X, LayoutGrid, LayoutList,
   MapPin, ShoppingBag, ChevronLeft, ChevronRight, Users,
   Eye, Home, Clock, CheckCircle2, ClipboardList, Package,
-  CreditCard, Truck, UserRound,
+  CreditCard, Truck, UserRound, ChevronDown, ChevronUp, Tag,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,7 @@ interface Customer {
   dateOfBirth: string;
   addresses: any[];
   orders: any[];
+  usedCoupons?: any[];
   currentOrders?: any[];
   orderHistory?: any[];
   createdAt: string;
@@ -648,13 +649,17 @@ function CustomerDetailDialog({ customer, onClose, onEdit, onDelete }: { custome
                 ) : <EmptyPanel text="No saved addresses found for this customer." />}
               </DetailSection>
 
-              <DetailSection title={`Current Orders (${current.length})`} icon={Clock}>
+              <CollapsibleDetailSection title={`Current Orders (${current.length})`} icon={Clock} defaultOpen={current.length > 0 && current.length <= 5}>
                 <OrderList orders={current} empty="No current or active orders found for this customer." />
-              </DetailSection>
+              </CollapsibleDetailSection>
 
-              <DetailSection title={`Order History (${history.length})`} icon={ShoppingBag}>
+              <CollapsibleDetailSection title={`Order History (${history.length})`} icon={ShoppingBag} defaultOpen={false}>
                 <OrderList orders={history} empty="No completed, cancelled or past orders found for this customer." />
-              </DetailSection>
+              </CollapsibleDetailSection>
+
+              <CollapsibleDetailSection title={`Used Coupons (${fullCustomer.usedCoupons?.length ?? 0})`} icon={Tag} defaultOpen={true}>
+                <UsedCouponsList coupons={fullCustomer.usedCoupons ?? []} />
+              </CollapsibleDetailSection>
 
             </div>
           </>
@@ -680,6 +685,75 @@ function DetailSection({ title, icon: Icon, children }: { title: string; icon: a
       <h4 className="flex items-center gap-2 text-sm font-bold text-[#162B4D] mb-3"><Icon className="w-4 h-4 text-[#1A56DB]" />{title}</h4>
       {children}
     </section>
+  );
+}
+
+function CollapsibleDetailSection({ title, icon: Icon, children, defaultOpen = true }: { title: string; icon: any; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="rounded-2xl border border-gray-100 bg-gray-50/40">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-2 p-4 text-left"
+      >
+        <h4 className="flex items-center gap-2 text-sm font-bold text-[#162B4D]">
+          <Icon className="w-4 h-4 text-[#1A56DB]" />
+          {title}
+        </h4>
+        {open ? <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+      </button>
+      {open && <div className="px-4 pb-4">{children}</div>}
+    </section>
+  );
+}
+
+function UsedCouponsList({ coupons }: { coupons: any[] }) {
+  if (!coupons.length) return <EmptyPanel text="No coupons used by this customer." />;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {coupons.map((coupon: any, index: number) => {
+        const code = coupon.code || coupon.couponCode || "—";
+        const usedCount = coupon.usedCount ?? coupon.used ?? 0;
+        const maxAllowed = coupon.maxAllowed ?? coupon.maxUses ?? null;
+        const location = coupon.location || coupon.subHub || coupon.area || "";
+        const lastUsedAt = coupon.lastUsedAt || coupon.lastUsed || "";
+        const couponId = String(coupon.couponId || coupon._id || "");
+        return (
+          <div key={index} className="rounded-xl border border-gray-100 bg-white p-4 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Tag className="w-4 h-4 text-green-600" />
+            </div>
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-block bg-green-50 text-green-700 text-sm font-bold px-2.5 py-1 rounded-lg tracking-wider font-mono border border-green-100">
+                  {code}
+                </span>
+                <span className="inline-block bg-gray-50 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full border border-gray-100">
+                  Used {usedCount} time{usedCount !== 1 ? "s" : ""}
+                  {maxAllowed !== null ? ` / ${maxAllowed} max` : ""}
+                </span>
+              </div>
+              {location && (
+                <div className="flex items-center gap-1 text-xs text-gray-500">
+                  <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                  <span>{location}</span>
+                </div>
+              )}
+              {lastUsedAt && (
+                <div className="flex items-center gap-1 text-xs text-gray-400">
+                  <Clock className="w-3 h-3 flex-shrink-0" />
+                  <span>Last used: {formatDateTime(lastUsedAt)}</span>
+                </div>
+              )}
+              {couponId && (
+                <p className="text-[10px] text-gray-300 font-mono">ID: {couponId}</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
