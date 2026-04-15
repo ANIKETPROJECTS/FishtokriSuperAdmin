@@ -88,7 +88,7 @@ export default function RoleSelect() {
                 <button
                   key={key}
                   onClick={() => setLocation(route)}
-                  className={`group flex flex-col items-center gap-3 p-5 rounded-xl bg-white border-2 border-gray-100 shadow-sm transition-all duration-200 cursor-pointer hover:shadow-md ${hover}`}
+                  className={`group flex flex-col items-center gap-3 p-5 rounded-xl bg-white border-2 border-gray-300 shadow-sm transition-all duration-200 cursor-pointer hover:shadow-md ${hover}`}
                 >
                   <div className={`w-12 h-12 rounded-xl ${iconBg} flex items-center justify-center`}>
                     <Icon className={`w-6 h-6 ${iconColor}`} />
