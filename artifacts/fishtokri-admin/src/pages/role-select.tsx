@@ -9,10 +9,12 @@ const roles = [
     desc: "Full system access",
     icon: ShieldCheck,
     route: "/login?role=master_admin",
-    accent: "text-amber-400",
-    hover: "hover:border-amber-400 hover:shadow-amber-100",
-    iconBg: "bg-amber-50",
+    border: "border-amber-400",
+    bg: "bg-amber-50/60",
+    hover: "hover:bg-amber-50 hover:shadow-amber-200 hover:scale-[1.03]",
+    iconBg: "bg-amber-100",
     iconColor: "text-amber-500",
+    labelColor: "text-amber-700",
   },
   {
     key: "super_hub",
@@ -20,10 +22,12 @@ const roles = [
     desc: "Hub management access",
     icon: Warehouse,
     route: "/login?role=super_hub",
-    accent: "text-blue-500",
-    hover: "hover:border-blue-400 hover:shadow-blue-100",
-    iconBg: "bg-blue-50",
-    iconColor: "text-blue-500",
+    border: "border-blue-400",
+    bg: "bg-blue-50/60",
+    hover: "hover:bg-blue-50 hover:shadow-blue-200 hover:scale-[1.03]",
+    iconBg: "bg-blue-100",
+    iconColor: "text-blue-600",
+    labelColor: "text-blue-800",
   },
   {
     key: "sub_hub",
@@ -31,10 +35,12 @@ const roles = [
     desc: "Local hub access",
     icon: Store,
     route: "/login?role=sub_hub",
-    accent: "text-teal-500",
-    hover: "hover:border-teal-400 hover:shadow-teal-100",
-    iconBg: "bg-teal-50",
-    iconColor: "text-teal-500",
+    border: "border-teal-400",
+    bg: "bg-teal-50/60",
+    hover: "hover:bg-teal-50 hover:shadow-teal-200 hover:scale-[1.03]",
+    iconBg: "bg-teal-100",
+    iconColor: "text-teal-600",
+    labelColor: "text-teal-800",
   },
   {
     key: "delivery_person",
@@ -42,10 +48,12 @@ const roles = [
     desc: "Delivery access",
     icon: Truck,
     route: "/login?role=delivery_person",
-    accent: "text-orange-500",
-    hover: "hover:border-orange-400 hover:shadow-orange-100",
-    iconBg: "bg-orange-50",
+    border: "border-orange-400",
+    bg: "bg-orange-50/60",
+    hover: "hover:bg-orange-50 hover:shadow-orange-200 hover:scale-[1.03]",
+    iconBg: "bg-orange-100",
     iconColor: "text-orange-500",
+    labelColor: "text-orange-800",
   },
 ];
 
@@ -84,18 +92,18 @@ export default function RoleSelect() {
 
           <div className="p-6">
             <div className="grid grid-cols-2 gap-3">
-              {roles.map(({ key, label, desc, icon: Icon, route, hover, iconBg, iconColor }) => (
+              {roles.map(({ key, label, desc, icon: Icon, route, border, bg, hover, iconBg, iconColor, labelColor }) => (
                 <button
                   key={key}
                   onClick={() => setLocation(route)}
-                  className={`group flex flex-col items-center gap-3 p-5 rounded-xl bg-white border-2 border-gray-300 shadow-sm transition-all duration-200 cursor-pointer hover:shadow-md ${hover}`}
+                  className={`group flex flex-col items-center gap-3 p-5 rounded-xl border-2 shadow-sm transition-all duration-200 cursor-pointer ${border} ${bg} ${hover}`}
                 >
                   <div className={`w-12 h-12 rounded-xl ${iconBg} flex items-center justify-center`}>
                     <Icon className={`w-6 h-6 ${iconColor}`} />
                   </div>
                   <div className="text-center">
-                    <p className="text-[#162B4D] font-bold text-sm leading-tight">{label}</p>
-                    <p className="text-gray-400 text-xs mt-1">{desc}</p>
+                    <p className={`font-bold text-sm leading-tight ${labelColor}`}>{label}</p>
+                    <p className="text-gray-500 text-xs mt-1">{desc}</p>
                   </div>
                 </button>
               ))}
