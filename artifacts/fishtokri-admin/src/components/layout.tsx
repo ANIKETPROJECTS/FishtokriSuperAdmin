@@ -80,7 +80,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const navItems = isSuperHub ? superHubNavItems : isSubHub ? subHubNavItems : isDelivery ? deliveryNavItems : masterAdminNavItems;
   const roleLabel = isSuperHub ? "Super Hub" : isSubHub ? "Sub Hub" : isDelivery ? "Delivery" : "Master Admin";
 
-  const sidebarW = sidebarOpen ? "165px" : "56px";
+  const sidebarW = sidebarOpen ? "220px" : "56px";
 
   return (
     <div className="flex min-h-screen bg-[#F4F6FA]">
@@ -92,8 +92,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Logo */}
         <div className={`flex items-center border-b border-white/10 transition-all duration-300 ${sidebarOpen ? "justify-center px-4 py-4" : "justify-center px-2 py-3"}`}>
           {sidebarOpen ? (
-            <div className="w-[136px] h-[64px] rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
-              <img src="/logo.png" alt="FishTokri" className="w-[124px] h-[56px] object-contain" />
+            <div className="w-[180px] h-[64px] rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
+              <img src="/logo.png" alt="FishTokri" className="w-[164px] h-[56px] object-contain" />
             </div>
           ) : (
             <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
