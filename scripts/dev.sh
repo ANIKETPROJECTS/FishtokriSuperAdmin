@@ -12,12 +12,9 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-if curl -sf "http://localhost:${API_PORT}/api/healthz" > /dev/null 2>&1; then
-  echo "API server already running on port ${API_PORT}."
-else
-  (cd "$ROOT_DIR/artifacts/api-server" && PORT="$API_PORT" pnpm run dev) &
-  API_PID=$!
-fi
+fuser -k "${API_PORT}/tcp" 2>/dev/null || true
+(cd "$ROOT_DIR/artifacts/api-server" && PORT="$API_PORT" pnpm run dev) &
+API_PID=$!
 
 echo "Waiting for API server to be ready..."
 until curl -sf "http://localhost:${API_PORT}/api/healthz" > /dev/null 2>&1; do

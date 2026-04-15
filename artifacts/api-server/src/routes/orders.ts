@@ -11,8 +11,8 @@ async function getOrdersDb() {
   return getSubHubDbConnection(ORDERS_DB);
 }
 
-function toId(id: string): mongoose.Types.ObjectId | null {
-  try { return new mongoose.Types.ObjectId(id); } catch { return null; }
+function toId(id: string): mongoose.mongo.BSON.ObjectId | null {
+  try { return new mongoose.mongo.ObjectId(id); } catch { return null; }
 }
 
 // GET /api/orders — list with search, filter, sort, pagination
@@ -154,8 +154,10 @@ router.delete("/:id", async (req, res) => {
     const oid = toId(req.params.id);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
     const conn = await getOrdersDb();
-    const result = await conn.db.collection(COLLECTION).findOneAndDelete({ _id: oid });
-    if (!result) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+    req.log.info({ id: req.params.id, oid: oid.toHexString() }, "Attempting to delete order");
+    const result = await conn.db.collection(COLLECTION).deleteOne({ _id: oid });
+    req.log.info({ deletedCount: result.deletedCount }, "Delete result");
+    if (result.deletedCount === 0) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete order");
