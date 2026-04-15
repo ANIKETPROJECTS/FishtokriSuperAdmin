@@ -4,6 +4,7 @@ import {
   Truck, Package, ChevronLeft, ChevronRight, Eye, MapPin,
   Phone, User, SlidersHorizontal, ArrowUpDown, UserCheck,
   ShoppingBag, Building2, AlertCircle, ChevronDown, Check,
+  Pencil, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -290,6 +291,15 @@ export default function Orders() {
   const [inlineAssigningId, setInlineAssigningId] = useState<string | null>(null);
   const [showAllPersons, setShowAllPersons] = useState(false);
 
+  // Edit order
+  const [editingOrder, setEditingOrder] = useState<any>(null);
+  const [editForm, setEditForm] = useState({ customerName: "", phone: "", address: "", deliveryArea: "", notes: "", status: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Delete order
+  const [deletingOrder, setDeletingOrder] = useState<any>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
   useEffect(() => {
     apiFetch("/api/users?role=delivery_person&limit=100")
       .then((d) => setDeliveryPersons(d.users ?? []))
@@ -411,6 +421,51 @@ export default function Orders() {
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally { setAssigningDelivery(false); }
+  };
+
+  const openEditOrder = (o: any) => {
+    setEditingOrder(o);
+    setEditForm({
+      customerName: o.customerName ?? "",
+      phone: o.phone ?? "",
+      address: o.address ?? "",
+      deliveryArea: o.deliveryArea ?? "",
+      notes: o.notes ?? "",
+      status: o.status ?? "",
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingOrder) return;
+    setSavingEdit(true);
+    try {
+      await apiFetch(`/api/orders/${editingOrder._id}`, { method: "PUT", body: JSON.stringify(editForm) });
+      toast({ title: "Order updated successfully" });
+      setOrders((prev) => prev.map((o) => String(o._id) === String(editingOrder._id) ? { ...o, ...editForm } : o));
+      if (selectedOrder && String(selectedOrder._id) === String(editingOrder._id)) {
+        setSelectedOrder((o: any) => ({ ...o, ...editForm }));
+      }
+      setEditingOrder(null);
+      loadStats();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally { setSavingEdit(false); }
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!deletingOrder) return;
+    setConfirmingDelete(true);
+    try {
+      await apiFetch(`/api/orders/${deletingOrder._id}`, { method: "DELETE" });
+      toast({ title: "Order deleted" });
+      setOrders((prev) => prev.filter((o) => String(o._id) !== String(deletingOrder._id)));
+      setTotal((t) => t - 1);
+      if (selectedOrder && String(selectedOrder._id) === String(deletingOrder._id)) setSelectedOrder(null);
+      setDeletingOrder(null);
+      loadStats();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally { setConfirmingDelete(false); }
   };
 
   const clearFilters = () => {
@@ -638,17 +693,34 @@ export default function Orders() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => {
-                            setSelectedOrder(o);
-                            setEditStatus(o.status);
-                            setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? "");
-                            setShowAllPersons(false);
-                          }}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-[#1A56DB] hover:text-[#1447B4] bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors"
-                        >
-                          <Eye className="w-3.5 h-3.5" /> View
-                        </button>
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedOrder(o);
+                              setEditStatus(o.status);
+                              setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? "");
+                              setShowAllPersons(false);
+                            }}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-[#1A56DB] hover:text-[#1447B4] bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors"
+                            title="View order"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> View
+                          </button>
+                          <button
+                            onClick={() => openEditOrder(o)}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg transition-colors"
+                            title="Edit order"
+                          >
+                            <Pencil className="w-3.5 h-3.5" /> Edit
+                          </button>
+                          <button
+                            onClick={() => setDeletingOrder(o)}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg transition-colors"
+                            title="Delete order"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -687,6 +759,135 @@ export default function Orders() {
           </div>
         )}
       </div>
+
+      {/* Edit Order Modal */}
+      <Dialog open={!!editingOrder} onOpenChange={(o) => { if (!o) setEditingOrder(null); }}>
+        <DialogContent className="sm:max-w-[480px]">
+          {editingOrder && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-[#162B4D] flex items-center gap-2">
+                  <Pencil className="w-4 h-4" />
+                  Edit Order
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-500">Customer Name</Label>
+                    <Input
+                      value={editForm.customerName}
+                      onChange={(e) => setEditForm((f) => ({ ...f, customerName: e.target.value }))}
+                      className="h-9 text-sm"
+                      placeholder="Customer name"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-500">Phone</Label>
+                    <Input
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                      className="h-9 text-sm"
+                      placeholder="Phone number"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-gray-500">Delivery Address</Label>
+                  <Input
+                    value={editForm.address}
+                    onChange={(e) => setEditForm((f) => ({ ...f, address: e.target.value }))}
+                    className="h-9 text-sm"
+                    placeholder="Full address"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-gray-500">Delivery Area</Label>
+                  <Input
+                    value={editForm.deliveryArea}
+                    onChange={(e) => setEditForm((f) => ({ ...f, deliveryArea: e.target.value }))}
+                    className="h-9 text-sm"
+                    placeholder="Area / locality"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-gray-500">Status</Label>
+                  <Select value={editForm.status} onValueChange={(v) => setEditForm((f) => ({ ...f, status: v }))}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {ALL_STATUSES.map((s) => (
+                        <SelectItem key={s} value={s}>{STATUS_CONFIG[s].label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-gray-500">Notes</Label>
+                  <Input
+                    value={editForm.notes}
+                    onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                    className="h-9 text-sm"
+                    placeholder="Order notes"
+                  />
+                </div>
+              </div>
+              <DialogFooter className="gap-2 pt-2">
+                <Button variant="outline" onClick={() => setEditingOrder(null)} className="h-9">Cancel</Button>
+                <Button
+                  onClick={handleSaveEdit}
+                  disabled={savingEdit}
+                  className="bg-emerald-600 hover:bg-emerald-700 h-9 text-white"
+                >
+                  {savingEdit ? "Saving..." : "Save Changes"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deletingOrder} onOpenChange={(o) => { if (!o && !confirmingDelete) setDeletingOrder(null); }}>
+        <DialogContent className="sm:max-w-[400px]">
+          {deletingOrder && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-red-600 flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" />
+                  Delete Order
+                </DialogTitle>
+              </DialogHeader>
+              <div className="py-2 space-y-3">
+                <p className="text-sm text-gray-600">
+                  Are you sure you want to delete the order for{" "}
+                  <span className="font-semibold text-[#162B4D]">{deletingOrder.customerName}</span>?
+                </p>
+                <div className="bg-red-50 border border-red-100 rounded-xl p-3 space-y-1">
+                  <p className="text-xs text-red-600 font-medium flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    This action cannot be undone.
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {Array.isArray(deletingOrder.items) ? deletingOrder.items.length : 0} item(s) ·{" "}
+                    {formatRupees(orderTotal(deletingOrder.items))} ·{" "}
+                    <StatusBadge status={deletingOrder.status} />
+                  </p>
+                </div>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setDeletingOrder(null)} disabled={confirmingDelete} className="h-9">Cancel</Button>
+                <Button
+                  onClick={handleDeleteOrder}
+                  disabled={confirmingDelete}
+                  className="bg-red-600 hover:bg-red-700 h-9 text-white"
+                >
+                  {confirmingDelete ? "Deleting..." : "Delete Order"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Order Detail Modal */}
       <Dialog open={!!selectedOrder} onOpenChange={(o) => { if (!o) { setSelectedOrder(null); setShowAllPersons(false); } }}>

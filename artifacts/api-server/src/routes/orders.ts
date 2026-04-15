@@ -115,17 +115,25 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// PUT /api/orders/:id — update status / notes
+// PUT /api/orders/:id — update status / notes / customer info
 router.put("/:id", async (req, res) => {
   try {
     const oid = toId(req.params.id);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
-    const { status, notes, assignedDeliveryPersonId, assignedDeliveryPersonName } = req.body;
+    const {
+      status, notes,
+      assignedDeliveryPersonId, assignedDeliveryPersonName,
+      customerName, phone, address, deliveryArea,
+    } = req.body;
     const update: any = { updatedAt: new Date() };
     if (status !== undefined) update.status = status;
     if (notes !== undefined) update.notes = notes;
     if (assignedDeliveryPersonId !== undefined) update.assignedDeliveryPersonId = assignedDeliveryPersonId;
     if (assignedDeliveryPersonName !== undefined) update.assignedDeliveryPersonName = assignedDeliveryPersonName;
+    if (customerName !== undefined) update.customerName = customerName;
+    if (phone !== undefined) update.phone = phone;
+    if (address !== undefined) update.address = address;
+    if (deliveryArea !== undefined) update.deliveryArea = deliveryArea;
     const conn = await getOrdersDb();
     const result = await conn.db.collection(COLLECTION).findOneAndUpdate(
       { _id: oid },
@@ -137,6 +145,21 @@ router.put("/:id", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to update order");
     res.status(500).json({ error: "InternalError", message: "Failed to update order" });
+  }
+});
+
+// DELETE /api/orders/:id — delete an order
+router.delete("/:id", async (req, res) => {
+  try {
+    const oid = toId(req.params.id);
+    if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
+    const conn = await getOrdersDb();
+    const result = await conn.db.collection(COLLECTION).findOneAndDelete({ _id: oid });
+    if (!result) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete order");
+    res.status(500).json({ error: "InternalError", message: "Failed to delete order" });
   }
 });
 
