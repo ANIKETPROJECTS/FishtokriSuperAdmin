@@ -538,6 +538,46 @@ export default function Orders() {
           ))}
         </div>
 
+        {/* Status Tabs */}
+        <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-50 overflow-x-auto scrollbar-none bg-gray-50/50">
+          <button
+            onClick={() => setStatusFilter("")}
+            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+              !statusFilter
+                ? "bg-[#162B4D] text-white shadow-sm"
+                : "bg-white border border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
+            }`}
+          >
+            All
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${!statusFilter ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
+              {totalAll}
+            </span>
+          </button>
+          {ALL_STATUSES.map((s) => {
+            const cfg = STATUS_CONFIG[s];
+            const Icon = cfg.icon;
+            const count = statsData[s] ?? 0;
+            const isActive = statusFilter === s;
+            return (
+              <button
+                key={s}
+                onClick={() => { setStatusFilter(isActive ? "" : s); setActiveTab("all"); }}
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+                  isActive
+                    ? `${cfg.bg} ${cfg.color} shadow-sm`
+                    : "bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                }`}
+              >
+                <Icon className={`w-3 h-3 ${isActive ? cfg.color : "text-gray-400"}`} />
+                {cfg.label}
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-white/60" : "bg-gray-100 text-gray-500"}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Toolbar */}
         <div className="p-4 border-b border-gray-50 flex flex-wrap gap-2.5 items-center">
           <div className="relative flex-1 min-w-[200px]">
@@ -585,16 +625,6 @@ export default function Orders() {
         {/* Expandable Filter Row */}
         {showFilters && (
           <div className="px-4 pb-3 flex flex-wrap gap-3 bg-gray-50/60 border-b border-gray-100 pt-3">
-            <div className="flex flex-col gap-1">
-              <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Status</Label>
-              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === "_all" ? "" : v); setActiveTab("all"); }}>
-                <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="All statuses" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">All statuses</SelectItem>
-                  {ALL_STATUSES.map((s) => <SelectItem key={s} value={s}>{STATUS_CONFIG[s].label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex flex-col gap-1">
               <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Delivery Type</Label>
               <Select value={deliveryTypeFilter} onValueChange={(v) => setDeliveryTypeFilter(v === "_all" ? "" : v)}>
