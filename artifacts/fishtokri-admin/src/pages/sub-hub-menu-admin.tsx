@@ -479,7 +479,6 @@ const PRODUCT_COLS = [
   { key: "originalPrice", header: "MRP" },
   { key: "discountPct", header: "Discount %" },
   { key: "unit", header: "Unit" },
-  { key: "weight", header: "Weight" },
   { key: "pieces", header: "Pieces" },
   { key: "serves", header: "Serves" },
   { key: "quantity", header: "Stock" },
@@ -583,7 +582,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
       { header: "Price",                           key: "price",            width: 10 },
       { header: "MRP",                             key: "mrp",              width: 10 },
       { header: "Unit",                            key: "unit",             width: 16 },
-      { header: "Weight",                          key: "weight",           width: 12 },
       { header: "Gross Weight",                    key: "grossWeight",      width: 14 },
       { header: "Net Weight",                      key: "netWeight",        width: 14 },
       { header: "Pieces",                          key: "pieces",           width: 12 },
@@ -609,7 +607,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         price: p.price ?? 0,
         mrp: p.originalPrice ?? 0,
         unit: p.unit ?? "",
-        weight: p.weight ?? "",
         grossWeight: p.grossWeight ?? "",
         netWeight: p.netWeight ?? "",
         pieces: p.pieces ?? "",
@@ -637,8 +634,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         formulae: ['"per kg,per 500g,per 250g,per 100g,per tray,per pack,per piece"'],
       };
 
-      // Status dropdown — column M (G=Weight, H=GrossWeight, I=NetWeight, J=Pieces, K=Serves, L=Stock, M=Status)
-      ws.getCell(`M${row}`).dataValidation = {
+      // Status dropdown — column L (G=GrossWeight, H=NetWeight, I=Pieces, J=Serves, K=Stock, L=Status)
+      ws.getCell(`L${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         showErrorMessage: true,
@@ -648,8 +645,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         formulae: ['"available,out_of_stock"'],
       };
 
-      // Archived dropdown — column N
-      ws.getCell(`N${row}`).dataValidation = {
+      // Archived dropdown — column M
+      ws.getCell(`M${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         showErrorMessage: true,
@@ -796,7 +793,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
           price: Number(r["Price"] ?? r["price"] ?? 0),
           originalPrice: Number(r["MRP"] ?? r["originalPrice"] ?? 0),
           unit: r["Unit"] ?? r["unit"] ?? "per kg",
-          weight: String(r["Weight"] ?? r["weight"] ?? ""),
           grossWeight: String(r["Gross Weight"] ?? r["grossWeight"] ?? ""),
           netWeight: String(r["Net Weight"] ?? r["netWeight"] ?? ""),
           pieces: String(r["Pieces"] ?? r["pieces"] ?? ""),
@@ -837,7 +833,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
             price: Number(r["Price"] ?? r["price"] ?? orig?.price ?? 0),
             originalPrice: Number(r["MRP"] ?? r["originalPrice"] ?? orig?.originalPrice ?? 0),
             unit: r["Unit"] ?? r["unit"] ?? orig?.unit ?? "per kg",
-            weight: String(r["Weight"] ?? r["weight"] ?? orig?.weight ?? ""),
             grossWeight: String(r["Gross Weight"] ?? r["grossWeight"] ?? orig?.grossWeight ?? ""),
             netWeight: String(r["Net Weight"] ?? r["netWeight"] ?? orig?.netWeight ?? ""),
             pieces: String(r["Pieces"] ?? r["pieces"] ?? orig?.pieces ?? ""),
@@ -853,7 +848,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
             row.category !== (orig.category ?? "") ||
             row.price !== orig.price || row.originalPrice !== orig.originalPrice ||
             row.unit !== (orig.unit ?? "") ||
-            row.weight !== String(orig.weight ?? "") ||
             row.grossWeight !== String(orig.grossWeight ?? "") ||
             row.netWeight !== String(orig.netWeight ?? "") ||
             row.pieces !== String(orig.pieces ?? "") ||
@@ -958,8 +952,7 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-xs text-gray-600 font-medium">{p.weight || "—"}</p>
-                    <p className="text-[10px] text-gray-400">{p.unit || ""}</p>
+                    <p className="text-xs text-gray-600 font-medium">{p.unit || "—"}</p>
                   </td>
                   <td className="px-4 py-3">
                     <p className="text-xs text-gray-600">{p.pieces || "—"}</p>
@@ -1019,7 +1012,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
 
                 {/* Details grid */}
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  {p.weight && <div><span className="text-gray-400">Weight: </span><span className="font-medium text-gray-600">{p.weight}</span></div>}
                   {p.unit && <div><span className="text-gray-400">Unit: </span><span className="font-medium text-gray-600">{p.unit}</span></div>}
                   {p.pieces && <div><span className="text-gray-400">Pieces: </span><span className="font-medium text-gray-600">{p.pieces}</span></div>}
                   {p.serves && <div><span className="text-gray-400">Serves: </span><span className="font-medium text-gray-600">{p.serves}</span></div>}
@@ -2131,7 +2123,6 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const [price, setPrice] = useState("");
   const [originalPrice, setOriginalPrice] = useState("");
   const [unit, setUnit] = useState("per kg");
-  const [weight, setWeight] = useState("");
   const [grossWeight, setGrossWeight] = useState("");
   const [netWeight, setNetWeight] = useState("");
   const [pieces, setPieces] = useState("");
@@ -2164,7 +2155,6 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setPrice(String(product.price ?? ""));
       setOriginalPrice(String(product.originalPrice ?? ""));
       setUnit(product.unit ?? "per kg");
-      setWeight(product.weight ?? "");
       setGrossWeight(product.grossWeight ?? "");
       setNetWeight(product.netWeight ?? "");
       setPieces(product.pieces ?? "");
@@ -2190,7 +2180,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       })) : []);
     } else {
       setName(""); setDescription(""); setCategory(""); setSubCategory("");
-      setPrice(""); setOriginalPrice(""); setUnit("per kg"); setWeight("");
+      setPrice(""); setOriginalPrice(""); setUnit("per kg");
       setGrossWeight(""); setNetWeight(""); setPieces(""); setServes(""); setQuantity("0"); setStatus("available");
       setIsArchived(false); setProductImageUrl(""); setProductImageMode("url"); setRecipes([]);
       setCouponIds([]); setInventoryBatches([]);
@@ -2233,7 +2223,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       price: Number(price) || 0,
       originalPrice: Number(originalPrice) || Number(price) || 0,
       discountPct,
-      unit, weight, grossWeight, netWeight, pieces, serves,
+      unit, grossWeight, netWeight, pieces, serves,
       quantity: Number(quantity) || 0,
       status, isArchived, imageUrl,
       recipes: cleanedRecipes,
@@ -2303,17 +2293,14 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                   <span className="text-green-700 font-semibold">Customer saves {discountPct}% — ₹{Number(originalPrice) - Number(price)} off</span>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-600">Unit</Label>
-                  <Select value={unit} onValueChange={setUnit}>
-                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {["per kg", "per 500g", "per 250g", "per 100g", "per tray", "per pack", "per piece"].map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Weight / Qty Label</Label><Input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g. 500 g" className="h-9" /></div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-600">Unit</Label>
+                <Select value={unit} onValueChange={setUnit}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["per kg", "per 500g", "per 250g", "per 100g", "per tray", "per pack", "per piece"].map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Gross Weight</Label><Input value={grossWeight} onChange={(e) => setGrossWeight(e.target.value)} placeholder="e.g. 550g" className="h-9" /></div>

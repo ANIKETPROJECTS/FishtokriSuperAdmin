@@ -103,7 +103,6 @@ interface PurchaseItem {
   sellingPrice: string;
   originalPrice: string;
   discountPct: string;
-  weight: string;
   grossWeight: string;
   netWeight: string;
   pieces: string;
@@ -166,7 +165,7 @@ const emptyItem = (): PurchaseItem => ({
   productName: "", quantity: "", unit: "kg", displayUnit: "per kg", pricePerUnit: "", totalPrice: 0, expiryDate: "",
   description: "", category: "", subCategory: "",
   sellingPrice: "", originalPrice: "", discountPct: "",
-  weight: "", grossWeight: "", netWeight: "",
+  grossWeight: "", netWeight: "",
   pieces: "", serves: "", imageUrl: "", imageMode: "url", productStatus: "available",
   limitedStockNote: "", shelfLifeDays: "", stockQty: "0", recipesText: "", sectionIdsText: "", couponIdsText: "", existingInventoryBatches: [],
   batches: [emptyBatch()],
@@ -228,7 +227,6 @@ function productToItem(product: any, current: PurchaseItem): PurchaseItem {
     originalPrice: product.originalPrice !== undefined ? String(product.originalPrice) : "",
     discountPct: product.discountPct !== undefined ? String(product.discountPct) : "",
     displayUnit: product.unit ?? "per kg",
-    weight: product.weight ?? "",
     grossWeight: product.grossWeight ?? "",
     netWeight: product.netWeight ?? "",
     pieces: product.pieces ?? "",
@@ -283,7 +281,6 @@ function productPayload(item: PurchaseItem, purchaseDate: string, existingBatche
     originalPrice,
     discountPct,
     unit: item.displayUnit || "per kg",
-    weight: item.weight || "",
     grossWeight: item.grossWeight || "",
     netWeight: item.netWeight || "",
     pieces: item.pieces || "",
@@ -991,7 +988,6 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
                 price: Number(item.sellingPrice) || 0,
                 originalPrice: Number(item.originalPrice) || 0,
                 unit: item.unit,
-                weight: item.weight || "",
                 grossWeight: item.grossWeight || "",
                 netWeight: item.netWeight || "",
                 pieces: item.pieces || "",
@@ -1187,8 +1183,6 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
                             {PRODUCT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                           </SelectContent>
                         </Select>
-                        <Input value={item.weight} onChange={e => setItem(idx, "weight", e.target.value)}
-                          placeholder="Weight (e.g. 500g)" className="h-8 text-sm" />
                         <Input value={item.grossWeight} onChange={e => setItem(idx, "grossWeight", e.target.value)}
                           placeholder="Gross weight" className="h-8 text-sm" />
                         <Input value={item.netWeight} onChange={e => setItem(idx, "netWeight", e.target.value)}
@@ -1997,18 +1991,12 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                                   <Input type="number" min="0" value={item.originalPrice} onChange={e => setItem(idx, "originalPrice", e.target.value)} placeholder="0" className="h-9" />
                                 </div>
                               </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-semibold text-gray-600">Unit</Label>
-                                  <Select value={item.displayUnit} onValueChange={v => setItem(idx, "displayUnit", v)}>
-                                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                                    <SelectContent>{PRODUCT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-semibold text-gray-600">Weight / Qty Label</Label>
-                                  <Input value={item.weight} onChange={e => setItem(idx, "weight", e.target.value)} placeholder="e.g. 500 g" className="h-9" />
-                                </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold text-gray-600">Unit</Label>
+                                <Select value={item.displayUnit} onValueChange={v => setItem(idx, "displayUnit", v)}>
+                                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                                  <SelectContent>{PRODUCT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                                </Select>
                               </div>
                               <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1.5">
