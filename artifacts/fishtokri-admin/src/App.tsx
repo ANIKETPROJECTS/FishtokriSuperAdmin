@@ -24,6 +24,7 @@ import SubHubMenuAdmin from "@/pages/sub-hub-menu-admin";
 import Vendors from "@/pages/vendors";
 import VendorItems from "@/pages/vendor-items";
 import VendorCategories from "@/pages/vendor-categories";
+import BankingOverview from "@/pages/banking-overview";
 import BankingAccounts from "@/pages/banking-accounts";
 import BankingReceipts from "@/pages/banking-receipts";
 import BankingPayments from "@/pages/banking-payments";
@@ -130,6 +131,9 @@ function App() {
             </Route>
             <Route path="/vendor-categories">
               <ProtectedRoute component={VendorCategories} requiredRole="master_admin" />
+            </Route>
+            <Route path="/banking">
+              <ProtectedRoute component={BankingOverview} requiredRole="master_admin" />
             </Route>
             <Route path="/banking/accounts">
               <ProtectedRoute component={BankingAccounts} requiredRole="master_admin" />
