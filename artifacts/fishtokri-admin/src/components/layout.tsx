@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 
@@ -7,8 +7,14 @@ const masterAdminNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/hubs", label: "Hubs", icon: Warehouse },
   { href: "/orders", label: "Orders", icon: ClipboardList },
-  { href: "/vendors", label: "Vendors", icon: Handshake },
-  { href: "/vendor-items", label: "Vendor Items", icon: Boxes },
+  {
+    href: "/vendors",
+    label: "Vendors",
+    icon: Handshake,
+    children: [
+      { href: "/vendor-items", label: "Items", icon: Boxes },
+    ],
+  },
   { href: "/admin-users", label: "Admin Users", icon: Users },
   { href: "/customers", label: "Customers", icon: ShoppingBasket },
 ];
@@ -112,11 +118,63 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Nav */}
         <nav className="flex-1 pb-4 pt-2">
-          {navItems.map(({ href, label, icon: Icon, matchPrefix }: any) => {
+          {navItems.map((item: any) => {
+            const { href, label, icon: Icon, matchPrefix, children } = item;
             const isActive =
               location === href ||
               (matchPrefix && location.startsWith(matchPrefix)) ||
               (!matchPrefix && href === "/hubs" && location.startsWith("/hubs"));
+            const childActive = children?.some((c: any) => location === c.href || location.startsWith(c.href));
+
+            if (children && children.length > 0) {
+              return (
+                <div key={href} className="relative group">
+                  <Link href={href}>
+                    <div
+                      title={!sidebarOpen ? label : undefined}
+                      className={`flex items-center cursor-pointer transition-all text-sm font-medium border-l-2 ${
+                        sidebarOpen ? "gap-3 px-5 py-2.5" : "justify-center px-0 py-3"
+                      } ${
+                        isActive || childActive
+                          ? "bg-white/10 text-white border-amber-400"
+                          : "text-white/60 hover:text-white hover:bg-white/5 border-transparent"
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 flex-shrink-0" />
+                      {sidebarOpen && (
+                        <>
+                          <span className="truncate flex-1">{label}</span>
+                          <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
+                        </>
+                      )}
+                    </div>
+                  </Link>
+                  {/* Dropdown on hover */}
+                  <div className={`absolute left-full top-0 ml-1 hidden group-hover:block z-50 min-w-[140px] bg-[#1e3a63] rounded-lg shadow-xl py-1 border border-white/10`}>
+                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white/30">{label}</div>
+                    {children.map((child: any) => {
+                      const ChildIcon = child.icon;
+                      const isChildActive = location === child.href || location.startsWith(child.href);
+                      return (
+                        <Link key={child.href} href={child.href}>
+                          <div
+                            className={`flex items-center gap-2.5 px-3 py-2 text-sm font-medium cursor-pointer transition-all border-l-2 ${
+                              isChildActive
+                                ? "bg-white/10 text-white border-amber-400"
+                                : "text-white/60 hover:text-white hover:bg-white/5 border-transparent"
+                            }`}
+                          >
+                            <ChildIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span>{child.label}</span>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <Link key={href} href={href}>
                 <div
