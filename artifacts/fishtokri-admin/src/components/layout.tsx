@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const masterAdminNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -26,6 +26,78 @@ function getAdminData() {
   } catch {
     return null;
   }
+}
+
+function ExpandableNavItem({ href, label, icon: Icon, isActive, childActive, subItems, location, sidebarOpen }: any) {
+  const [hovered, setHovered] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const open = hovered || childActive;
+
+  const handleMouseEnter = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setHovered(true);
+  };
+  const handleMouseLeave = () => {
+    timeoutRef.current = setTimeout(() => setHovered(false), 100);
+  };
+
+  return (
+    <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+      <Link href={href}>
+        <div
+          title={!sidebarOpen ? label : undefined}
+          className={`flex items-center cursor-pointer transition-all text-sm font-medium border-l-2 ${
+            sidebarOpen ? "gap-3 px-5 py-2.5" : "justify-center px-0 py-3"
+          } ${
+            isActive || childActive
+              ? "bg-white/10 text-white border-amber-400"
+              : "text-white/60 hover:text-white hover:bg-white/5 border-transparent"
+          }`}
+        >
+          <Icon className="w-4 h-4 flex-shrink-0" />
+          {sidebarOpen && (
+            <>
+              <span className="truncate flex-1">{label}</span>
+              <ChevronDown
+                className={`w-3 h-3 transition-all duration-200 ${open ? "rotate-180 opacity-100" : "opacity-50"}`}
+              />
+            </>
+          )}
+        </div>
+      </Link>
+      {/* Inline sub-menu */}
+      <div
+        style={{
+          maxHeight: open ? "200px" : "0px",
+          overflow: "hidden",
+          transition: "max-height 0.2s ease",
+        }}
+      >
+        {subItems.map((child: any) => {
+          const ChildIcon = child.icon;
+          const isChildActive = location === child.href || location.startsWith(child.href);
+          return (
+            <Link key={child.href} href={child.href}>
+              <div
+                title={!sidebarOpen ? child.label : undefined}
+                className={`flex items-center cursor-pointer transition-all text-sm font-medium border-l-2 ${
+                  sidebarOpen ? "gap-3 pl-10 pr-5 py-2" : "justify-center px-0 py-2.5"
+                } ${
+                  isChildActive
+                    ? "bg-white/10 text-white border-amber-400"
+                    : "text-white/50 hover:text-white hover:bg-white/5 border-transparent"
+                }`}
+              >
+                <ChildIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                {sidebarOpen && <span className="truncate">{child.label}</span>}
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -128,50 +200,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
             if (children && children.length > 0) {
               return (
-                <div key={href} className="relative group">
-                  <Link href={href}>
-                    <div
-                      title={!sidebarOpen ? label : undefined}
-                      className={`flex items-center cursor-pointer transition-all text-sm font-medium border-l-2 ${
-                        sidebarOpen ? "gap-3 px-5 py-2.5" : "justify-center px-0 py-3"
-                      } ${
-                        isActive || childActive
-                          ? "bg-white/10 text-white border-amber-400"
-                          : "text-white/60 hover:text-white hover:bg-white/5 border-transparent"
-                      }`}
-                    >
-                      <Icon className="w-4 h-4 flex-shrink-0" />
-                      {sidebarOpen && (
-                        <>
-                          <span className="truncate flex-1">{label}</span>
-                          <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
-                        </>
-                      )}
-                    </div>
-                  </Link>
-                  {/* Dropdown on hover */}
-                  <div className={`absolute left-full top-0 ml-1 hidden group-hover:block z-50 min-w-[140px] bg-[#1e3a63] rounded-lg shadow-xl py-1 border border-white/10`}>
-                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white/30">{label}</div>
-                    {children.map((child: any) => {
-                      const ChildIcon = child.icon;
-                      const isChildActive = location === child.href || location.startsWith(child.href);
-                      return (
-                        <Link key={child.href} href={child.href}>
-                          <div
-                            className={`flex items-center gap-2.5 px-3 py-2 text-sm font-medium cursor-pointer transition-all border-l-2 ${
-                              isChildActive
-                                ? "bg-white/10 text-white border-amber-400"
-                                : "text-white/60 hover:text-white hover:bg-white/5 border-transparent"
-                            }`}
-                          >
-                            <ChildIcon className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span>{child.label}</span>
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
+                <ExpandableNavItem
+                  key={href}
+                  href={href}
+                  label={label}
+                  icon={Icon}
+                  isActive={isActive}
+                  childActive={childActive}
+                  subItems={children}
+                  location={location}
+                  sidebarOpen={sidebarOpen}
+                />
               );
             }
 
