@@ -107,8 +107,8 @@ scripts/
 - Vendor "Buy" opens a full-page purchase entry flow in `artifacts/fishtokri-admin/src/pages/vendors.tsx`.
 - The purchase flow requires selecting a destination Super Hub and Sub Hub, then loads that sub-hub database's existing `products` collection.
 - Each purchased item can either select an existing product from any loaded category in that selected sub hub, or enter a new product.
-- Existing product purchases update the product quantity and append a new `inventoryBatches` entry instead of creating a duplicate product.
-- Product payloads include the richer menu fields used by sub-hub DB products: `description`, `category`, `subCategory`, `price`, `originalPrice`, `discountPct`, `unit`, `weight`, `grossWeight`, `netWeight`, `pieces`, `serves`, `imageUrl`, `limitedStockNote`, `recipes`, `sectionId`, `couponIds`, and `inventoryBatches`.
+- Existing product purchases update the product quantity without creating or maintaining product-level inventory batch records.
+- Product payloads include the richer menu fields used by sub-hub DB products: `description`, `category`, `subCategory`, `price`, `originalPrice`, `discountPct`, `unit`, `weight`, `grossWeight`, `netWeight`, `pieces`, `serves`, `imageUrl`, `limitedStockNote`, `recipes`, `sectionId`, and `couponIds`.
 
 ---
 
@@ -117,7 +117,7 @@ scripts/
 Each sub-hub connects to its own MongoDB database (name stored in `SubHub.dbName`).
 Collections and key fields as of latest sync with Thane DB:
 
-- **products**: `name`, `description`, `category`, `subCategory`, `price`, `originalPrice`, `discountPct`, `unit`, `weight`, `grossWeight`, `netWeight`, `pieces`, `serves`, `quantity`, `status`, `isArchived`, `imageUrl`, `limitedStockNote`, `couponIds[]`, `sectionId[]`, `inventoryBatches[]`, `recipes[]`
+- **products**: `name`, `description`, `category`, `subCategory`, `price`, `originalPrice`, `discountPct`, `unit`, `weight`, `grossWeight`, `netWeight`, `pieces`, `serves`, `quantity`, `status`, `isArchived`, `imageUrl`, `limitedStockNote`, `couponIds[]`, `sectionId[]`, `recipes[]`
 - **categories**: `name`, `slug`, `description`, `image`, `subCategories[]`, `isActive`, `sortOrder`
 - **combos**: `name`, `description`, `fullDescription`, `serves`, `weight`, `discountedPrice`, `originalPrice`, `discount`, `imageUrl`, `includes[{label}]`, `tags[]`, `isActive`, `sortOrder`
 - **coupons**: `code`, `title`, `description`, `color`, `type`, `discountValue`, `minOrderAmount`, `maxUsage`, `applicableCategories[]`, `isFirstTimeOnly`, `isActive`, `expiresAt`

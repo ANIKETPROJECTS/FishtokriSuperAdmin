@@ -35,22 +35,6 @@ function normalizeIdList(values: any) {
     .filter(Boolean);
 }
 
-function normalizeInventoryBatches(values: any) {
-  if (!Array.isArray(values)) return [];
-  return values.map((batch) => {
-    const rawId = typeof batch?._id === "string" ? batch._id : batch?._id?.$oid ? batch._id.$oid : "";
-    const normalized: any = {
-      ...batch,
-      _id: toId(rawId) ?? new mongoose.Types.ObjectId(),
-      quantity: Number(batch?.quantity) || 0,
-      shelfLifeDays: Number(batch?.shelfLifeDays) || 0,
-    };
-    if (batch?.entryDate) normalized.entryDate = new Date(batch.entryDate);
-    if (batch?.expiryDate) normalized.expiryDate = new Date(batch.expiryDate);
-    return normalized;
-  });
-}
-
 // ─── STATS ────────────────────────────────────────────────────────────────────
 router.get("/stats", async (req, res) => {
   try {
@@ -97,7 +81,7 @@ router.post("/products", async (req, res) => {
       name, description, category, subCategory,
       price, originalPrice, discountPct, unit, weight, grossWeight, netWeight, pieces, serves, quantity,
       status, isArchived, imageUrl, limitedStockNote,
-      recipes, sectionId, couponIds, inventoryBatches,
+      recipes, sectionId, couponIds,
     } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
     const p = Number(price) || 0;
@@ -124,7 +108,6 @@ router.post("/products", async (req, res) => {
       recipes: Array.isArray(recipes) ? recipes : [],
       sectionId: normalizeIdList(sectionId),
       couponIds: normalizeIdList(couponIds),
-      inventoryBatches: normalizeInventoryBatches(inventoryBatches),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -146,7 +129,7 @@ router.put("/products/:productId", async (req, res) => {
       name, description, category, subCategory,
       price, originalPrice, discountPct, unit, weight, grossWeight, netWeight, pieces, serves, quantity,
       status, isArchived, imageUrl, limitedStockNote,
-      recipes, sectionId, couponIds, inventoryBatches,
+      recipes, sectionId, couponIds,
     } = req.body;
     const update: any = { updatedAt: new Date() };
     if (name !== undefined) update.name = name;
@@ -170,7 +153,6 @@ router.put("/products/:productId", async (req, res) => {
     if (recipes !== undefined) update.recipes = Array.isArray(recipes) ? recipes : [];
     if (sectionId !== undefined) update.sectionId = normalizeIdList(sectionId);
     if (couponIds !== undefined) update.couponIds = normalizeIdList(couponIds);
-    if (inventoryBatches !== undefined) update.inventoryBatches = normalizeInventoryBatches(inventoryBatches);
     const result = await ctx.conn.db.collection("products").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
     if (!result) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
     res.json({ product: result });

@@ -116,11 +116,9 @@ interface PurchaseItem {
   recipesText: string;
   sectionIdsText: string;
   couponIdsText: string;
-  existingInventoryBatches: any[];
   batches: BatchEntry[];
   // new-product rich fields (mirrors sub-hub modal)
   newProductRecipes: any[];
-  newProductInventoryBatches: any[];
   newProductIsArchived: boolean;
 }
 
@@ -167,10 +165,9 @@ const emptyItem = (): PurchaseItem => ({
   sellingPrice: "", originalPrice: "", discountPct: "",
   grossWeight: "", netWeight: "",
   pieces: "", serves: "", imageUrl: "", imageMode: "url", productStatus: "available",
-  limitedStockNote: "", shelfLifeDays: "", stockQty: "0", recipesText: "", sectionIdsText: "", couponIdsText: "", existingInventoryBatches: [],
+  limitedStockNote: "", shelfLifeDays: "", stockQty: "0", recipesText: "", sectionIdsText: "", couponIdsText: "",
   batches: [emptyBatch()],
   newProductRecipes: [],
-  newProductInventoryBatches: [],
   newProductIsArchived: false,
 });
 
@@ -210,10 +207,6 @@ function safeJsonArray(value: string, fallback: any[] = []) {
   }
 }
 
-function dateOnly(value: string) {
-  return value ? new Date(value) : new Date();
-}
-
 function productToItem(product: any, current: PurchaseItem): PurchaseItem {
   return {
     ...current,
@@ -237,24 +230,10 @@ function productToItem(product: any, current: PurchaseItem): PurchaseItem {
     recipesText: JSON.stringify(Array.isArray(product.recipes) ? product.recipes : [], null, 2),
     sectionIdsText: stringifyIdList(product.sectionId),
     couponIdsText: stringifyIdList(product.couponIds),
-    existingInventoryBatches: Array.isArray(product.inventoryBatches) ? product.inventoryBatches : [],
   };
 }
 
-function buildInventoryBatch(item: PurchaseItem, purchaseDate: string) {
-  const entryDate = dateOnly(purchaseDate);
-  const shelfLifeDays = Number(item.shelfLifeDays) || 0;
-  const expiryDate = item.expiryDate ? dateOnly(item.expiryDate) : shelfLifeDays > 0 ? new Date(entryDate.getTime() + shelfLifeDays * 24 * 60 * 60 * 1000) : null;
-  const batch: any = {
-    quantity: Number(item.quantity) || 0,
-    shelfLifeDays,
-    entryDate,
-  };
-  if (expiryDate) batch.expiryDate = expiryDate;
-  return batch;
-}
-
-function productPayload(item: PurchaseItem, purchaseDate: string, existingBatches: any[] = []) {
+function productPayload(item: PurchaseItem) {
   const price = Number(item.sellingPrice) || 0;
   const originalPrice = Number(item.originalPrice) || price;
   const discountPct = item.discountPct !== "" ? Number(item.discountPct) || 0 : originalPrice > price && originalPrice > 0 ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
@@ -263,15 +242,6 @@ function productPayload(item: PurchaseItem, purchaseDate: string, existingBatche
     ingredients: (r.ingredients ?? []).filter((s: string) => s.trim()),
     method: (r.method ?? []).filter((s: string) => s.trim()),
   }));
-  const inventoryBatches = (item.newProductInventoryBatches ?? []).length > 0
-    ? (item.newProductInventoryBatches ?? []).map((b: any) => ({
-        ...b,
-        quantity: Number(b.quantity) || 0,
-        shelfLifeDays: Number(b.shelfLifeDays) || 0,
-        entryDate: b.entryDate || undefined,
-        expiryDate: b.expiryDate || undefined,
-      }))
-    : [...existingBatches, buildInventoryBatch(item, purchaseDate)];
   return {
     name: item.productName,
     description: item.description || "",
@@ -293,7 +263,6 @@ function productPayload(item: PurchaseItem, purchaseDate: string, existingBatche
     recipes: cleanedRecipes,
     sectionId: parseIdList(item.sectionIdsText),
     couponIds: parseIdList(item.couponIdsText),
-    inventoryBatches,
   };
 }
 
@@ -1570,7 +1539,6 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
       if (k === "existingCategory") {
         items[idx].existingProductId = "";
         items[idx].productName = "";
-        items[idx].existingInventoryBatches = [];
       }
       if (k === "quantity" || k === "pricePerUnit") {
         const qty = k === "quantity" ? Number(v) : Number(items[idx].quantity);
@@ -1666,22 +1634,12 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
         try {
           const existingProduct = item.productMode === "existing" ? hubProducts.find((p) => getDocId(p) === item.existingProductId) : null;
           if (item.productMode === "existing" && item.existingProductId && existingProduct) {
-            const existingBatches = Array.isArray(existingProduct.inventoryBatches) ? existingProduct.inventoryBatches : [];
-            const newBatches = item.batches
+            const quantityToAdd = item.batches
               .filter(b => Number(b.quantity) > 0)
-              .map(b => {
-                const entryDate = new Date(form.purchaseDate);
-                const shelfLifeDays = Number(b.shelfLifeDays) || 0;
-                const expiryDate = shelfLifeDays > 0 ? new Date(entryDate.getTime() + shelfLifeDays * 24 * 60 * 60 * 1000) : null;
-                const batch: any = { quantity: Number(b.quantity), shelfLifeDays, entryDate };
-                if (expiryDate) batch.expiryDate = expiryDate;
-                return batch;
-              });
-            const batchTotalQty = newBatches.reduce((s, b) => s + b.quantity, 0);
+              .reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0);
             const payload = {
               ...existingProduct,
-              inventoryBatches: [...existingBatches, ...newBatches],
-              quantity: (Number(existingProduct.quantity) || 0) + batchTotalQty,
+              quantity: (Number(existingProduct.quantity) || 0) + quantityToAdd,
             };
             await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/${item.existingProductId}`, {
               method: "PUT",
@@ -1690,7 +1648,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
           } else {
             await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, {
               method: "POST",
-              body: JSON.stringify(productPayload(item, form.purchaseDate)),
+              body: JSON.stringify(productPayload(item)),
             });
           }
         } catch { errors.push(item.productName); }
@@ -2106,37 +2064,6 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                                 ))}</div>}
                           </section>
 
-                          {/* ── INVENTORY BATCHES ── */}
-                          <section>
-                            <div className="flex items-center justify-between mb-3">
-                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Inventory Batches ({(item.newProductInventoryBatches ?? []).length})</p>
-                              <button
-                                type="button"
-                                onClick={() => setItem(idx, "newProductInventoryBatches", [...(item.newProductInventoryBatches ?? []), { quantity: "0", shelfLifeDays: "", entryDate: "", expiryDate: "" }])}
-                                className="text-xs text-[#1A56DB] font-semibold flex items-center gap-1 hover:underline"
-                              >
-                                <Plus className="w-3 h-3" /> Add Batch
-                              </button>
-                            </div>
-                            {(item.newProductInventoryBatches ?? []).length === 0
-                              ? <div className="text-center py-5 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">No batches yet. Click "Add Batch" to record stock.</div>
-                              : <div className="space-y-2">
-                                  {(item.newProductInventoryBatches ?? []).map((b: any, bIdx: number) => (
-                                    <div key={bIdx} className="border border-gray-200 rounded-xl p-3 space-y-2 bg-gray-50/40">
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-xs font-semibold text-gray-500">Batch {bIdx + 1}</span>
-                                        <button type="button" onClick={() => setItem(idx, "newProductInventoryBatches", (item.newProductInventoryBatches ?? []).filter((_: any, xi: number) => xi !== bIdx))} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-2">
-                                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Qty</Label><Input type="number" min="0" value={b.quantity} onChange={(e) => setItem(idx, "newProductInventoryBatches", (item.newProductInventoryBatches ?? []).map((x: any, xi: number) => xi === bIdx ? { ...x, quantity: e.target.value } : x))} className="h-8 text-sm" /></div>
-                                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Shelf Life (days)</Label><Input type="number" min="0" value={b.shelfLifeDays} onChange={(e) => setItem(idx, "newProductInventoryBatches", (item.newProductInventoryBatches ?? []).map((x: any, xi: number) => xi === bIdx ? { ...x, shelfLifeDays: e.target.value } : x))} className="h-8 text-sm" /></div>
-                                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Entry Date</Label><Input type="date" value={b.entryDate} onChange={(e) => setItem(idx, "newProductInventoryBatches", (item.newProductInventoryBatches ?? []).map((x: any, xi: number) => xi === bIdx ? { ...x, entryDate: e.target.value } : x))} className="h-8 text-sm" /></div>
-                                        <div className="space-y-1"><Label className="text-[10px] font-semibold text-gray-500">Expiry Date</Label><Input type="date" value={b.expiryDate} onChange={(e) => setItem(idx, "newProductInventoryBatches", (item.newProductInventoryBatches ?? []).map((x: any, xi: number) => xi === bIdx ? { ...x, expiryDate: e.target.value } : x))} className="h-8 text-sm" /></div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>}
-                          </section>
                         </>
                       )}
                     </div>
