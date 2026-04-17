@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Boxes, FolderPlus, PackagePlus, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowUpDown, Boxes, CheckCircle2, ChevronDown, FolderPlus, Pencil, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,15 +17,22 @@ type VendorCategory = {
 type VendorItem = {
   id: string;
   name: string;
+  itemCode: string;
+  itemType: string;
   categoryId: string;
   categoryName: string;
   unit: string;
+  purchasePrice: number;
+  sellingPrice: number;
+  openingStock: number;
+  currentStock: number;
   description: string;
   status: "active" | "inactive";
   notes: string;
 };
 
-const units = ["kg", "piece", "box", "tray", "crate", "litre", "pack", "bag"];
+const units = ["kg", "g", "pcs", "box", "tray", "crate", "litre", "pack", "bag", "unt", "pac"];
+const itemTypes = ["Raw Material", "Fish", "Mutton", "Packaging", "Equipment", "Cleaning", "Consumable", "Other"];
 
 function getToken() {
   return localStorage.getItem("fishtokri_token") ?? "";
@@ -46,12 +53,18 @@ async function apiFetch(path: string, options: RequestInit = {}) {
   return data;
 }
 
+function formatRupees(value: number) {
+  return Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export default function VendorItems() {
   const { toast } = useToast();
   const [categories, setCategories] = useState<VendorCategory[]>([]);
   const [items, setItems] = useState<VendorItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedType, setSelectedType] = useState("all");
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"name" | "code" | "stock" | "purchase" | "selling">("name");
   const [loading, setLoading] = useState(true);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [itemModalOpen, setItemModalOpen] = useState(false);
@@ -66,7 +79,22 @@ export default function VendorItems() {
         apiFetch("/api/vendor-items/items"),
       ]);
       setCategories(catData.categories ?? []);
-      setItems(itemData.items ?? []);
+      setItems((itemData.items ?? []).map((item: Partial<VendorItem>) => ({
+        id: item.id ?? "",
+        name: item.name ?? "",
+        itemCode: item.itemCode ?? "",
+        itemType: item.itemType ?? "Raw Material",
+        categoryId: item.categoryId ?? "",
+        categoryName: item.categoryName ?? "",
+        unit: item.unit ?? "kg",
+        purchasePrice: Number(item.purchasePrice) || 0,
+        sellingPrice: Number(item.sellingPrice) || 0,
+        openingStock: Number(item.openingStock) || 0,
+        currentStock: Number(item.currentStock) || 0,
+        description: item.description ?? "",
+        status: item.status ?? "active",
+        notes: item.notes ?? "",
+      })));
     } catch (err: any) {
       toast({ title: "Could not load vendor items", description: err.message, variant: "destructive" });
     } finally {
@@ -80,174 +108,175 @@ export default function VendorItems() {
 
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return items.filter((item) => {
+    const result = items.filter((item) => {
       const matchesCategory = selectedCategory === "all" || item.categoryId === selectedCategory;
-      const matchesSearch = !q || item.name.toLowerCase().includes(q) || item.categoryName.toLowerCase().includes(q) || item.description.toLowerCase().includes(q);
-      return matchesCategory && matchesSearch;
+      const matchesType = selectedType === "all" || item.itemType === selectedType;
+      const matchesSearch = !q || [item.name, item.itemCode, item.categoryName, item.itemType, item.description, item.notes].some((value) => value.toLowerCase().includes(q));
+      return matchesCategory && matchesType && matchesSearch;
     });
-  }, [items, selectedCategory, search]);
+    return [...result].sort((a, b) => {
+      if (sortBy === "code") return a.itemCode.localeCompare(b.itemCode);
+      if (sortBy === "stock") return b.currentStock - a.currentStock;
+      if (sortBy === "purchase") return b.purchasePrice - a.purchasePrice;
+      if (sortBy === "selling") return b.sellingPrice - a.sellingPrice;
+      return a.name.localeCompare(b.name);
+    });
+  }, [items, selectedCategory, selectedType, search, sortBy]);
 
   const activeCategories = categories.filter((category) => category.status === "active").length;
+  const activeItems = items.filter((item) => item.status === "active").length;
+  const groupedCount = categories.filter((category) => items.some((item) => item.categoryId === category.id)).length;
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#162B4D]">Vendor Items</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage raw materials, full uncut items, packaging, and equipment bought from vendors.</p>
+          <p className="text-sm text-gray-500 mt-1">Manage vendor purchasable items with item code, type, prices, stock and unit attributes.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => { setEditingCategory(null); setCategoryModalOpen(true); }} className="gap-2">
             <FolderPlus className="w-4 h-4" /> Add Category
           </Button>
           <Button onClick={() => { setEditingItem(null); setItemModalOpen(true); }} className="gap-2 bg-[#1A56DB] hover:bg-[#1447B4]" disabled={categories.length === 0}>
-            <PackagePlus className="w-4 h-4" /> Add Item
+            <Plus className="w-4 h-4" /> Add Item
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Categories</p>
-          <p className="text-2xl font-bold text-[#162B4D] mt-2">{categories.length}</p>
-          <p className="text-xs text-gray-500 mt-1">{activeCategories} active</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Vendor Items</p>
-          <p className="text-2xl font-bold text-[#162B4D] mt-2">{items.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Raw materials and supplies</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Filtered</p>
-          <p className="text-2xl font-bold text-[#162B4D] mt-2">{filteredItems.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Shown in current view</p>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <SummaryCard label="Categories" value={categories.length} helper={`${activeCategories} active`} />
+        <SummaryCard label="Vendor Items" value={items.length} helper={`${activeItems} active`} />
+        <SummaryCard label="Grouped" value={groupedCount} helper="Categories with items" />
+        <SummaryCard label="Filtered" value={filteredItems.length} helper="Shown in current view" />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-5">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 flex flex-col xl:flex-row xl:items-center gap-3 justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
             <div>
-              <h2 className="font-bold text-[#162B4D]">Categories</h2>
-              <p className="text-xs text-gray-500">Examples: Chicken, Fish, Packaging</p>
+              <h2 className="font-bold text-[#162B4D] leading-none">Items</h2>
+              <p className="text-xs text-gray-500 mt-1">{items.length} total</p>
             </div>
-            <Button size="sm" variant="ghost" onClick={() => { setEditingCategory(null); setCategoryModalOpen(true); }}>
-              <Plus className="w-4 h-4" />
+            <Button size="sm" variant={selectedCategory === "all" ? "default" : "outline"} onClick={() => setSelectedCategory("all")} className={selectedCategory === "all" ? "bg-[#162B4D] hover:bg-[#1e3a6e]" : ""}>
+              All Items
             </Button>
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <SelectTrigger className="h-9 w-48">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
-          <div className="p-3 space-y-2">
-            <button
-              onClick={() => setSelectedCategory("all")}
-              className={`w-full text-left rounded-lg px-3 py-2 border transition-colors ${selectedCategory === "all" ? "border-[#1A56DB] bg-blue-50 text-[#162B4D]" : "border-gray-100 hover:border-gray-200"}`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold">All Items</span>
-                <span className="text-xs text-gray-500">{items.length}</span>
-              </div>
-            </button>
-            {categories.map((category) => (
-              <div key={category.id} className={`rounded-lg border transition-colors ${selectedCategory === category.id ? "border-[#1A56DB] bg-blue-50" : "border-gray-100 bg-white"}`}>
-                <button onClick={() => setSelectedCategory(category.id)} className="w-full text-left px-3 py-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[#162B4D] truncate">{category.name}</p>
-                      {category.description && <p className="text-xs text-gray-500 truncate">{category.description}</p>}
-                      <span className={`inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${category.status === "active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                        {category.status}
-                      </span>
-                    </div>
-                    <span className="text-xs text-gray-500">{items.filter((item) => item.categoryId === category.id).length}</span>
-                  </div>
-                </button>
-                <div className="flex border-t border-gray-100">
-                  <button onClick={() => { setEditingCategory(category); setCategoryModalOpen(true); }} className="flex-1 py-1.5 text-xs text-gray-500 hover:text-[#1A56DB] hover:bg-white">
-                    Edit
-                  </button>
-                  <button onClick={() => deleteCategory(category)} className="flex-1 py-1.5 text-xs text-gray-500 hover:text-red-600 hover:bg-white">
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-            {!loading && categories.length === 0 && (
-              <div className="text-center py-8 text-sm text-gray-400 border border-dashed border-gray-200 rounded-xl">
-                Add your first vendor item category.
-              </div>
-            )}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" className="pl-9 h-9 w-56" />
+            </div>
+            <Select value={selectedType} onValueChange={setSelectedType}>
+              <SelectTrigger className="h-9 w-36">
+                <Boxes className="w-4 h-4 mr-2 text-gray-400" />
+                <SelectValue placeholder="Item Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Item Type</SelectItem>
+                {itemTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+              <SelectTrigger className="h-9 w-40">
+                <SlidersHorizontal className="w-4 h-4 mr-2 text-gray-400" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">Name A-Z</SelectItem>
+                <SelectItem value="code">Code A-Z</SelectItem>
+                <SelectItem value="stock">Stock High</SelectItem>
+                <SelectItem value="purchase">Purchase High</SelectItem>
+                <SelectItem value="selling">Sale High</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button onClick={() => { setEditingItem(null); setItemModalOpen(true); }} disabled={categories.length === 0} className="h-9 gap-2 bg-[#1A56DB] hover:bg-[#1447B4]">
+              Add Item
+            </Button>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
-            <div>
-              <h2 className="font-bold text-[#162B4D]">Items</h2>
-              <p className="text-xs text-gray-500">These are vendor-side purchasable items, not customer menu products.</p>
-            </div>
-            <div className="flex gap-2">
-              <div className="relative">
-                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search items..." className="pl-9 w-64" />
-              </div>
-              <Button onClick={() => { setEditingItem(null); setItemModalOpen(true); }} disabled={categories.length === 0} className="gap-2 bg-[#1A56DB] hover:bg-[#1447B4]">
-                <Plus className="w-4 h-4" /> Add Item
-              </Button>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Unit</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Actions</th>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1120px] text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left border-b border-gray-100">
+                <th className="px-3 py-3 w-10"><input type="checkbox" className="rounded border-gray-300" aria-label="Select all items" /></th>
+                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
+                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Item Code</th>
+                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
+                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
+                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Purchase</th>
+                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Sale</th>
+                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Stock</th>
+                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filteredItems.map((item) => (
+                <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-3 py-3"><input type="checkbox" className="rounded border-gray-300" aria-label={`Select ${item.name}`} /></td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`w-1.5 h-1.5 rounded-full ${item.status === "active" ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-800 truncate">{item.name}</p>
+                        {item.description && <p className="text-xs text-gray-400 truncate max-w-[260px]">{item.description}</p>}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-gray-600 font-mono text-xs">{item.itemCode || "-"}</td>
+                  <td className="px-3 py-3 text-gray-600">{item.itemType || "-"}</td>
+                  <td className="px-3 py-3 text-gray-600">{item.categoryName || "-"}</td>
+                  <td className="px-3 py-3 text-right text-gray-700">{formatRupees(item.purchasePrice)}</td>
+                  <td className="px-3 py-3 text-right">
+                    <span className="inline-flex justify-end min-w-20 rounded-md border border-gray-200 px-2 py-1 text-gray-700 bg-white">{formatRupees(item.sellingPrice)}</span>
+                  </td>
+                  <td className="px-3 py-3 text-right text-gray-700">{item.currentStock} <span className="text-xs text-gray-400 uppercase">{item.unit}</span></td>
+                  <td className="px-3 py-3">
+                    <span className={`inline-flex items-center gap-1 text-xs font-semibold ${item.status === "active" ? "text-emerald-700" : "text-red-600"}`}>
+                      <CheckCircle2 className="w-3 h-3" /> {item.status === "active" ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => { setEditingItem(item); setItemModalOpen(true); }} className="h-8 w-8 p-0">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => deleteItem(item)} className="h-8 w-8 p-0 text-gray-400 hover:text-red-600">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-blue-50 text-[#1A56DB] flex items-center justify-center flex-shrink-0">
-                          <Boxes className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-[#162B4D]">{item.name}</p>
-                          {item.description && <p className="text-xs text-gray-500 max-w-md">{item.description}</p>}
-                          {item.notes && <p className="text-[11px] text-gray-400 mt-1">Note: {item.notes}</p>}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">{item.categoryName}</td>
-                    <td className="px-4 py-3 text-gray-600">{item.unit}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs font-semibold px-2 py-1 rounded-full ${item.status === "active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => { setEditingItem(item); setItemModalOpen(true); }} className="h-8 w-8 p-0">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => deleteItem(item)} className="h-8 w-8 p-0 text-gray-400 hover:text-red-600">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!loading && filteredItems.length === 0 && (
-              <div className="text-center py-12">
-                <Boxes className="w-10 h-10 mx-auto text-gray-300" />
-                <p className="text-sm font-semibold text-gray-500 mt-3">No vendor items found</p>
-                <p className="text-xs text-gray-400 mt-1">Add raw materials like full chicken, whole fish, boxes, or equipment.</p>
-              </div>
-            )}
+              ))}
+            </tbody>
+          </table>
+          {!loading && filteredItems.length === 0 && (
+            <div className="text-center py-16">
+              <Boxes className="w-10 h-10 mx-auto text-gray-300" />
+              <p className="text-sm font-semibold text-gray-500 mt-3">No vendor items found</p>
+              <p className="text-xs text-gray-400 mt-1">Add raw materials, packaging, equipment, or other vendor items.</p>
+            </div>
+          )}
+          {loading && <div className="text-center py-16 text-sm text-gray-400">Loading vendor items...</div>}
+        </div>
+
+        <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center gap-4">
+            <span><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" /> Active</span>
+            <span><span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1" /> Inactive</span>
           </div>
+          <span>Showing {filteredItems.length} of {items.length} items</span>
         </div>
       </div>
 
@@ -268,18 +297,6 @@ export default function VendorItems() {
     </div>
   );
 
-  async function deleteCategory(category: VendorCategory) {
-    if (!confirm(`Delete category "${category.name}"?`)) return;
-    try {
-      await apiFetch(`/api/vendor-items/categories/${category.id}`, { method: "DELETE" });
-      toast({ title: "Category deleted" });
-      if (selectedCategory === category.id) setSelectedCategory("all");
-      load();
-    } catch (err: any) {
-      toast({ title: "Could not delete category", description: err.message, variant: "destructive" });
-    }
-  }
-
   async function deleteItem(item: VendorItem) {
     if (!confirm(`Delete item "${item.name}"?`)) return;
     try {
@@ -290,6 +307,16 @@ export default function VendorItems() {
       toast({ title: "Could not delete item", description: err.message, variant: "destructive" });
     }
   }
+}
+
+function SummaryCard({ label, value, helper }: { label: string; value: number; helper: string }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+      <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">{label}</p>
+      <p className="text-2xl font-bold text-[#162B4D] mt-2">{value}</p>
+      <p className="text-xs text-gray-500 mt-1">{helper}</p>
+    </div>
+  );
 }
 
 function CategoryModal({ open, category, onClose, onSaved }: { open: boolean; category: VendorCategory | null; onClose: () => void; onSaved: () => void }) {
@@ -364,8 +391,14 @@ function CategoryModal({ open, category, onClose, onSaved }: { open: boolean; ca
 function ItemModal({ open, item, categories, defaultCategoryId, onClose, onSaved }: { open: boolean; item: VendorItem | null; categories: VendorCategory[]; defaultCategoryId: string; onClose: () => void; onSaved: () => void }) {
   const { toast } = useToast();
   const [name, setName] = useState("");
+  const [itemCode, setItemCode] = useState("");
+  const [itemType, setItemType] = useState("Raw Material");
   const [categoryId, setCategoryId] = useState("");
   const [unit, setUnit] = useState("kg");
+  const [purchasePrice, setPurchasePrice] = useState("0");
+  const [sellingPrice, setSellingPrice] = useState("0");
+  const [openingStock, setOpeningStock] = useState("0");
+  const [currentStock, setCurrentStock] = useState("0");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
   const [notes, setNotes] = useState("");
@@ -374,8 +407,14 @@ function ItemModal({ open, item, categories, defaultCategoryId, onClose, onSaved
   useEffect(() => {
     if (!open) return;
     setName(item?.name ?? "");
+    setItemCode(item?.itemCode ?? "");
+    setItemType(item?.itemType ?? "Raw Material");
     setCategoryId(item?.categoryId ?? defaultCategoryId);
     setUnit(item?.unit ?? "kg");
+    setPurchasePrice(String(item?.purchasePrice ?? 0));
+    setSellingPrice(String(item?.sellingPrice ?? 0));
+    setOpeningStock(String(item?.openingStock ?? 0));
+    setCurrentStock(String(item?.currentStock ?? item?.openingStock ?? 0));
     setDescription(item?.description ?? "");
     setStatus(item?.status ?? "active");
     setNotes(item?.notes ?? "");
@@ -385,7 +424,7 @@ function ItemModal({ open, item, categories, defaultCategoryId, onClose, onSaved
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = { name, categoryId, unit, description, status, notes };
+      const payload = { name, itemCode, itemType, categoryId, unit, purchasePrice, sellingPrice, openingStock, currentStock, description, status, notes };
       if (item) {
         await apiFetch(`/api/vendor-items/items/${item.id}`, { method: "PUT", body: JSON.stringify(payload) });
         toast({ title: "Item updated" });
@@ -403,7 +442,7 @@ function ItemModal({ open, item, categories, defaultCategoryId, onClose, onSaved
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>{item ? "Edit Vendor Item" : "Add Vendor Item"}</DialogTitle>
         </DialogHeader>
@@ -414,11 +453,24 @@ function ItemModal({ open, item, categories, defaultCategoryId, onClose, onSaved
           </div>
         ) : (
           <form onSubmit={submit} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Item Name *</Label>
-              <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Full Chicken, Whole Rohu Fish, Ice Box" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Item Name *</Label>
+                <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Crab Female, Plastic Bags" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Item Code / SKU</Label>
+                <Input value={itemCode} onChange={(e) => setItemCode(e.target.value)} placeholder="e.g. GMCC500" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Item Type</Label>
+                <Select value={itemType} onValueChange={setItemType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {itemTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-1.5">
                 <Label>Category *</Label>
                 <Select value={categoryId} onValueChange={setCategoryId}>
@@ -428,8 +480,26 @@ function ItemModal({ open, item, categories, defaultCategoryId, onClose, onSaved
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <div className="space-y-1.5">
-                <Label>Purchase Unit</Label>
+                <Label>Purchase Price</Label>
+                <Input type="number" min="0" step="0.01" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Selling Price</Label>
+                <Input type="number" min="0" step="0.01" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Opening Stock</Label>
+                <Input type="number" min="0" step="0.01" value={openingStock} onChange={(e) => setOpeningStock(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Current Stock</Label>
+                <Input type="number" min="0" step="0.01" value={currentStock} onChange={(e) => setCurrentStock(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Unit</Label>
                 <Select value={unit} onValueChange={setUnit}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -440,21 +510,23 @@ function ItemModal({ open, item, categories, defaultCategoryId, onClose, onSaved
             </div>
             <div className="space-y-1.5">
               <Label>Description</Label>
-              <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1A56DB]" rows={3} placeholder="Describe what is bought from vendor." />
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1A56DB]" rows={3} placeholder="Describe the item, quality, size, or usage." />
             </div>
-            <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional purchase or handling notes" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Status</Label>
-              <Select value={status} onValueChange={(value: "active" | "inactive") => setStatus(value)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3">
+              <div className="space-y-1.5">
+                <Label>Notes</Label>
+                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional purchase or handling notes" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Status</Label>
+                <Select value={status} onValueChange={(value: "active" | "inactive") => setStatus(value)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>

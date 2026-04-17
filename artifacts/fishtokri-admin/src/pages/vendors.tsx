@@ -154,9 +154,14 @@ interface VendorItemCategory {
 interface VendorCatalogItem {
   id: string;
   name: string;
+  itemCode?: string;
+  itemType?: string;
   categoryId: string;
   categoryName: string;
   unit: string;
+  purchasePrice?: number;
+  sellingPrice?: number;
+  currentStock?: number;
   description?: string;
   status?: string;
 }
@@ -1621,6 +1626,8 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     const product = vendorItems.find((item) => item.id === itemId);
     setForm(f => {
       const items = [...f.items];
+      const pricePerUnit = product?.purchasePrice !== undefined ? String(product.purchasePrice) : items[idx].pricePerUnit;
+      const quantity = getItemPurchaseQuantity(items[idx]);
       items[idx] = product
         ? {
             ...items[idx],
@@ -1629,6 +1636,8 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
             category: product.categoryName,
             existingCategory: product.categoryId,
             unit: product.unit || items[idx].unit || "kg",
+            pricePerUnit,
+            totalPrice: quantity * Number(pricePerUnit),
             description: product.description || "",
             productMode: "existing",
           }

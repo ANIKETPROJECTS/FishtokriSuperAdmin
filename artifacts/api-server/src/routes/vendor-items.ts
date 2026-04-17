@@ -17,9 +17,15 @@ const categorySchema = new mongoose.Schema(
 const itemSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    itemCode: { type: String, default: "" },
+    itemType: { type: String, default: "Raw Material" },
     categoryId: { type: mongoose.Schema.Types.ObjectId, required: true },
     categoryName: { type: String, default: "" },
     unit: { type: String, default: "kg" },
+    purchasePrice: { type: Number, default: 0 },
+    sellingPrice: { type: Number, default: 0 },
+    openingStock: { type: Number, default: 0 },
+    currentStock: { type: Number, default: 0 },
     description: { type: String, default: "" },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
     notes: { type: String, default: "" },
@@ -60,9 +66,15 @@ function serializeItem(doc: any) {
   return {
     id: String(doc._id),
     name: doc.name ?? "",
+    itemCode: doc.itemCode ?? "",
+    itemType: doc.itemType ?? "Raw Material",
     categoryId: String(doc.categoryId ?? ""),
     categoryName: doc.categoryName ?? "",
     unit: doc.unit ?? "kg",
+    purchasePrice: doc.purchasePrice ?? 0,
+    sellingPrice: doc.sellingPrice ?? 0,
+    openingStock: doc.openingStock ?? 0,
+    currentStock: doc.currentStock ?? 0,
     description: doc.description ?? "",
     status: doc.status ?? "active",
     notes: doc.notes ?? "",
@@ -162,7 +174,11 @@ router.get("/items", async (req, res) => {
       const oid = toId(String(req.query.categoryId));
       if (oid) query.categoryId = oid;
     }
-    if (req.query.search) query.name = { $regex: String(req.query.search), $options: "i" };
+    if (req.query.itemType && req.query.itemType !== "all") query.itemType = String(req.query.itemType);
+    if (req.query.search) {
+      const regex = { $regex: String(req.query.search), $options: "i" };
+      query.$or = [{ name: regex }, { itemCode: regex }, { categoryName: regex }, { description: regex }];
+    }
     const items = await Item.find(query).sort({ categoryName: 1, name: 1 });
     res.json({ items: items.map(serializeItem), total: items.length });
   } catch (err) {
@@ -192,9 +208,15 @@ router.post("/items", async (req, res) => {
     }
     const item = await Item.create({
       name,
+      itemCode: String(req.body.itemCode ?? "").trim(),
+      itemType: String(req.body.itemType ?? "Raw Material").trim() || "Raw Material",
       categoryId,
       categoryName: category.name,
       unit: String(req.body.unit ?? "kg").trim() || "kg",
+      purchasePrice: Number(req.body.purchasePrice) || 0,
+      sellingPrice: Number(req.body.sellingPrice) || 0,
+      openingStock: Number(req.body.openingStock) || 0,
+      currentStock: req.body.currentStock !== undefined ? Number(req.body.currentStock) || 0 : Number(req.body.openingStock) || 0,
       description: String(req.body.description ?? "").trim(),
       status: req.body.status === "inactive" ? "inactive" : "active",
       notes: String(req.body.notes ?? "").trim(),
@@ -217,7 +239,13 @@ router.put("/items/:id", async (req, res) => {
     const Item = getItemModel();
     const update: any = {};
     if (req.body.name !== undefined) update.name = String(req.body.name).trim();
+    if (req.body.itemCode !== undefined) update.itemCode = String(req.body.itemCode).trim();
+    if (req.body.itemType !== undefined) update.itemType = String(req.body.itemType).trim() || "Raw Material";
     if (req.body.unit !== undefined) update.unit = String(req.body.unit).trim() || "kg";
+    if (req.body.purchasePrice !== undefined) update.purchasePrice = Number(req.body.purchasePrice) || 0;
+    if (req.body.sellingPrice !== undefined) update.sellingPrice = Number(req.body.sellingPrice) || 0;
+    if (req.body.openingStock !== undefined) update.openingStock = Number(req.body.openingStock) || 0;
+    if (req.body.currentStock !== undefined) update.currentStock = Number(req.body.currentStock) || 0;
     if (req.body.description !== undefined) update.description = String(req.body.description).trim();
     if (req.body.notes !== undefined) update.notes = String(req.body.notes).trim();
     if (req.body.status !== undefined) update.status = req.body.status === "inactive" ? "inactive" : "active";

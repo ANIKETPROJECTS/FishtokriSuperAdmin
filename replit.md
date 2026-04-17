@@ -108,6 +108,7 @@ scripts/
 - Vendor Management overview lives at `/vendor-management` in `artifacts/fishtokri-admin/src/pages/vendor-management-overview.tsx` and summarizes vendor, purchase, category, item, and inventory analytics.
 - The sidebar now labels the vendor area as "Vendor Management" with a "Vendor" subsection linking to the original vendors page.
 - Vendor Items are managed separately at `/vendor-items` in `artifacts/fishtokri-admin/src/pages/vendor-items.tsx`.
+- Vendor Items now use an inventory-style table UI and store richer attributes: item code/SKU, item type, purchase price, selling price, opening stock, current stock, and unit.
 - Vendor Items use master DB collections `vendor_item_categories` and `vendor_items` for raw materials, uncut food items, packaging, and equipment purchased from vendors.
 - The purchase flow requires selecting a destination Super Hub and Sub Hub for tracking, but purchased items are selected only from existing Vendor Item categories and Vendor Items.
 - Vendor purchases no longer create, update, or load customer-facing sub-hub menu products.
