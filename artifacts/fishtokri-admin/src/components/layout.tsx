@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
 
@@ -14,6 +14,16 @@ const masterAdminNavItems = [
     children: [
       { href: "/vendor-categories", label: "Categories", icon: FolderOpen },
       { href: "/vendor-items", label: "Items", icon: Boxes },
+    ],
+  },
+  {
+    href: "/banking",
+    label: "Banking",
+    icon: Landmark,
+    children: [
+      { href: "/banking/accounts", label: "Accounts", icon: Building2 },
+      { href: "/banking/receipts", label: "Receipts", icon: ArrowDownCircle },
+      { href: "/banking/payments", label: "Payments", icon: ArrowUpCircle },
     ],
   },
   { href: "/admin-users", label: "Admin Users", icon: Users },

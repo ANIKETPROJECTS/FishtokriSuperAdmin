@@ -11,6 +11,7 @@ import customersRouter from "./customers";
 import ordersRouter from "./orders";
 import vendorsRouter from "./vendors";
 import vendorItemsRouter from "./vendor-items";
+import bankingRouter from "./banking";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use("/customers", customersRouter);
 router.use("/orders", ordersRouter);
 router.use("/vendors", vendorsRouter);
 router.use("/vendor-items", vendorItemsRouter);
+router.use("/banking", bankingRouter);
 
 export default router;

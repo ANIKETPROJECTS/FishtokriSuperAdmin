@@ -24,6 +24,9 @@ import SubHubMenuAdmin from "@/pages/sub-hub-menu-admin";
 import Vendors from "@/pages/vendors";
 import VendorItems from "@/pages/vendor-items";
 import VendorCategories from "@/pages/vendor-categories";
+import BankingAccounts from "@/pages/banking-accounts";
+import BankingReceipts from "@/pages/banking-receipts";
+import BankingPayments from "@/pages/banking-payments";
 import { Layout } from "@/components/layout";
 
 const queryClient = new QueryClient({
@@ -127,6 +130,15 @@ function App() {
             </Route>
             <Route path="/vendor-categories">
               <ProtectedRoute component={VendorCategories} requiredRole="master_admin" />
+            </Route>
+            <Route path="/banking/accounts">
+              <ProtectedRoute component={BankingAccounts} requiredRole="master_admin" />
+            </Route>
+            <Route path="/banking/receipts">
+              <ProtectedRoute component={BankingReceipts} requiredRole="master_admin" />
+            </Route>
+            <Route path="/banking/payments">
+              <ProtectedRoute component={BankingPayments} requiredRole="master_admin" />
             </Route>
             <Route path="/coupons">
               <ProtectedRoute component={ComingSoon} requiredRole="master_admin" />
