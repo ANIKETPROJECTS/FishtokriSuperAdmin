@@ -171,7 +171,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const navItems = isSuperHub ? superHubNavItems : isSubHub ? subHubNavItems : isDelivery ? deliveryNavItems : masterAdminNavItems;
   const roleLabel = isSuperHub ? "Super Hub" : isSubHub ? "Sub Hub" : isDelivery ? "Delivery" : "Master Admin";
 
-  const sidebarW = sidebarOpen ? "220px" : "56px";
+  const sidebarW = sidebarOpen ? "260px" : "56px";
 
   return (
     <div className="flex min-h-screen bg-[#F4F6FA]">
