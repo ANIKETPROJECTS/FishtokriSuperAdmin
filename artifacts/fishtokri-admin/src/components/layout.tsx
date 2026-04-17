@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 
@@ -8,6 +8,7 @@ const masterAdminNavItems = [
   { href: "/hubs", label: "Hubs", icon: Warehouse },
   { href: "/orders", label: "Orders", icon: ClipboardList },
   { href: "/vendors", label: "Vendors", icon: Handshake },
+  { href: "/vendor-items", label: "Vendor Items", icon: Boxes },
   { href: "/admin-users", label: "Admin Users", icon: Users },
   { href: "/customers", label: "Customers", icon: ShoppingBasket },
 ];

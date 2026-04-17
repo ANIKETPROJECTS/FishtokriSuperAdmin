@@ -10,6 +10,7 @@ import uploadRouter from "./upload";
 import customersRouter from "./customers";
 import ordersRouter from "./orders";
 import vendorsRouter from "./vendors";
+import vendorItemsRouter from "./vendor-items";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use("/upload", uploadRouter);
 router.use("/customers", customersRouter);
 router.use("/orders", ordersRouter);
 router.use("/vendors", vendorsRouter);
+router.use("/vendor-items", vendorItemsRouter);
 
 export default router;

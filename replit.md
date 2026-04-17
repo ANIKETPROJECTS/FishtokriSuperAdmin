@@ -105,6 +105,8 @@ scripts/
 ## Vendor Purchases
 
 - Vendor "Buy" opens a full-page purchase entry flow in `artifacts/fishtokri-admin/src/pages/vendors.tsx`.
+- Vendor Items are managed separately at `/vendor-items` in `artifacts/fishtokri-admin/src/pages/vendor-items.tsx`.
+- Vendor Items use master DB collections `vendor_item_categories` and `vendor_items` for raw materials, uncut food items, packaging, and equipment purchased from vendors.
 - The purchase flow requires selecting a destination Super Hub and Sub Hub, then loads that sub-hub database's existing `products` collection.
 - Each purchased item can either select an existing product from any loaded category in that selected sub hub, or enter a new product.
 - Existing product purchases update the product quantity without creating or maintaining product-level inventory batch records.
