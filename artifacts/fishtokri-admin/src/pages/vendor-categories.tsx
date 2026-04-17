@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { FolderOpen, FolderPlus, Pencil, Trash2, Search, Boxes, ArrowUpDown } from "lucide-react";
+import { FolderOpen, FolderPlus, Pencil, Trash2, Search, Boxes, ArrowUpDown, LayoutGrid, LayoutList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +42,7 @@ export default function VendorCategories() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name_asc" | "name_desc" | "items_high" | "items_low">("newest");
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<VendorCategory | null>(null);
 
@@ -188,6 +189,22 @@ export default function VendorCategories() {
                 Reset
               </Button>
             )}
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setViewMode("list")}
+                className={`flex items-center justify-center w-8 h-8 transition-colors ${viewMode === "list" ? "bg-[#162B4D] text-white" : "bg-white text-gray-400 hover:text-gray-700"}`}
+                title="List view"
+              >
+                <LayoutList className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`flex items-center justify-center w-8 h-8 transition-colors ${viewMode === "grid" ? "bg-[#162B4D] text-white" : "bg-white text-gray-400 hover:text-gray-700"}`}
+                title="Grid view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -208,7 +225,7 @@ export default function VendorCategories() {
               </Button>
             )}
           </div>
-        ) : (
+        ) : viewMode === "list" ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -224,12 +241,8 @@ export default function VendorCategories() {
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((cat) => {
                   const dateAdded = cat.createdAt ? new Date(cat.createdAt) : null;
-                  const dateLabel = dateAdded
-                    ? dateAdded.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-                    : "—";
-                  const timeLabel = dateAdded
-                    ? dateAdded.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-                    : "";
+                  const dateLabel = dateAdded ? dateAdded.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+                  const timeLabel = dateAdded ? dateAdded.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
                   return (
                     <tr key={cat.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3">
@@ -260,20 +273,10 @@ export default function VendorCategories() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => { setEditing(cat); setModalOpen(true); }}
-                            className="h-8 w-8 p-0"
-                          >
+                          <Button size="sm" variant="ghost" onClick={() => { setEditing(cat); setModalOpen(true); }} className="h-8 w-8 p-0">
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(cat)}
-                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-600"
-                          >
+                          <Button size="sm" variant="ghost" onClick={() => handleDelete(cat)} className="h-8 w-8 p-0 text-gray-400 hover:text-red-600">
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -283,6 +286,66 @@ export default function VendorCategories() {
                 })}
               </tbody>
             </table>
+          </div>
+        ) : (
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filtered.map((cat) => {
+              const dateAdded = cat.createdAt ? new Date(cat.createdAt) : null;
+              const dateLabel = dateAdded ? dateAdded.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+              const timeLabel = dateAdded ? dateAdded.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
+              const count = itemCounts[cat.id] ?? 0;
+              return (
+                <div key={cat.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50 hover:bg-white hover:shadow-md transition-all flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                        <FolderOpen className="w-5 h-5" />
+                      </div>
+                      <p className="font-bold text-[#162B4D] text-sm leading-tight truncate">{cat.name}</p>
+                    </div>
+                    <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${cat.status === "active" ? "bg-green-50 text-green-700" : "bg-gray-200 text-gray-500"}`}>
+                      {cat.status}
+                    </span>
+                  </div>
+
+                  {cat.description ? (
+                    <p className="text-xs text-gray-500 line-clamp-2">{cat.description}</p>
+                  ) : (
+                    <p className="text-xs text-gray-300 italic">No description</p>
+                  )}
+
+                  <div className="flex items-center justify-between text-xs text-gray-500 border-t border-gray-100 pt-3 mt-auto">
+                    <div className="flex items-center gap-1.5">
+                      <Boxes className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{count} item{count !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-gray-600">{dateLabel}</p>
+                      {timeLabel && <p className="text-gray-400">{timeLabel}</p>}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 border-t border-gray-100 pt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { setEditing(cat); setModalOpen(true); }}
+                      className="flex-1 h-8 gap-1.5 text-xs"
+                    >
+                      <Pencil className="w-3 h-3" /> Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDelete(cat)}
+                      className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
