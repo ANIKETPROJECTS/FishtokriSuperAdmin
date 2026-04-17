@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { FolderOpen, FolderPlus, Pencil, Trash2, Search, Boxes } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { FolderOpen, FolderPlus, Pencil, Trash2, Search, Boxes, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +41,7 @@ export default function VendorCategories() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name_asc" | "name_desc" | "items_high" | "items_low">("newest");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<VendorCategory | null>(null);
 
@@ -68,11 +69,25 @@ export default function VendorCategories() {
 
   useEffect(() => { load(); }, []);
 
-  const filtered = categories.filter((c) => {
-    const matchSearch = !search.trim() || c.name.toLowerCase().includes(search.toLowerCase()) || c.description.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "all" || c.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  const filtered = useMemo(() => {
+    let result = categories.filter((c) => {
+      const matchSearch = !search.trim() || c.name.toLowerCase().includes(search.toLowerCase()) || c.description.toLowerCase().includes(search.toLowerCase());
+      const matchStatus = statusFilter === "all" || c.status === statusFilter;
+      return matchSearch && matchStatus;
+    });
+    result = [...result].sort((a, b) => {
+      switch (sortBy) {
+        case "newest": return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+        case "oldest": return new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime();
+        case "name_asc": return a.name.localeCompare(b.name);
+        case "name_desc": return b.name.localeCompare(a.name);
+        case "items_high": return (itemCounts[b.id] ?? 0) - (itemCounts[a.id] ?? 0);
+        case "items_low": return (itemCounts[a.id] ?? 0) - (itemCounts[b.id] ?? 0);
+        default: return 0;
+      }
+    });
+    return result;
+  }, [categories, search, statusFilter, sortBy, itemCounts]);
 
   const activeCount = categories.filter((c) => c.status === "active").length;
   const inactiveCount = categories.filter((c) => c.status === "inactive").length;
@@ -125,15 +140,18 @@ export default function VendorCategories() {
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-          <h2 className="font-bold text-[#162B4D]">All Categories</h2>
-          <div className="flex gap-2">
+          <div>
+            <h2 className="font-bold text-[#162B4D]">All Categories</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{filtered.length} of {categories.length} categories</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <div className="relative">
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search categories..."
-                className="pl-9 w-52"
+                className="pl-9 w-48"
               />
             </div>
             <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
@@ -146,6 +164,30 @@ export default function VendorCategories() {
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
+              <SelectTrigger className="w-44">
+                <ArrowUpDown className="w-3.5 h-3.5 mr-1 text-gray-400" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest First</SelectItem>
+                <SelectItem value="oldest">Oldest First</SelectItem>
+                <SelectItem value="name_asc">Name A → Z</SelectItem>
+                <SelectItem value="name_desc">Name Z → A</SelectItem>
+                <SelectItem value="items_high">Most Items</SelectItem>
+                <SelectItem value="items_low">Fewest Items</SelectItem>
+              </SelectContent>
+            </Select>
+            {(search || statusFilter !== "all" || sortBy !== "newest") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSearch(""); setStatusFilter("all"); setSortBy("newest"); }}
+                className="text-gray-400 hover:text-gray-600 px-2"
+              >
+                Reset
+              </Button>
+            )}
           </div>
         </div>
 
@@ -174,57 +216,71 @@ export default function VendorCategories() {
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date Added</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((cat) => (
-                  <tr key={cat.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
-                          <FolderOpen className="w-4 h-4" />
+                {filtered.map((cat) => {
+                  const dateAdded = cat.createdAt ? new Date(cat.createdAt) : null;
+                  const dateLabel = dateAdded
+                    ? dateAdded.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+                    : "—";
+                  const timeLabel = dateAdded
+                    ? dateAdded.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+                    : "";
+                  return (
+                    <tr key={cat.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                            <FolderOpen className="w-4 h-4" />
+                          </div>
+                          <p className="font-semibold text-[#162B4D]">{cat.name}</p>
                         </div>
-                        <p className="font-semibold text-[#162B4D]">{cat.name}</p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-gray-500 max-w-xs">
-                      {cat.description || <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-1.5 text-gray-600">
-                        <Boxes className="w-3.5 h-3.5 text-gray-400" />
-                        <span>{itemCounts[cat.id] ?? 0}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className={`text-xs font-semibold px-2 py-1 rounded-full ${cat.status === "active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                        {cat.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => { setEditing(cat); setModalOpen(true); }}
-                          className="h-8 w-8 p-0"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDelete(cat)}
-                          className="h-8 w-8 p-0 text-gray-400 hover:text-red-600"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-5 py-3 text-gray-500 max-w-xs">
+                        {cat.description || <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-1.5 text-gray-600">
+                          <Boxes className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{itemCounts[cat.id] ?? 0}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <p className="text-sm text-gray-700">{dateLabel}</p>
+                        {timeLabel && <p className="text-xs text-gray-400 mt-0.5">{timeLabel}</p>}
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className={`text-xs font-semibold px-2 py-1 rounded-full ${cat.status === "active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                          {cat.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => { setEditing(cat); setModalOpen(true); }}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDelete(cat)}
+                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-600"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
