@@ -326,6 +326,96 @@ router.get("/all-purchases", async (req, res) => {
   }
 });
 
+router.get("/analytics/summary", async (req, res) => {
+  try {
+    const Vendor = getVendorModel();
+    const Purchase = getPurchaseModel();
+    const vendorItemCategories = mongoose.connection.collection("vendor_item_categories");
+    const vendorItems = mongoose.connection.collection("vendor_items");
+    const Inventory = getInventoryModel();
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const [
+      totalVendors,
+      activeVendors,
+      inactiveVendors,
+      purchaseSummary,
+      last30DaysSummary,
+      categoryCount,
+      activeCategoryCount,
+      itemCount,
+      activeItemCount,
+      inventoryCount,
+      topVendors,
+      recentPurchases,
+      spendByCategory,
+    ] = await Promise.all([
+      Vendor.countDocuments({}),
+      Vendor.countDocuments({ status: "active" }),
+      Vendor.countDocuments({ status: "inactive" }),
+      Purchase.aggregate([
+        { $group: { _id: null, totalTransactions: { $sum: 1 }, totalSpent: { $sum: "$totalAmount" }, averagePurchase: { $avg: "$totalAmount" } } },
+      ]),
+      Purchase.aggregate([
+        { $match: { purchaseDate: { $gte: thirtyDaysAgo } } },
+        { $group: { _id: null, transactions: { $sum: 1 }, spent: { $sum: "$totalAmount" } } },
+      ]),
+      vendorItemCategories.countDocuments({}),
+      vendorItemCategories.countDocuments({ status: "active" }),
+      vendorItems.countDocuments({}),
+      vendorItems.countDocuments({ status: "active" }),
+      Inventory.countDocuments({}),
+      Vendor.find({}).sort({ totalSpent: -1 }).limit(5),
+      Purchase.find({}).sort({ purchaseDate: -1 }).limit(5),
+      Purchase.aggregate([
+        { $unwind: "$items" },
+        {
+          $group: {
+            _id: { $ifNull: ["$items.categoryName", "Uncategorised"] },
+            totalSpent: { $sum: "$items.totalPrice" },
+            purchases: { $sum: 1 },
+          },
+        },
+        { $sort: { totalSpent: -1 } },
+        { $limit: 6 },
+      ]),
+    ]);
+
+    const summary = purchaseSummary[0] ?? { totalTransactions: 0, totalSpent: 0, averagePurchase: 0 };
+    const last30 = last30DaysSummary[0] ?? { transactions: 0, spent: 0 };
+
+    res.json({
+      overview: {
+        totalVendors,
+        activeVendors,
+        inactiveVendors,
+        totalTransactions: summary.totalTransactions ?? 0,
+        totalSpent: summary.totalSpent ?? 0,
+        averagePurchase: summary.averagePurchase ?? 0,
+        last30DaysTransactions: last30.transactions ?? 0,
+        last30DaysSpent: last30.spent ?? 0,
+        categoryCount,
+        activeCategoryCount,
+        itemCount,
+        activeItemCount,
+        inventoryCount,
+      },
+      topVendors: topVendors.map(serializeVendor),
+      recentPurchases: recentPurchases.map(serializePurchase),
+      spendByCategory: spendByCategory.map((row: any) => ({
+        categoryName: row._id || "Uncategorised",
+        totalSpent: row.totalSpent ?? 0,
+        purchases: row.purchases ?? 0,
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get vendor analytics");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch vendor analytics" });
+  }
+});
+
 router.put("/purchases/:purchaseId", async (req, res) => {
   try {
     const Purchase = getPurchaseModel();

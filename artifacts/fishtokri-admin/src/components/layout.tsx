@@ -8,10 +8,11 @@ const masterAdminNavItems = [
   { href: "/hubs", label: "Hubs", icon: Warehouse },
   { href: "/orders", label: "Orders", icon: ClipboardList },
   {
-    href: "/vendors",
-    label: "Vendors",
+    href: "/vendor-management",
+    label: "Vendor Management",
     icon: Handshake,
     children: [
+      { href: "/vendors", label: "Vendor", icon: Handshake },
       { href: "/vendor-categories", label: "Categories", icon: FolderOpen },
       { href: "/vendor-items", label: "Items", icon: Boxes },
     ],

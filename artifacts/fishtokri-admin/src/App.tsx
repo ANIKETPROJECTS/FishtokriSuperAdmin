@@ -22,6 +22,7 @@ import ComingSoon from "@/pages/coming-soon";
 import MyHubs from "@/pages/my-hubs";
 import SubHubMenuAdmin from "@/pages/sub-hub-menu-admin";
 import Vendors from "@/pages/vendors";
+import VendorManagementOverview from "@/pages/vendor-management-overview";
 import VendorItems from "@/pages/vendor-items";
 import VendorCategories from "@/pages/vendor-categories";
 import BankingOverview from "@/pages/banking-overview";
@@ -122,6 +123,9 @@ function App() {
             </Route>
             <Route path="/orders">
               <ProtectedRoute component={Orders} requiredRole="master_admin" />
+            </Route>
+            <Route path="/vendor-management">
+              <ProtectedRoute component={VendorManagementOverview} requiredRole="master_admin" />
             </Route>
             <Route path="/vendors">
               <ProtectedRoute component={Vendors} requiredRole="master_admin" />
