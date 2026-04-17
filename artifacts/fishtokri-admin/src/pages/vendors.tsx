@@ -145,6 +145,22 @@ interface Purchase {
   createdAt: string;
 }
 
+interface VendorItemCategory {
+  id: string;
+  name: string;
+  status?: string;
+}
+
+interface VendorCatalogItem {
+  id: string;
+  name: string;
+  categoryId: string;
+  categoryName: string;
+  unit: string;
+  description?: string;
+  status?: string;
+}
+
 // ─── EMPTY FORMS ──────────────────────────────────────────────────────────────
 
 const emptyVendor = (): { name: string; phone: string; email: string; address: string; category: string; status: "active" | "inactive"; notes: string } => ({
@@ -159,7 +175,7 @@ function parseCats(cat: string): string[] {
 const emptyBatch = (): BatchEntry => ({ quantity: "", shelfLifeDays: "" });
 
 const emptyItem = (): PurchaseItem => ({
-  productMode: "new", existingProductId: "", existingCategory: "",
+  productMode: "existing", existingProductId: "", existingCategory: "",
   productName: "", quantity: "", unit: "kg", displayUnit: "per kg", pricePerUnit: "", totalPrice: 0, expiryDate: "",
   description: "", category: "", subCategory: "",
   sellingPrice: "", originalPrice: "", discountPct: "",
@@ -1460,8 +1476,9 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
   const [superHubId, setSuperHubId] = useState("");
   const [subHubId, setSubHubId] = useState("");
   const [hubsLoading, setHubsLoading] = useState(true);
-  const [hubProducts, setHubProducts] = useState<any[]>([]);
-  const [productsLoading, setProductsLoading] = useState(false);
+  const [vendorItemCategories, setVendorItemCategories] = useState<VendorItemCategory[]>([]);
+  const [vendorItems, setVendorItems] = useState<VendorCatalogItem[]>([]);
+  const [vendorItemsLoading, setVendorItemsLoading] = useState(true);
 
   const [vendorHistory, setVendorHistory] = useState<Purchase[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1489,31 +1506,39 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
       .finally(() => setHubsLoading(false));
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    setVendorItemsLoading(true);
+    Promise.all([
+      apiFetch("/api/vendor-items/categories"),
+      apiFetch("/api/vendor-items/items"),
+    ])
+      .then(([categoriesData, itemsData]) => {
+        if (!active) return;
+        setVendorItemCategories((categoriesData.categories || []).filter((cat: VendorItemCategory) => cat.status !== "inactive"));
+        setVendorItems((itemsData.items || []).filter((item: VendorCatalogItem) => item.status !== "inactive"));
+      })
+      .catch(() => {
+        if (!active) return;
+        setVendorItemCategories([]);
+        setVendorItems([]);
+        toast({ title: "Failed to load vendor items", variant: "destructive" });
+      })
+      .finally(() => {
+        if (active) setVendorItemsLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
   const handleSuperHubChange = (id: string) => {
     setSuperHubId(id);
     setSubHubId("");
     setSubHubs([]);
-    setHubProducts([]);
     if (!id) return;
     apiFetch(`/api/super-hubs/${id}`)
       .then(d => setSubHubs(d.subHubs || []))
       .catch(() => setSubHubs([]));
   };
-
-  useEffect(() => {
-    if (!subHubId) {
-      setHubProducts([]);
-      return;
-    }
-    setProductsLoading(true);
-    apiFetch(`/api/sub-hubs/${subHubId}/menu/products`)
-      .then(d => setHubProducts(d.products || []))
-      .catch(() => {
-        setHubProducts([]);
-        toast({ title: "Failed to load existing hub products", variant: "destructive" });
-      })
-      .finally(() => setProductsLoading(false));
-  }, [subHubId]);
 
   const setField = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
@@ -1578,24 +1603,42 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
   const addItem = () => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }));
   const removeItem = (idx: number) => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
 
-  const productCategories = useMemo(() => {
-    const values = hubProducts.map((p) => p.category).filter(Boolean);
-    return Array.from(new Set(values)).sort((a, b) => String(a).localeCompare(String(b)));
-  }, [hubProducts]);
+  const getItemPurchaseQuantity = (item: PurchaseItem) => {
+    const batchQty = item.batches
+      .filter(batch => Number(batch.quantity) > 0)
+      .reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0);
+    return batchQty || Number(item.quantity) || 0;
+  };
 
-  const applyExistingProduct = (idx: number, productId: string) => {
-    const product = hubProducts.find((p) => getDocId(p) === productId);
+  const vendorItemCategoryOptions = useMemo(() =>
+    vendorItemCategories
+      .filter(category => vendorItems.some(item => item.categoryId === category.id))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [vendorItemCategories, vendorItems]
+  );
+
+  const applyVendorItem = (idx: number, itemId: string) => {
+    const product = vendorItems.find((item) => item.id === itemId);
     setForm(f => {
       const items = [...f.items];
       items[idx] = product
-        ? { ...productToItem(product, { ...items[idx], existingProductId: productId }), existingCategory: items[idx].existingCategory }
-        : { ...items[idx], existingProductId: productId };
+        ? {
+            ...items[idx],
+            existingProductId: product.id,
+            productName: product.name,
+            category: product.categoryName,
+            existingCategory: product.categoryId,
+            unit: product.unit || items[idx].unit || "kg",
+            description: product.description || "",
+            productMode: "existing",
+          }
+        : { ...items[idx], existingProductId: itemId, productName: "" };
       return { ...f, items };
     });
   };
 
   const totalAmount = useMemo(() =>
-    form.items.reduce((s, i) => s + (Number(i.quantity) * Number(i.pricePerUnit)), 0),
+    form.items.reduce((s, i) => s + (getItemPurchaseQuantity(i) * Number(i.pricePerUnit)), 0),
     [form.items]
   );
 
@@ -1603,19 +1646,20 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     e.preventDefault();
     if (!superHubId) { toast({ title: "Please select a Super Hub", variant: "destructive" }); return; }
     if (!subHubId) { toast({ title: "Please select a Sub Hub", variant: "destructive" }); return; }
-    const validItems = form.items.filter(i => {
-      if (i.productMode === "existing") {
-        return i.productName.trim() && i.existingProductId && i.batches.some(b => Number(b.quantity) > 0);
-      }
-      return i.productName.trim() && Number(i.quantity) > 0;
-    });
-    if (validItems.length === 0) { toast({ title: "Add at least one item with a product and batch quantity", variant: "destructive" }); return; }
+    const validItems = form.items.filter(i => i.existingCategory && i.existingProductId && i.productName.trim() && i.batches.some(b => Number(b.quantity) > 0));
+    if (validItems.length === 0) { toast({ title: "Select a vendor category/item and add at least one batch quantity", variant: "destructive" }); return; }
     setSaving(true);
     try {
       const admin = getCurrentAdmin();
       const selectedSHub = subHubs.find((s: any) => s.id === subHubId);
       const selectedSuperH = superHubs.find((h: any) => h.id === superHubId);
-      const itemsWithMeta = validItems.map(item => ({ ...item, categoryName: item.existingCategory || item.category || "" }));
+      const itemsWithMeta = validItems.map(item => ({
+        ...item,
+        quantity: getItemPurchaseQuantity(item),
+        categoryName: item.category || "",
+        vendorItemId: item.existingProductId,
+        vendorItemCategoryId: item.existingCategory,
+      }));
       await apiFetch(`/api/vendors/${vendor.id}/purchases`, {
         method: "POST",
         body: JSON.stringify({
@@ -1629,35 +1673,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
           createdByEmail: admin.email,
         }),
       });
-      const errors: string[] = [];
-      for (const item of validItems) {
-        try {
-          const existingProduct = item.productMode === "existing" ? hubProducts.find((p) => getDocId(p) === item.existingProductId) : null;
-          if (item.productMode === "existing" && item.existingProductId && existingProduct) {
-            const quantityToAdd = item.batches
-              .filter(b => Number(b.quantity) > 0)
-              .reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0);
-            const payload = {
-              ...existingProduct,
-              quantity: (Number(existingProduct.quantity) || 0) + quantityToAdd,
-            };
-            await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/${item.existingProductId}`, {
-              method: "PUT",
-              body: JSON.stringify(payload),
-            });
-          } else {
-            await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, {
-              method: "POST",
-              body: JSON.stringify(productPayload(item)),
-            });
-          }
-        } catch { errors.push(item.productName); }
-      }
-      if (errors.length > 0) {
-        toast({ title: "Purchase saved, some products failed to add", description: errors.join(", "), variant: "destructive" });
-      } else {
-        toast({ title: "Purchase saved!", description: `${validItems.length} product(s) added to sub hub menu.` });
-      }
+      toast({ title: "Purchase saved!", description: `${validItems.length} vendor item(s) recorded.` });
       onSaved();
       setForm(emptyPurchase());
       setHistoryPage(1);
@@ -1738,15 +1754,13 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                 ))}
               </select>
               {selectedSubHub && (
-                <p className="text-[11px] text-green-600 mt-1">✓ Products will be added to {selectedSubHub.name}</p>
+                <p className="text-[11px] text-green-600 mt-1">✓ Purchase destination: {selectedSubHub.name}</p>
               )}
             </div>
           </div>
-          {subHubId && (
-            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-              {productsLoading ? "Loading existing products from this sub hub..." : `${hubProducts.length} existing product${hubProducts.length === 1 ? "" : "s"} loaded from this sub hub. You can buy against any category or add a new product.`}
-            </div>
-          )}
+          <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            Vendor purchases now use only the dedicated Vendor Items catalog. They do not create or update sub-hub menu products.
+          </div>
         </div>
 
         {/* ─── Purchase Info ──────────────────────────────────── */}
@@ -1798,273 +1812,136 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                     <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                       <span className="w-4 h-px bg-indigo-300 inline-block" />Product Information
                     </p>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3 rounded-lg border border-indigo-100 bg-indigo-50 p-3">
-                        <button
-                          type="button"
-                          onClick={() => setItem(idx, "productMode", "existing")}
-                          className={`rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${item.productMode === "existing" ? "border-[#162B4D] bg-white text-[#162B4D] shadow-sm" : "border-transparent bg-transparent text-gray-500 hover:bg-white/70"}`}
-                        >
-                          Select existing product
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setItem(idx, "productMode", "new")}
-                          className={`rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${item.productMode === "new" ? "border-[#162B4D] bg-white text-[#162B4D] shadow-sm" : "border-transparent bg-transparent text-gray-500 hover:bg-white/70"}`}
-                        >
-                          Enter new product
-                        </button>
-                      </div>
-                      {item.productMode === "existing" ? (
-                        <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 space-y-3">
-                          {/* Category dropdown */}
+                    <div className="space-y-4">
+                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <FieldLabel required>Category</FieldLabel>
+                            <FieldLabel required>Vendor Item Category</FieldLabel>
                             <select
                               value={item.existingCategory}
                               onChange={e => setItem(idx, "existingCategory", e.target.value)}
-                              disabled={!subHubId || productsLoading}
+                              disabled={vendorItemsLoading || vendorItemCategoryOptions.length === 0}
                               className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                             >
-                              <option value="">{!subHubId ? "Select sub hub first" : productsLoading ? "Loading..." : "All categories"}</option>
-                              {productCategories.map(cat => (
-                                <option key={cat} value={cat}>{cat}</option>
+                              <option value="">{vendorItemsLoading ? "Loading categories..." : vendorItemCategoryOptions.length === 0 ? "No vendor item categories found" : "Choose category..."}</option>
+                              {vendorItemCategoryOptions.map(category => (
+                                <option key={category.id} value={category.id}>{category.name}</option>
                               ))}
                             </select>
                           </div>
-                          {/* Product dropdown (filtered by selected category) */}
                           <div>
-                            <FieldLabel required>Product</FieldLabel>
+                            <FieldLabel required>Vendor Item</FieldLabel>
                             <select
                               value={item.existingProductId}
-                              onChange={e => applyExistingProduct(idx, e.target.value)}
-                              disabled={!subHubId || productsLoading || hubProducts.length === 0}
-                              required={item.productMode === "existing"}
+                              onChange={e => applyVendorItem(idx, e.target.value)}
+                              disabled={!item.existingCategory || vendorItemsLoading}
+                              required
                               className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                             >
-                              <option value="">{!subHubId ? "Select sub hub first" : productsLoading ? "Loading products..." : hubProducts.length === 0 ? "No products found" : "Choose product..."}</option>
-                              {(item.existingCategory
-                                ? hubProducts.filter(p => p.category === item.existingCategory)
-                                : hubProducts
-                              ).map(product => (
-                                <option key={getDocId(product)} value={getDocId(product)}>
-                                  {product.name}{product.subCategory ? ` (${product.subCategory})` : ""}
-                                </option>
-                              ))}
+                              <option value="">{!item.existingCategory ? "Select category first" : vendorItemsLoading ? "Loading items..." : "Choose item..."}</option>
+                              {vendorItems
+                                .filter(product => product.categoryId === item.existingCategory)
+                                .map(product => (
+                                  <option key={product.id} value={product.id}>{product.name}</option>
+                                ))}
                             </select>
                           </div>
-                          {/* Batches */}
-                          {item.existingProductId && (
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <FieldLabel>Batches</FieldLabel>
-                                <button
-                                  type="button"
-                                  onClick={() => addBatch(idx)}
-                                  className="flex items-center gap-1 text-xs font-semibold text-[#162B4D] hover:text-[#162B4D]/70 transition-colors"
-                                >
-                                  <Plus className="w-3.5 h-3.5" /> Add Batch
-                                </button>
-                              </div>
-                              <div className="space-y-2">
-                                {item.batches.map((batch, bIdx) => (
-                                  <div key={bIdx} className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
-                                    <span className="text-xs text-gray-400 font-medium w-14 shrink-0">Batch {bIdx + 1}</span>
-                                    <div className="flex-1">
-                                      <label className="block text-[10px] text-gray-400 mb-0.5">Quantity</label>
-                                      <Input
-                                        type="text"
-                                        inputMode="decimal"
-                                        value={batch.quantity}
-                                        onChange={e => setBatch(idx, bIdx, "quantity", numOnly(e.target.value))}
-                                        placeholder="0"
-                                        className="h-8 text-sm"
-                                      />
-                                    </div>
-                                    <div className="flex-1">
-                                      <label className="block text-[10px] text-gray-400 mb-0.5">Shelf Life (days)</label>
-                                      <Input
-                                        type="text"
-                                        inputMode="decimal"
-                                        value={batch.shelfLifeDays}
-                                        onChange={e => setBatch(idx, bIdx, "shelfLifeDays", numOnly(e.target.value))}
-                                        placeholder="e.g. 3"
-                                        className="h-8 text-sm"
-                                      />
-                                    </div>
-                                    {item.batches.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => removeBatch(idx, bIdx)}
-                                        className="text-red-400 hover:text-red-600 transition-colors mt-4"
-                                      >
-                                        <X className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
                         </div>
-                      ) : (
-                        <>
-                          {/* ── BASIC INFO ── */}
-                          <section>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:content-['']">Basic Info</p>
-                            <div className="space-y-3">
-                              <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold text-gray-600">Product Name *</Label>
-                                <Input value={item.productName} onChange={e => setItem(idx, "productName", e.target.value)} placeholder="e.g. Chicken Curry Cut" required className="h-9" />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold text-gray-600">Description</Label>
-                                <textarea value={item.description} onChange={e => setItem(idx, "description", e.target.value)} placeholder="Describe this product..." className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-16" />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold text-gray-600">Category</Label>
-                                <Select value={item.category || "__none__"} onValueChange={v => setItem(idx, "category", v === "__none__" ? "" : v)}>
-                                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select category..." /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="__none__">Select category...</SelectItem>
-                                    {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                                    <SelectItem value={CATEGORY_OTHER}>{CATEGORY_OTHER}</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                          </section>
-
-                          {/* ── PRICING ── */}
-                          <section>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:content-['']">Pricing</p>
-                            <div className="space-y-3">
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-semibold text-gray-600">Sale Price (₹) *</Label>
-                                  <Input type="number" min="0" value={item.sellingPrice} onChange={e => setItem(idx, "sellingPrice", e.target.value)} placeholder="0" className="h-9" />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-semibold text-gray-600">Original Price / MRP (₹)</Label>
-                                  <Input type="number" min="0" value={item.originalPrice} onChange={e => setItem(idx, "originalPrice", e.target.value)} placeholder="0" className="h-9" />
-                                </div>
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold text-gray-600">Unit</Label>
-                                <Select value={item.displayUnit} onValueChange={v => setItem(idx, "displayUnit", v)}>
-                                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                                  <SelectContent>{PRODUCT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                                </Select>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-semibold text-gray-600">Gross Weight</Label>
-                                  <Input value={item.grossWeight} onChange={e => setItem(idx, "grossWeight", e.target.value)} placeholder="e.g. 550g" className="h-9" />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-semibold text-gray-600">Net Weight</Label>
-                                  <Input value={item.netWeight} onChange={e => setItem(idx, "netWeight", e.target.value)} placeholder="e.g. 500g" className="h-9" />
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-3 gap-3">
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-semibold text-gray-600">Pieces</Label>
-                                  <Input value={item.pieces} onChange={e => setItem(idx, "pieces", e.target.value)} placeholder="e.g. 8–10 Pieces" className="h-9" />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-semibold text-gray-600">Serves</Label>
-                                  <Input value={item.serves} onChange={e => setItem(idx, "serves", e.target.value)} placeholder="e.g. Serves 4" className="h-9" />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-semibold text-gray-600">Stock (Qty)</Label>
-                                  <Input type="number" min="0" value={item.stockQty ?? "0"} onChange={e => setItem(idx, "stockQty", e.target.value)} className="h-9" />
-                                </div>
-                              </div>
-                            </div>
-                          </section>
-
-                          {/* ── STATUS & MEDIA ── */}
-                          <section>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:content-['']">Status & Media</p>
-                            <div className="space-y-3">
-                              <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold text-gray-600">Product Image</Label>
-                                <div className="flex gap-1 p-0.5 bg-gray-100 rounded-lg w-fit mb-1.5">
-                                  <button type="button" onClick={() => setItem(idx, "imageMode", "url")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${(item.imageMode ?? "url") === "url" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>URL</button>
-                                  <button type="button" onClick={() => setItem(idx, "imageMode", "upload")} className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${item.imageMode === "upload" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Upload</button>
-                                </div>
-                                {(item.imageMode ?? "url") === "url" ? (
-                                  <div className="space-y-1.5">
-                                    <Input value={item.imageUrl} onChange={e => setItem(idx, "imageUrl", e.target.value)} placeholder="https://..." className="h-9" />
-                                    {item.imageUrl && <img src={item.imageUrl} alt="Preview" className="w-full h-28 object-cover rounded-lg border border-gray-100" onError={(e) => { (e.target as any).style.display = "none"; }} />}
-                                  </div>
-                                ) : (
-                                  <label className="flex items-center justify-center gap-2 h-10 px-3 rounded-lg border-2 border-dashed cursor-pointer text-sm text-gray-500 hover:border-[#1A56DB] hover:text-[#1A56DB] transition-colors border-gray-200">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 0L8 8m4-4l4 4" /></svg>
-                                    Choose image from device
-                                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                                      const f = e.target.files?.[0]; if (!f) return;
-                                      const fd = new FormData(); fd.append("image", f);
-                                      const res = await fetch(`${getBase()}/api/upload?folder=fishtokri/products`, { method: "POST", headers: { Authorization: `Bearer ${getToken()}` }, body: fd });
-                                      const data = await res.json();
-                                      if (res.ok) setItem(idx, "imageUrl", data.url);
-                                      e.target.value = "";
-                                    }} />
-                                  </label>
-                                )}
-                              </div>
-                              <div className="flex gap-3">
-                                <div className="flex-1 space-y-1.5">
-                                  <Label className="text-xs font-semibold text-gray-600">Availability</Label>
-                                  <Select value={item.productStatus} onValueChange={v => setItem(idx, "productStatus", v)}>
-                                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="available">Available</SelectItem>
-                                      <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-                                      <SelectItem value="unavailable">Unavailable</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="flex items-end pb-0.5">
-                                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100 h-9 px-4">
-                                    <Label className="text-sm text-gray-600">Archived</Label>
-                                    <input
-                                      type="checkbox"
-                                      checked={item.newProductIsArchived ?? false}
-                                      onChange={e => setItem(idx, "newProductIsArchived", e.target.checked)}
-                                      className="w-4 h-4 accent-red-500"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </section>
-
-                          {/* ── RECIPES ── */}
-                          <section>
-                            <div className="flex items-center justify-between mb-3">
-                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recipes ({(item.newProductRecipes ?? []).length})</p>
+                        {item.existingProductId && (
+                          <p className="text-xs text-gray-500">
+                            Buying {item.productName} from Vendor Items catalog. This purchase will not create a sub-hub menu product.
+                          </p>
+                        )}
+                      </div>
+                      {item.existingProductId && (
+                        <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 p-3 space-y-4">
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <FieldLabel>Batches</FieldLabel>
                               <button
                                 type="button"
-                                onClick={() => setItem(idx, "newProductRecipes", [...(item.newProductRecipes ?? []), BLANK_RECIPE()])}
-                                className="text-xs text-[#1A56DB] font-semibold flex items-center gap-1 hover:underline"
+                                onClick={() => addBatch(idx)}
+                                className="flex items-center gap-1 text-xs font-semibold text-[#162B4D] hover:text-[#162B4D]/70 transition-colors"
                               >
-                                <Plus className="w-3 h-3" /> Add Recipe
+                                <Plus className="w-3.5 h-3.5" /> Add Batch
                               </button>
                             </div>
-                            {(item.newProductRecipes ?? []).length === 0
-                              ? <div className="text-center py-6 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">No recipes yet. Click "Add Recipe" to include cooking instructions.</div>
-                              : <div className="space-y-2">{(item.newProductRecipes ?? []).map((r: any, rIdx: number) => (
-                                  <VendorRecipeEditor
-                                    key={rIdx}
-                                    recipe={r}
-                                    onChange={(updated: any) => setItem(idx, "newProductRecipes", (item.newProductRecipes ?? []).map((x: any, xi: number) => xi === rIdx ? updated : x))}
-                                    onRemove={() => setItem(idx, "newProductRecipes", (item.newProductRecipes ?? []).filter((_: any, xi: number) => xi !== rIdx))}
-                                  />
-                                ))}</div>}
-                          </section>
-
-                        </>
+                            <div className="space-y-2">
+                              {item.batches.map((batch, bIdx) => (
+                                <div key={bIdx} className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
+                                  <span className="text-xs text-gray-400 font-medium w-14 shrink-0">Batch {bIdx + 1}</span>
+                                  <div className="flex-1">
+                                    <label className="block text-[10px] text-gray-400 mb-0.5">Quantity</label>
+                                    <Input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={batch.quantity}
+                                      onChange={e => setBatch(idx, bIdx, "quantity", numOnly(e.target.value))}
+                                      placeholder="0"
+                                      className="h-8 text-sm"
+                                    />
+                                  </div>
+                                  <div className="flex-1">
+                                    <label className="block text-[10px] text-gray-400 mb-0.5">Shelf Life (days)</label>
+                                    <Input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={batch.shelfLifeDays}
+                                      onChange={e => setBatch(idx, bIdx, "shelfLifeDays", numOnly(e.target.value))}
+                                      placeholder="e.g. 3"
+                                      className="h-8 text-sm"
+                                    />
+                                  </div>
+                                  {item.batches.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeBatch(idx, bIdx)}
+                                      className="text-red-400 hover:text-red-600 transition-colors mt-4"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-4 gap-3">
+                            <div>
+                              <FieldLabel required>Unit</FieldLabel>
+                              <select
+                                value={item.unit}
+                                onChange={e => setItem(idx, "unit", e.target.value)}
+                                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                              >
+                                {UNITS.map(unit => <option key={unit} value={unit}>{unit}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <FieldLabel required>Cost / Unit</FieldLabel>
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                value={item.pricePerUnit}
+                                onChange={e => setItem(idx, "pricePerUnit", numOnly(e.target.value))}
+                                placeholder="0"
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                            <div>
+                              <FieldLabel>Expiry Date</FieldLabel>
+                              <Input
+                                type="date"
+                                value={item.expiryDate}
+                                onChange={e => setItem(idx, "expiryDate", e.target.value)}
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                            <div className="rounded-lg bg-white border border-gray-200 px-3 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Item Total</p>
+                              <p className="text-sm font-bold text-[#162B4D]">{formatRupees(getItemPurchaseQuantity(item) * Number(item.pricePerUnit))}</p>
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2091,7 +1968,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
           <Button type="button" variant="outline" onClick={onBack}>Back to Vendors</Button>
           <Button type="submit" disabled={saving} className="bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5">
             <ShoppingCart className="w-4 h-4" />
-            {saving ? "Saving..." : "Save Purchase & Add to Hub"}
+            {saving ? "Saving..." : "Save Purchase"}
           </Button>
         </div>
       </form>

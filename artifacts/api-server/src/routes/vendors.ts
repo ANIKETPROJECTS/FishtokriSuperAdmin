@@ -28,6 +28,8 @@ const purchaseItemBatchSchema = new mongoose.Schema({
 }, { _id: false });
 
 const purchaseItemSchema = new mongoose.Schema({
+  vendorItemId: { type: String, default: "" },
+  vendorItemCategoryId: { type: String, default: "" },
   productName: { type: String, required: true },
   categoryName: { type: String, default: "" },
   quantity: { type: Number, required: true },
@@ -126,6 +128,8 @@ function serializePurchase(doc: any) {
     purchaseDate: doc.purchaseDate,
     items: (doc.items ?? []).map((item: any) => ({
       id: String(item._id),
+      vendorItemId: item.vendorItemId ?? "",
+      vendorItemCategoryId: item.vendorItemCategoryId ?? "",
       productName: item.productName ?? "",
       categoryName: item.categoryName ?? "",
       quantity: item.quantity ?? 0,
@@ -410,6 +414,8 @@ router.post("/:vendorId/purchases", async (req, res) => {
         ? itemBatches.reduce((s: number, b: any) => s + b.quantity, 0)
         : (Number(item.quantity) || 0);
       return {
+        vendorItemId: item.vendorItemId || item.existingProductId || "",
+        vendorItemCategoryId: item.vendorItemCategoryId || item.existingCategory || "",
         productName: item.productName?.trim(),
         categoryName: item.categoryName?.trim() || item.existingCategory?.trim() || "",
         quantity: totalQty,
@@ -459,7 +465,7 @@ router.post("/:vendorId/purchases", async (req, res) => {
       if (!invItem) {
         invItem = await Inventory.create({
           productName: item.productName,
-          category: (vendor as any).category || "General",
+          category: item.categoryName || (vendor as any).category || "General",
           unit: item.unit,
           totalQuantity: item.quantity,
           batches: [{

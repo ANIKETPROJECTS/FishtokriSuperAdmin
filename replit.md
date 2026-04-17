@@ -95,7 +95,7 @@ scripts/
 
 - **Type**: MongoDB (Mongoose)
 - **Database name**: `fishtokri_admin`
-- **Collections**: `super_hubs`, `sub_hubs`, `hub_users`
+- **Collections**: `super_hubs`, `sub_hubs`, `hub_users`, `vendor_item_categories`, `vendor_items`, `vendor_purchases`
 
 ### Hub Hierarchy
 - **Super Hubs** — city level (e.g. Mumbai, Pune, Navi Mumbai)
@@ -107,10 +107,9 @@ scripts/
 - Vendor "Buy" opens a full-page purchase entry flow in `artifacts/fishtokri-admin/src/pages/vendors.tsx`.
 - Vendor Items are managed separately at `/vendor-items` in `artifacts/fishtokri-admin/src/pages/vendor-items.tsx`.
 - Vendor Items use master DB collections `vendor_item_categories` and `vendor_items` for raw materials, uncut food items, packaging, and equipment purchased from vendors.
-- The purchase flow requires selecting a destination Super Hub and Sub Hub, then loads that sub-hub database's existing `products` collection.
-- Each purchased item can either select an existing product from any loaded category in that selected sub hub, or enter a new product.
-- Existing product purchases update the product quantity without creating or maintaining product-level inventory batch records.
-- Product payloads include the richer menu fields used by sub-hub DB products: `description`, `category`, `subCategory`, `price`, `originalPrice`, `discountPct`, `unit`, `weight`, `grossWeight`, `netWeight`, `pieces`, `serves`, `imageUrl`, `limitedStockNote`, `recipes`, `sectionId`, and `couponIds`.
+- The purchase flow requires selecting a destination Super Hub and Sub Hub for tracking, but purchased items are selected only from existing Vendor Item categories and Vendor Items.
+- Vendor purchases no longer create, update, or load customer-facing sub-hub menu products.
+- Purchase item records store the selected `vendorItemId` and `vendorItemCategoryId` along with batch quantity, shelf life, unit, cost/unit, expiry date, and total price.
 
 ---
 
