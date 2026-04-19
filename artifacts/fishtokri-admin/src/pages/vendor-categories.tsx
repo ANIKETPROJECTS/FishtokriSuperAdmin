@@ -14,8 +14,17 @@ type VendorCategory = {
   status: "active" | "inactive";
   createdAt?: string;
   source: "master" | "subhub";
+  linkedSubHubCategoryName?: string;
+  linkedProductCount?: number;
   subHubs: string[];
   subHubCount: number;
+};
+
+type SubHubCategory = {
+  name: string;
+  subHubs: string[];
+  subHubCount: number;
+  productCount: number;
 };
 
 function getToken() {
@@ -55,11 +64,12 @@ function HubsBadge({ subHubs, subHubCount }: { subHubs: string[]; subHubCount: n
 export default function VendorCategories() {
   const { toast } = useToast();
   const [categories, setCategories] = useState<VendorCategory[]>([]);
+  const [subHubCategories, setSubHubCategories] = useState<SubHubCategory[]>([]);
   const [itemCounts, setItemCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [sourceFilter, setSourceFilter] = useState<"all" | "master" | "subhub">("all");
+  const [linkFilter, setLinkFilter] = useState<"all" | "linked" | "unlinked">("all");
   const [sortBy, setSortBy] = useState<"name_asc" | "name_desc" | "newest" | "oldest" | "items_high" | "items_low" | "hubs_high">("name_asc");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [modalOpen, setModalOpen] = useState(false);
@@ -68,12 +78,14 @@ export default function VendorCategories() {
   const load = async () => {
     setLoading(true);
     try {
-      const [catData, itemData] = await Promise.all([
+      const [catData, itemData, subHubData] = await Promise.all([
         apiFetch("/api/vendor-items/categories"),
         apiFetch("/api/vendor-items/items"),
+        apiFetch("/api/vendor-items/sub-hub-categories"),
       ]);
       const cats: VendorCategory[] = catData.categories ?? [];
       setCategories(cats);
+      setSubHubCategories(subHubData.categories ?? []);
       const counts: Record<string, number> = {};
       for (const cat of cats) counts[cat.id] = 0;
       for (const item of itemData.items ?? []) {
@@ -93,8 +105,9 @@ export default function VendorCategories() {
     let result = categories.filter((c) => {
       const matchSearch = !search.trim() || c.name.toLowerCase().includes(search.toLowerCase()) || c.description.toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === "all" || c.status === statusFilter;
-      const matchSource = sourceFilter === "all" || c.source === sourceFilter;
-      return matchSearch && matchStatus && matchSource;
+      const isLinked = Boolean(c.linkedSubHubCategoryName);
+      const matchLink = linkFilter === "all" || (linkFilter === "linked" ? isLinked : !isLinked);
+      return matchSearch && matchStatus && matchLink;
     });
     result = [...result].sort((a, b) => {
       switch (sortBy) {
@@ -109,10 +122,10 @@ export default function VendorCategories() {
       }
     });
     return result;
-  }, [categories, search, statusFilter, sourceFilter, sortBy, itemCounts]);
+  }, [categories, search, statusFilter, linkFilter, sortBy, itemCounts]);
 
-  const masterCount = categories.filter((c) => c.source === "master").length;
-  const subHubOnlyCount = categories.filter((c) => c.source === "subhub").length;
+  const linkedCount = categories.filter((c) => c.linkedSubHubCategoryName).length;
+  const unlinkedCount = categories.length - linkedCount;
   const uniqueSubHubs = new Set(categories.flatMap((c) => c.subHubs)).size;
 
   const handleDelete = async (cat: VendorCategory) => {
@@ -132,14 +145,14 @@ export default function VendorCategories() {
     }
   };
 
-  const hasActiveFilters = search || statusFilter !== "all" || sourceFilter !== "all" || sortBy !== "name_asc";
+  const hasActiveFilters = search || statusFilter !== "all" || linkFilter !== "all" || sortBy !== "name_asc";
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[#162B4D]">Vendor Item Categories</h1>
-          <p className="text-sm text-gray-500 mt-1">All unique categories across vendor management and sub hub menus.</p>
+          <p className="text-sm text-gray-500 mt-1">Only categories created in Vendor Management. Optionally link each one to a sub-hub menu category.</p>
         </div>
         <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="gap-2 bg-[#1A56DB] hover:bg-[#1447B4]">
           <FolderPlus className="w-4 h-4" /> Add Category
@@ -150,17 +163,17 @@ export default function VendorCategories() {
         <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
           <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Total Categories</p>
           <p className="text-2xl font-bold text-[#162B4D] mt-2">{categories.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Across all hubs</p>
+          <p className="text-xs text-gray-500 mt-1">Created here</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Vendor Categories</p>
-          <p className="text-2xl font-bold text-[#162B4D] mt-2">{masterCount}</p>
-          <p className="text-xs text-gray-500 mt-1">In vendor management</p>
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Linked Categories</p>
+          <p className="text-2xl font-bold text-[#162B4D] mt-2">{linkedCount}</p>
+          <p className="text-xs text-gray-500 mt-1">Connected to sub-hub menus</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Hub-Only</p>
-          <p className="text-2xl font-bold text-blue-600 mt-2">{subHubOnlyCount}</p>
-          <p className="text-xs text-gray-500 mt-1">From sub hub menus only</p>
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Vendor Only</p>
+          <p className="text-2xl font-bold text-blue-600 mt-2">{unlinkedCount}</p>
+          <p className="text-xs text-gray-500 mt-1">Normal vendor item columns</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
           <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Sub Hubs</p>
@@ -195,14 +208,14 @@ export default function VendorCategories() {
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={sourceFilter} onValueChange={(v: any) => setSourceFilter(v)}>
+            <Select value={linkFilter} onValueChange={(v: any) => setLinkFilter(v)}>
               <SelectTrigger className="w-36">
-                <SelectValue placeholder="All Sources" />
+                <SelectValue placeholder="All Links" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Sources</SelectItem>
-                <SelectItem value="master">Vendor Only</SelectItem>
-                <SelectItem value="subhub">Hub Menu Only</SelectItem>
+                <SelectItem value="all">All Links</SelectItem>
+                <SelectItem value="linked">Linked</SelectItem>
+                <SelectItem value="unlinked">Vendor Only</SelectItem>
               </SelectContent>
             </Select>
             <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
@@ -224,7 +237,7 @@ export default function VendorCategories() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setSearch(""); setStatusFilter("all"); setSourceFilter("all"); setSortBy("name_asc"); }}
+                onClick={() => { setSearch(""); setStatusFilter("all"); setLinkFilter("all"); setSortBy("name_asc"); }}
                 className="text-gray-400 hover:text-gray-600 px-2"
               >
                 Reset
@@ -274,7 +287,7 @@ export default function VendorCategories() {
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sub Hubs</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Linked Sub-Hub Category</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date Added</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Actions</th>
@@ -295,9 +308,7 @@ export default function VendorCategories() {
                           </div>
                           <div>
                             <p className="font-semibold text-[#162B4D]">{cat.name}</p>
-                            {!isMaster && (
-                              <span className="text-[10px] font-medium text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-full">Hub Menu</span>
-                            )}
+                            {cat.linkedSubHubCategoryName && <span className="text-[10px] font-medium text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-full">Linked</span>}
                           </div>
                         </div>
                       </td>
@@ -315,7 +326,12 @@ export default function VendorCategories() {
                         )}
                       </td>
                       <td className="px-5 py-3">
-                        <HubsBadge subHubs={cat.subHubs} subHubCount={cat.subHubCount} />
+                        {cat.linkedSubHubCategoryName ? (
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium text-gray-700">{cat.linkedSubHubCategoryName}</p>
+                            <HubsBadge subHubs={cat.subHubs} subHubCount={cat.subHubCount} />
+                          </div>
+                        ) : <span className="text-gray-300 text-xs">Vendor only</span>}
                       </td>
                       <td className="px-5 py-3">
                         <p className="text-sm text-gray-700">{dateLabel}</p>
@@ -336,9 +352,7 @@ export default function VendorCategories() {
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           </div>
-                        ) : (
-                          <span className="text-xs text-gray-400 italic">Hub managed</span>
-                        )}
+                        ) : null}
                       </td>
                     </tr>
                   );
@@ -363,9 +377,7 @@ export default function VendorCategories() {
                       </div>
                       <div className="min-w-0">
                         <p className="font-bold text-[#162B4D] text-sm leading-tight truncate">{cat.name}</p>
-                        {!isMaster && (
-                          <span className="text-[10px] font-medium text-blue-500">Hub Menu</span>
-                        )}
+                        {cat.linkedSubHubCategoryName && <span className="text-[10px] font-medium text-blue-500">Linked to {cat.linkedSubHubCategoryName}</span>}
                       </div>
                     </div>
                     <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${cat.status === "active" ? "bg-green-50 text-green-700" : "bg-gray-200 text-gray-500"}`}>
@@ -379,7 +391,7 @@ export default function VendorCategories() {
                     <p className="text-xs text-gray-300 italic">No description</p>
                   )}
 
-                  {cat.subHubCount > 0 && (
+                  {cat.linkedSubHubCategoryName && (
                     <div>
                       <HubsBadge subHubs={cat.subHubs} subHubCount={cat.subHubCount} />
                     </div>
@@ -432,6 +444,7 @@ export default function VendorCategories() {
       <CategoryModal
         open={modalOpen}
         category={editing}
+        subHubCategories={subHubCategories}
         onClose={() => setModalOpen(false)}
         onSaved={() => { setModalOpen(false); setEditing(null); load(); }}
       />
@@ -439,15 +452,17 @@ export default function VendorCategories() {
   );
 }
 
-function CategoryModal({ open, category, onClose, onSaved }: {
+function CategoryModal({ open, category, subHubCategories, onClose, onSaved }: {
   open: boolean;
   category: VendorCategory | null;
+  subHubCategories: SubHubCategory[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [linkedSubHubCategoryName, setLinkedSubHubCategoryName] = useState("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
   const [saving, setSaving] = useState(false);
 
@@ -455,6 +470,7 @@ function CategoryModal({ open, category, onClose, onSaved }: {
     if (!open) return;
     setName(category?.name ?? "");
     setDescription(category?.description ?? "");
+    setLinkedSubHubCategoryName(category?.linkedSubHubCategoryName ?? "");
     setStatus(category?.status ?? "active");
   }, [open, category]);
 
@@ -463,7 +479,7 @@ function CategoryModal({ open, category, onClose, onSaved }: {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const payload = { name: name.trim(), description: description.trim(), status };
+      const payload = { name: name.trim(), description: description.trim(), linkedSubHubCategoryName, status };
       if (category) {
         await apiFetch(`/api/vendor-items/categories/${category.id}`, { method: "PUT", body: JSON.stringify(payload) });
         toast({ title: "Category updated" });
@@ -505,6 +521,21 @@ function CategoryModal({ open, category, onClose, onSaved }: {
               rows={3}
               placeholder="What type of vendor items belong here?"
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Link to Sub-Hub Category</Label>
+            <Select value={linkedSubHubCategoryName || "__none"} onValueChange={(value) => setLinkedSubHubCategoryName(value === "__none" ? "" : value)}>
+              <SelectTrigger><SelectValue placeholder="Vendor only" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">Vendor only — no sub-hub link</SelectItem>
+                {subHubCategories.map((cat) => (
+                  <SelectItem key={cat.name} value={cat.name}>
+                    {cat.name} ({cat.subHubCount} hub{cat.subHubCount !== 1 ? "s" : ""}, {cat.productCount} products)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-400">Linked categories show matching sub-hub products in Vendor Items. Unlinked categories keep normal vendor item columns.</p>
           </div>
           <div className="space-y-1.5">
             <Label>Status</Label>

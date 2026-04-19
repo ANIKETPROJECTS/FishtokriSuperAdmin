@@ -12,6 +12,17 @@ type VendorCategory = {
   name: string;
   description: string;
   status: "active" | "inactive";
+  linkedSubHubCategoryName?: string;
+  linkedProductCount?: number;
+  subHubs?: string[];
+  subHubCount?: number;
+};
+
+type SubHubCategory = {
+  name: string;
+  subHubs: string[];
+  subHubCount: number;
+  productCount: number;
 };
 
 type VendorItem = {
@@ -51,7 +62,7 @@ type HubProduct = {
 
 type DisplayItem =
   | { source: "master"; item: VendorItem }
-  | { source: "hub"; product: HubProduct };
+  | { source: "hub"; product: HubProduct; vendorCategory: VendorCategory };
 
 const units = ["kg", "g", "pcs", "box", "tray", "crate", "litre", "pack", "bag", "unt", "pac", "per kg", "per pcs"];
 const itemTypes = ["Raw Material", "Fish", "Mutton", "Packaging", "Equipment", "Cleaning", "Consumable", "Other"];
@@ -84,12 +95,13 @@ function getDisplayName(d: DisplayItem) {
 }
 
 function getDisplayCategory(d: DisplayItem) {
-  return d.source === "master" ? d.item.categoryName : d.product.category;
+  return d.source === "master" ? d.item.categoryName : d.vendorCategory.name;
 }
 
 export default function VendorItems() {
   const { toast } = useToast();
   const [categories, setCategories] = useState<VendorCategory[]>([]);
+  const [subHubCategories, setSubHubCategories] = useState<SubHubCategory[]>([]);
   const [masterItems, setMasterItems] = useState<VendorItem[]>([]);
   const [hubProducts, setHubProducts] = useState<HubProduct[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -108,12 +120,14 @@ export default function VendorItems() {
   const load = async () => {
     setLoading(true);
     try {
-      const [catData, itemData, hubData] = await Promise.all([
+      const [catData, itemData, hubData, subHubCategoryData] = await Promise.all([
         apiFetch("/api/vendor-items/categories"),
         apiFetch("/api/vendor-items/items"),
         apiFetch("/api/vendor-items/hub-products"),
+        apiFetch("/api/vendor-items/sub-hub-categories"),
       ]);
       setCategories(catData.categories ?? []);
+      setSubHubCategories(subHubCategoryData.categories ?? []);
       setMasterItems((itemData.items ?? []).map((item: Partial<VendorItem>) => ({
         id: item.id ?? "",
         name: item.name ?? "",
@@ -140,17 +154,28 @@ export default function VendorItems() {
 
   useEffect(() => { load(); }, []);
 
-  const masterItemNames = useMemo(() => new Set(masterItems.map((i) => i.name.toLowerCase())), [masterItems]);
+  const linkedCategoryIds = useMemo(() => new Set(categories.filter((c) => c.linkedSubHubCategoryName).map((c) => c.id)), [categories]);
+  const vendorOnlyCategories = useMemo(() => categories.filter((c) => !c.linkedSubHubCategoryName), [categories]);
+  const selectedCategoryInfo = useMemo(() => categories.find((c) => c.id === selectedCategory), [categories, selectedCategory]);
+  const selectedCategoryIsLinked = Boolean(selectedCategoryInfo?.linkedSubHubCategoryName);
 
   const allDisplayItems: DisplayItem[] = useMemo(() => {
-    const result: DisplayItem[] = masterItems.map((item) => ({ source: "master", item }));
+    const linkedBySubHubCategory = new Map(
+      categories
+        .filter((c) => c.linkedSubHubCategoryName)
+        .map((c) => [String(c.linkedSubHubCategoryName).trim().toLowerCase(), c])
+    );
+    const result: DisplayItem[] = masterItems
+      .filter((item) => !linkedCategoryIds.has(item.categoryId))
+      .map((item) => ({ source: "master", item }));
     for (const p of hubProducts) {
-      if (!masterItemNames.has(p.name.toLowerCase())) {
-        result.push({ source: "hub", product: p });
+      const vendorCategory = linkedBySubHubCategory.get(String(p.category ?? "").trim().toLowerCase());
+      if (vendorCategory) {
+        result.push({ source: "hub", product: p, vendorCategory });
       }
     }
     return result;
-  }, [masterItems, hubProducts, masterItemNames]);
+  }, [masterItems, hubProducts, categories, linkedCategoryIds]);
 
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -167,12 +192,8 @@ export default function VendorItems() {
         }
       }
       if (selectedCategory !== "all") {
-        if (d.source === "master") {
-          if (d.item.categoryId !== selectedCategory) return false;
-        } else {
-          const catName = categories.find((c) => c.id === selectedCategory)?.name ?? "";
-          if (d.product.category.toLowerCase() !== catName.toLowerCase()) return false;
-        }
+        if (selectedCategoryIsLinked) return d.source === "hub" && d.vendorCategory.id === selectedCategory;
+        return d.source === "master" && d.item.categoryId === selectedCategory;
       }
       if (selectedType !== "all" && d.source === "master" && d.item.itemType !== selectedType) return false;
       return true;
@@ -191,32 +212,33 @@ export default function VendorItems() {
       }
       return getDisplayName(a).localeCompare(getDisplayName(b));
     });
-  }, [allDisplayItems, selectedCategory, selectedType, sourceFilter, search, sortBy, categories]);
+  }, [allDisplayItems, selectedCategory, selectedCategoryIsLinked, selectedType, sourceFilter, search, sortBy]);
 
   const activeItems = masterItems.filter((i) => i.status === "active").length;
-  const groupedCount = categories.filter((c) => masterItems.some((i) => i.categoryId === c.id)).length;
+  const groupedCount = vendorOnlyCategories.filter((c) => masterItems.some((i) => i.categoryId === c.id)).length;
+  const linkedCount = categories.filter((c) => c.linkedSubHubCategoryName).length;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#162B4D]">Vendor Items</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage vendor purchasable items and all sub hub products in one place.</p>
+          <p className="text-sm text-gray-500 mt-1">Vendor-only categories use item columns. Linked categories show matching sub-hub products.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => { setEditingCategory(null); setCategoryModalOpen(true); }} className="gap-2">
             <FolderPlus className="w-4 h-4" /> Add Category
           </Button>
-          <Button onClick={() => { setEditingItem(null); setItemModalOpen(true); }} className="gap-2 bg-[#1A56DB] hover:bg-[#1447B4]" disabled={categories.length === 0}>
+          <Button onClick={() => { setEditingItem(null); setItemModalOpen(true); }} className="gap-2 bg-[#1A56DB] hover:bg-[#1447B4]" disabled={vendorOnlyCategories.length === 0 || selectedCategoryIsLinked}>
             <Plus className="w-4 h-4" /> Add Item
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <SummaryCard label="Categories" value={categories.length} helper={`${groupedCount} with items`} />
+        <SummaryCard label="Categories" value={categories.length} helper={`${linkedCount} linked, ${groupedCount} vendor-only with items`} />
         <SummaryCard label="Vendor Items" value={masterItems.length} helper={`${activeItems} active`} />
-        <SummaryCard label="Hub Products" value={hubProducts.length} helper="From sub hub menus" />
+        <SummaryCard label="Linked Products" value={allDisplayItems.filter((d) => d.source === "hub").length} helper="From linked sub-hub categories" />
         <SummaryCard label="In View" value={filteredItems.length} helper="Shown in current view" />
       </div>
 
@@ -236,7 +258,7 @@ export default function VendorItems() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}{c.linkedSubHubCategoryName ? ` → ${c.linkedSubHubCategoryName}` : ""}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -278,30 +300,70 @@ export default function VendorItems() {
                 <SelectItem value="selling">Sale High</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={() => { setEditingItem(null); setItemModalOpen(true); }} disabled={categories.length === 0} className="h-9 gap-2 bg-[#1A56DB] hover:bg-[#1447B4]">
+            <Button onClick={() => { setEditingItem(null); setItemModalOpen(true); }} disabled={vendorOnlyCategories.length === 0 || selectedCategoryIsLinked} className="h-9 gap-2 bg-[#1A56DB] hover:bg-[#1447B4]">
               Add Item
             </Button>
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] text-sm">
+          <table className={`w-full ${selectedCategoryIsLinked ? "min-w-[850px]" : "min-w-[1100px]"} text-sm`}>
             <thead>
               <tr className="bg-gray-50 text-left border-b border-gray-100">
-                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
-                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Code</th>
-                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
-                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
-                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Purchase</th>
-                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Sale</th>
-                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Stock</th>
-                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Hubs</th>
-                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Actions</th>
+                {selectedCategoryIsLinked ? (
+                  <>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Product</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sub-Hub Category</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Sale Price</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Stock</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Hubs</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Actions</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Code</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Purchase</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Sale</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Stock</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Hubs</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Actions</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredItems.map((d, idx) => {
+                if (selectedCategoryIsLinked && d.source === "hub") {
+                  const p = d.product;
+                  const avgPrice = p.hubs.length > 0 ? p.hubs.reduce((s, h) => s + h.price, 0) / p.hubs.length : 0;
+                  const primaryUnit = p.hubs[0]?.unit ?? "kg";
+                  const allActive = p.hubs.every((h) => h.status !== "inactive");
+                  return (
+                    <tr key={`linked:${p.name}:${idx}`} className="hover:bg-blue-50/30 transition-colors bg-blue-50/10">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${allActive ? "bg-emerald-500" : "bg-amber-500"}`} />
+                          <p className="font-medium text-gray-800 truncate">{p.name}</p>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-gray-600">{p.category || "—"}</td>
+                      <td className="px-3 py-3 text-right"><span className="inline-flex justify-end min-w-16 rounded-md border border-gray-200 px-2 py-0.5 text-gray-700 bg-white text-xs">{formatRupees(avgPrice)}</span></td>
+                      <td className="px-3 py-3 text-right text-gray-700">{p.totalQuantity} <span className="text-xs text-gray-400">{primaryUnit}</span></td>
+                      <td className="px-3 py-3">
+                        <button onClick={() => { setEditingHubProduct(p); setHubModalOpen(true); }} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-xs font-medium hover:bg-blue-100 transition-colors" title={p.hubs.map((h) => h.subHubName).join(", ")}>
+                          <Store className="w-3 h-3" /> {p.hubs.length} hub{p.hubs.length !== 1 ? "s" : ""}
+                        </button>
+                      </td>
+                      <td className="px-3 py-3"><span className={`inline-flex items-center gap-1 text-xs font-semibold ${allActive ? "text-emerald-700" : "text-amber-600"}`}><CheckCircle2 className="w-3 h-3" /> {allActive ? "Active" : "Partial"}</span></td>
+                      <td className="px-3 py-3"><Button size="sm" variant="outline" onClick={() => { setEditingHubProduct(p); setHubModalOpen(true); }} className="h-8 w-8 p-0"><Pencil className="w-3.5 h-3.5" /></Button></td>
+                    </tr>
+                  );
+                }
                 if (d.source === "master") {
                   const item = d.item;
                   const hubProduct = hubProducts.find((p) => p.name.toLowerCase() === item.name.toLowerCase());
@@ -426,14 +488,15 @@ export default function VendorItems() {
       <CategoryModal
         open={categoryModalOpen}
         category={editingCategory}
+        subHubCategories={subHubCategories}
         onClose={() => setCategoryModalOpen(false)}
         onSaved={() => { setCategoryModalOpen(false); setEditingCategory(null); load(); }}
       />
       <ItemModal
         open={itemModalOpen}
         item={editingItem}
-        categories={categories}
-        defaultCategoryId={selectedCategory === "all" ? categories[0]?.id ?? "" : selectedCategory}
+        categories={vendorOnlyCategories}
+        defaultCategoryId={selectedCategory === "all" || selectedCategoryIsLinked ? vendorOnlyCategories[0]?.id ?? "" : selectedCategory}
         onClose={() => setItemModalOpen(false)}
         onSaved={() => { setItemModalOpen(false); setEditingItem(null); load(); }}
       />
@@ -600,10 +663,11 @@ function HubProductModal({ open, product, onClose, onSaved }: {
   );
 }
 
-function CategoryModal({ open, category, onClose, onSaved }: { open: boolean; category: VendorCategory | null; onClose: () => void; onSaved: () => void }) {
+function CategoryModal({ open, category, subHubCategories, onClose, onSaved }: { open: boolean; category: VendorCategory | null; subHubCategories: SubHubCategory[]; onClose: () => void; onSaved: () => void }) {
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [linkedSubHubCategoryName, setLinkedSubHubCategoryName] = useState("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
   const [saving, setSaving] = useState(false);
 
@@ -611,6 +675,7 @@ function CategoryModal({ open, category, onClose, onSaved }: { open: boolean; ca
     if (!open) return;
     setName(category?.name ?? "");
     setDescription(category?.description ?? "");
+    setLinkedSubHubCategoryName(category?.linkedSubHubCategoryName ?? "");
     setStatus(category?.status ?? "active");
   }, [open, category]);
 
@@ -618,7 +683,7 @@ function CategoryModal({ open, category, onClose, onSaved }: { open: boolean; ca
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = { name, description, status };
+      const payload = { name, description, linkedSubHubCategoryName, status };
       if (category) {
         await apiFetch(`/api/vendor-items/categories/${category.id}`, { method: "PUT", body: JSON.stringify(payload) });
         toast({ title: "Category updated" });
@@ -648,6 +713,21 @@ function CategoryModal({ open, category, onClose, onSaved }: { open: boolean; ca
           <div className="space-y-1.5">
             <Label>Description</Label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1A56DB]" rows={3} placeholder="What type of vendor items belong here?" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Link to Sub-Hub Category</Label>
+            <Select value={linkedSubHubCategoryName || "__none"} onValueChange={(value) => setLinkedSubHubCategoryName(value === "__none" ? "" : value)}>
+              <SelectTrigger><SelectValue placeholder="Vendor only" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">Vendor only — no sub-hub link</SelectItem>
+                {subHubCategories.map((cat) => (
+                  <SelectItem key={cat.name} value={cat.name}>
+                    {cat.name} ({cat.subHubCount} hub{cat.subHubCount !== 1 ? "s" : ""}, {cat.productCount} products)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-400">Linked categories show matching sub-hub products. Unlinked categories keep normal vendor item columns.</p>
           </div>
           <div className="space-y-1.5">
             <Label>Status</Label>

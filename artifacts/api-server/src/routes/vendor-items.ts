@@ -11,6 +11,7 @@ const categorySchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     description: { type: String, default: "" },
+    linkedSubHubCategoryName: { type: String, default: "" },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
   },
   { timestamps: true },
@@ -58,6 +59,7 @@ function serializeCategory(doc: any) {
     id: String(doc._id),
     name: doc.name ?? "",
     description: doc.description ?? "",
+    linkedSubHubCategoryName: doc.linkedSubHubCategoryName ?? "",
     status: doc.status ?? "active",
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -85,64 +87,75 @@ function serializeItem(doc: any) {
   };
 }
 
+async function getSubHubCategoryMap() {
+  const subHubs = await SubHub.find({ dbName: { $ne: "" } }).lean();
+  const subHubCategoryMap = new Map<string, { hubs: string[]; displayName: string; productCount: number }>();
+
+  await Promise.allSettled(
+    subHubs.map(async (hub: any) => {
+      if (!hub.dbName) return;
+      try {
+        const conn = await getSubHubDbConnection(hub.dbName);
+        const [cats, products] = await Promise.all([
+          conn.db.collection("categories").find({}).toArray(),
+          conn.db.collection("products").aggregate([
+            { $group: { _id: "$category", count: { $sum: 1 } } },
+          ]).toArray(),
+        ]);
+        const productCounts = new Map(products.map((p: any) => [String(p._id ?? "").trim().toLowerCase(), Number(p.count) || 0]));
+        for (const cat of cats) {
+          const rawName = String(cat.name ?? "").trim();
+          if (!rawName) continue;
+          const key = rawName.toLowerCase();
+          if (!subHubCategoryMap.has(key)) {
+            subHubCategoryMap.set(key, { hubs: [], displayName: rawName, productCount: 0 });
+          }
+          const entry = subHubCategoryMap.get(key)!;
+          entry.hubs.push(hub.name);
+          entry.productCount += productCounts.get(key) ?? 0;
+        }
+      } catch {
+      }
+    })
+  );
+
+  return subHubCategoryMap;
+}
+
+router.get("/sub-hub-categories", async (req, res) => {
+  try {
+    const subHubCategoryMap = await getSubHubCategoryMap();
+    const categories = Array.from(subHubCategoryMap.values())
+      .map((entry) => ({
+        name: entry.displayName,
+        subHubs: Array.from(new Set(entry.hubs)).sort((a, b) => a.localeCompare(b)),
+        subHubCount: new Set(entry.hubs).size,
+        productCount: entry.productCount,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ categories, total: categories.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch sub hub categories");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch sub hub categories" });
+  }
+});
+
 router.get("/categories", async (req, res) => {
   try {
     const Category = getCategoryModel();
     const masterCategories = await Category.find({}).sort({ name: 1 });
-
-    const subHubs = await SubHub.find({ dbName: { $ne: "" } }).lean();
-    const subHubCategoryMap = new Map<string, { hubs: string[]; displayName: string }>();
-
-    await Promise.allSettled(
-      subHubs.map(async (hub: any) => {
-        if (!hub.dbName) return;
-        try {
-          const conn = await getSubHubDbConnection(hub.dbName);
-          const cats = await conn.db.collection("categories").find({}).toArray();
-          for (const cat of cats) {
-            const rawName = String(cat.name ?? "").trim();
-            if (!rawName) continue;
-            const key = rawName.toLowerCase();
-            if (!subHubCategoryMap.has(key)) {
-              subHubCategoryMap.set(key, { hubs: [], displayName: rawName });
-            }
-            subHubCategoryMap.get(key)!.hubs.push(hub.name);
-          }
-        } catch {
-        }
-      })
-    );
-
-    const masterNames = new Set(masterCategories.map((c: any) => String(c.name).trim().toLowerCase()));
+    const subHubCategoryMap = await getSubHubCategoryMap();
     const result = masterCategories.map((c: any) => {
-      const key = String(c.name).trim().toLowerCase();
-      const entry = subHubCategoryMap.get(key);
+      const linkedName = String(c.linkedSubHubCategoryName ?? "").trim();
+      const entry = linkedName ? subHubCategoryMap.get(linkedName.toLowerCase()) : undefined;
       return {
         ...serializeCategory(c),
         source: "master" as const,
-        subHubs: entry?.hubs ?? [],
-        subHubCount: entry?.hubs.length ?? 0,
+        subHubs: entry ? Array.from(new Set(entry.hubs)).sort((a, b) => a.localeCompare(b)) : [],
+        subHubCount: entry ? new Set(entry.hubs).size : 0,
+        linkedProductCount: entry?.productCount ?? 0,
       };
     });
-
-    for (const [key, entry] of subHubCategoryMap.entries()) {
-      if (!masterNames.has(key)) {
-        result.push({
-          id: `subhub:${key}`,
-          name: entry.displayName,
-          description: "",
-          status: "active" as const,
-          createdAt: undefined as any,
-          updatedAt: undefined as any,
-          source: "subhub" as const,
-          subHubs: entry.hubs,
-          subHubCount: entry.hubs.length,
-        });
-      }
-    }
-
-    result.sort((a, b) => a.name.localeCompare(b.name));
-
     res.json({ categories: result, total: result.length });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch vendor item categories");
@@ -161,6 +174,7 @@ router.post("/categories", async (req, res) => {
     const category = await Category.create({
       name,
       description: String(req.body.description ?? "").trim(),
+      linkedSubHubCategoryName: String(req.body.linkedSubHubCategoryName ?? "").trim(),
       status: req.body.status === "inactive" ? "inactive" : "active",
     });
     res.status(201).json({ category: serializeCategory(category) });
@@ -182,6 +196,7 @@ router.put("/categories/:id", async (req, res) => {
     const update: any = {};
     if (req.body.name !== undefined) update.name = String(req.body.name).trim();
     if (req.body.description !== undefined) update.description = String(req.body.description).trim();
+    if (req.body.linkedSubHubCategoryName !== undefined) update.linkedSubHubCategoryName = String(req.body.linkedSubHubCategoryName ?? "").trim();
     if (req.body.status !== undefined) update.status = req.body.status === "inactive" ? "inactive" : "active";
     if (!update.name && req.body.name !== undefined) {
       res.status(400).json({ error: "ValidationError", message: "Category name is required" });
