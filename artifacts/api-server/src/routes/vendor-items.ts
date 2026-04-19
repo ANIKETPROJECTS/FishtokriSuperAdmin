@@ -487,6 +487,9 @@ const stockAdjustmentSchema = new mongoose.Schema(
     items: [
       {
         itemId: { type: mongoose.Schema.Types.ObjectId },
+        source: { type: String, enum: ["master", "hub"], default: "master" },
+        subHubId: { type: mongoose.Schema.Types.ObjectId },
+        productId: { type: mongoose.Schema.Types.ObjectId },
         itemName: { type: String, default: "" },
         unit: { type: String, default: "" },
         quantityBefore: { type: Number, default: 0 },
@@ -514,6 +517,9 @@ function serializeAdjustment(doc: any) {
     createdBy: doc.createdBy ?? "admin",
     items: (doc.items ?? []).map((it: any) => ({
       itemId: String(it.itemId ?? ""),
+      source: it.source ?? "master",
+      subHubId: it.subHubId ? String(it.subHubId) : "",
+      productId: it.productId ? String(it.productId) : "",
       itemName: it.itemName ?? "",
       unit: it.unit ?? "",
       quantityBefore: it.quantityBefore ?? 0,
@@ -522,6 +528,78 @@ function serializeAdjustment(doc: any) {
     })),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+  };
+}
+
+async function getHubAdjustmentProduct(subHubId: string, productId: string) {
+  const subHub = await SubHub.findById(subHubId).lean() as any;
+  if (!subHub || !subHub.dbName) return null;
+  const productOid = toId(productId);
+  if (!productOid) return null;
+  const conn = await getSubHubDbConnection(subHub.dbName);
+  const product = await conn.db.collection("products").findOne({ _id: productOid });
+  if (!product) return null;
+  return { conn, productOid, product };
+}
+
+async function restoreAdjustmentItem(oldItem: any, Item: any) {
+  if (oldItem.source === "hub") {
+    const productRef = await getHubAdjustmentProduct(String(oldItem.subHubId ?? ""), String(oldItem.productId ?? oldItem.itemId ?? ""));
+    if (!productRef) return;
+    const restored = (Number(productRef.product.quantity) || 0) - (Number(oldItem.quantityAdjusted) || 0);
+    await productRef.conn.db.collection("products").updateOne(
+      { _id: productRef.productOid },
+      { $set: { quantity: Math.max(0, restored), updatedAt: new Date() } }
+    );
+    return;
+  }
+  if (!oldItem.itemId) return;
+  const item = await Item.findById(oldItem.itemId);
+  if (!item) return;
+  const restored = (item.currentStock ?? 0) - oldItem.quantityAdjusted;
+  await Item.findByIdAndUpdate(oldItem.itemId, { $set: { currentStock: Math.max(0, restored) } });
+}
+
+async function applyAdjustmentInput(ri: any, Item: any) {
+  const source = ri.source === "hub" ? "hub" : "master";
+  const newQuantity = Number(ri.newQuantity) || 0;
+  if (source === "hub") {
+    const productRef = await getHubAdjustmentProduct(String(ri.subHubId ?? ""), String(ri.productId ?? ri.itemId ?? ""));
+    if (!productRef) return null;
+    const quantityBefore = Number(productRef.product.quantity) || 0;
+    const quantityAdjusted = newQuantity - quantityBefore;
+    await productRef.conn.db.collection("products").updateOne(
+      { _id: productRef.productOid },
+      { $set: { quantity: newQuantity, updatedAt: new Date() } }
+    );
+    return {
+      itemId: productRef.productOid,
+      source,
+      subHubId: toId(String(ri.subHubId)),
+      productId: productRef.productOid,
+      itemName: String(productRef.product.name ?? ""),
+      unit: String(productRef.product.unit ?? ""),
+      quantityBefore,
+      newQuantity,
+      quantityAdjusted,
+    };
+  }
+  if (!ri.itemId) return null;
+  const oid = toId(String(ri.itemId));
+  if (!oid) return null;
+  const item = await Item.findById(oid);
+  if (!item) return null;
+  const quantityBefore = item.currentStock ?? 0;
+  const quantityAdjusted = newQuantity - quantityBefore;
+  await Item.findByIdAndUpdate(oid, { $set: { currentStock: newQuantity } });
+  return {
+    itemId: oid,
+    source,
+    itemName: item.name,
+    unit: item.unit ?? "",
+    quantityBefore,
+    newQuantity,
+    quantityAdjusted,
   };
 }
 
@@ -559,23 +637,8 @@ router.post("/stock-adjustments", async (req, res) => {
     const adjustmentItems: any[] = [];
 
     for (const ri of rawItems) {
-      if (!ri.itemId) continue;
-      const oid = toId(String(ri.itemId));
-      if (!oid) continue;
-      const item = await Item.findById(oid);
-      if (!item) continue;
-      const quantityBefore = item.currentStock ?? 0;
-      const newQuantity = Number(ri.newQuantity) ?? 0;
-      const quantityAdjusted = newQuantity - quantityBefore;
-      adjustmentItems.push({
-        itemId: oid,
-        itemName: item.name,
-        unit: item.unit ?? "",
-        quantityBefore,
-        newQuantity,
-        quantityAdjusted,
-      });
-      await Item.findByIdAndUpdate(oid, { $set: { currentStock: newQuantity } });
+      const adjustmentItem = await applyAdjustmentInput(ri, Item);
+      if (adjustmentItem) adjustmentItems.push(adjustmentItem);
     }
 
     const doc = await StockAdjustment.create({
@@ -612,34 +675,15 @@ router.put("/stock-adjustments/:id", async (req, res) => {
     }
 
     for (const oldItem of (existing.items ?? []) as any[]) {
-      if (!oldItem.itemId) continue;
-      const item = await Item.findById(oldItem.itemId);
-      if (!item) continue;
-      const restored = (item.currentStock ?? 0) - oldItem.quantityAdjusted;
-      await Item.findByIdAndUpdate(oldItem.itemId, { $set: { currentStock: Math.max(0, restored) } });
+      await restoreAdjustmentItem(oldItem, Item);
     }
 
     const rawItems: any[] = Array.isArray(req.body.items) ? req.body.items : [];
     const adjustmentItems: any[] = [];
 
     for (const ri of rawItems) {
-      if (!ri.itemId) continue;
-      const itemOid = toId(String(ri.itemId));
-      if (!itemOid) continue;
-      const item = await Item.findById(itemOid);
-      if (!item) continue;
-      const quantityBefore = item.currentStock ?? 0;
-      const newQuantity = Number(ri.newQuantity) ?? 0;
-      const quantityAdjusted = newQuantity - quantityBefore;
-      adjustmentItems.push({
-        itemId: itemOid,
-        itemName: item.name,
-        unit: item.unit ?? "",
-        quantityBefore,
-        newQuantity,
-        quantityAdjusted,
-      });
-      await Item.findByIdAndUpdate(itemOid, { $set: { currentStock: newQuantity } });
+      const adjustmentItem = await applyAdjustmentInput(ri, Item);
+      if (adjustmentItem) adjustmentItems.push(adjustmentItem);
     }
 
     const update: any = {};
@@ -673,11 +717,7 @@ router.delete("/stock-adjustments/:id", async (req, res) => {
     }
 
     for (const oldItem of (existing.items ?? []) as any[]) {
-      if (!oldItem.itemId) continue;
-      const item = await Item.findById(oldItem.itemId);
-      if (!item) continue;
-      const restored = (item.currentStock ?? 0) - oldItem.quantityAdjusted;
-      await Item.findByIdAndUpdate(oldItem.itemId, { $set: { currentStock: Math.max(0, restored) } });
+      await restoreAdjustmentItem(oldItem, Item);
     }
 
     await StockAdjustment.findByIdAndDelete(oid);

@@ -112,6 +112,7 @@ scripts/
 - Vendor Items use master DB collections `vendor_item_categories` and `vendor_items` for raw materials, uncut food items, packaging, and equipment purchased from vendors.
 - Vendor Categories now show only categories created in Vendor Management. They can optionally store `linkedSubHubCategoryNames` to connect a vendor category (for example, Raw Chicken) to one or more sub-hub menu categories (for example, Chicken plus Eggs).
 - Vendor Items displays linked categories as sub-hub products using product-style columns for every linked sub-hub category, while unlinked categories such as Electronics or Equipment continue to use normal vendor item inventory columns.
+- Stock Adjustment uses the same linked-category logic as Vendor Items: linked vendor categories show matching sub-hub products as selectable stock rows, and saved adjustments update the matching sub-hub product quantity.
 - Seeded vendor categories include Chicken, Cleaning Material, Dry Fish, Eggs, Electronics, Equipments, Fish And Seafood, FROZEN FOODS, Mutton, Pomfret, Prawns, Ready to Cook, Services, and Spices, plus existing Raw Chicken and Whole Fish. Food categories with matching sub-hub menu categories are linked; vendor-only categories have sample inventory items.
 - The purchase flow requires selecting a destination Super Hub and Sub Hub for tracking, but purchased items are selected only from existing Vendor Item categories and Vendor Items.
 - Vendor purchases no longer create, update, or load customer-facing sub-hub menu products.

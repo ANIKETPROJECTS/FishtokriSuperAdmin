@@ -46,6 +46,9 @@ type VendorItem = {
   itemType: string;
   categoryName: string;
   categoryId: string;
+  source?: "master" | "hub";
+  subHubId?: string;
+  productId?: string;
 };
 
 type VendorCategory = {
@@ -55,6 +58,19 @@ type VendorCategory = {
   linkedSubHubCategoryNames?: string[];
 };
 
+type HubProduct = {
+  name: string;
+  category: string;
+  totalQuantity: number;
+  hubs: {
+    subHubId: string;
+    subHubName: string;
+    productId: string;
+    quantity: number;
+    unit: string;
+  }[];
+};
+
 type AdjustmentItem = {
   itemId: string;
   itemName: string;
@@ -62,6 +78,9 @@ type AdjustmentItem = {
   quantityBefore: number;
   newQuantity: number | string;
   quantityAdjusted: number;
+  source?: "master" | "hub";
+  subHubId?: string;
+  productId?: string;
 };
 
 type StockAdjustment = {
@@ -83,6 +102,9 @@ type FormRow = {
   newQuantity: string;
   search: string;
   showDropdown: boolean;
+  source?: "master" | "hub";
+  subHubId?: string;
+  productId?: string;
 };
 
 const REASONS = [
@@ -94,6 +116,15 @@ const REASONS = [
   "Stock correction",
   "Other",
 ];
+
+function getLinkedSubHubCategoryNames(category: Pick<VendorCategory, "linkedSubHubCategoryName" | "linkedSubHubCategoryNames">) {
+  const names = category.linkedSubHubCategoryNames?.length
+    ? category.linkedSubHubCategoryNames
+    : category.linkedSubHubCategoryName
+      ? [category.linkedSubHubCategoryName]
+      : [];
+  return Array.from(new Set(names.map((name) => String(name).trim()).filter(Boolean)));
+}
 
 function ItemSelector({
   row,
@@ -207,7 +238,7 @@ function ItemSelector({
               >
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
-                  <p className="text-xs text-gray-400">{item.categoryName}</p>
+                  <p className="text-xs text-gray-400">{item.source === "hub" ? "Linked product" : item.categoryName}</p>
                 </div>
                 <p className="text-xs font-semibold text-gray-500 flex-shrink-0">
                   {item.currentStock} <span className="font-normal text-gray-400">{item.unit}</span>
@@ -265,7 +296,7 @@ function ItemSelector({
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
-                    <p className="text-xs text-gray-400">{item.itemType || item.unit}</p>
+                    <p className="text-xs text-gray-400">{item.source === "hub" ? "Linked product" : (item.itemType || item.unit)}</p>
                   </div>
                   <p className="text-xs font-semibold text-gray-500 flex-shrink-0">
                     {item.currentStock} <span className="font-normal text-gray-400">{item.unit}</span>
@@ -355,12 +386,51 @@ export default function StockAdjustment() {
 
   const loadItems = useCallback(async () => {
     try {
-      const [itemData, categoryData] = await Promise.all([
+      const [itemData, categoryData, hubProductData] = await Promise.all([
         apiFetch("/api/vendor-items/items"),
         apiFetch("/api/vendor-items/categories"),
+        apiFetch("/api/vendor-items/hub-products"),
       ]);
-      setAllItems(itemData.items ?? []);
-      setCategories(categoryData.categories ?? []);
+      const loadedCategories: VendorCategory[] = categoryData.categories ?? [];
+      const masterItems: VendorItem[] = (itemData.items ?? []).map((item: VendorItem) => ({
+        ...item,
+        source: "master",
+      }));
+      const linkedCategoryIds = new Set(
+        loadedCategories
+          .filter((category) => getLinkedSubHubCategoryNames(category).length > 0)
+          .map((category) => category.id),
+      );
+      const linkedBySubHubCategory = new Map<string, VendorCategory[]>();
+      for (const category of loadedCategories) {
+        for (const linkedName of getLinkedSubHubCategoryNames(category)) {
+          const key = linkedName.toLowerCase();
+          linkedBySubHubCategory.set(key, [...(linkedBySubHubCategory.get(key) ?? []), category]);
+        }
+      }
+      const selectableItems: VendorItem[] = masterItems.filter((item) => !linkedCategoryIds.has(item.categoryId));
+      for (const product of (hubProductData.products ?? []) as HubProduct[]) {
+        const vendorCategories = linkedBySubHubCategory.get(String(product.category ?? "").trim().toLowerCase()) ?? [];
+        for (const vendorCategory of vendorCategories) {
+          const hubs = product.hubs ?? [];
+          for (const hub of hubs) {
+            selectableItems.push({
+              id: `hub:${vendorCategory.id}:${hub.subHubId}:${hub.productId}`,
+              name: hubs.length > 1 ? `${product.name} (${hub.subHubName})` : product.name,
+              unit: hub.unit || "unit",
+              currentStock: Number(hub.quantity ?? 0),
+              itemType: "Hub Product",
+              categoryName: vendorCategory.name,
+              categoryId: vendorCategory.id,
+              source: "hub",
+              subHubId: hub.subHubId,
+              productId: hub.productId,
+            });
+          }
+        }
+      }
+      setAllItems(selectableItems);
+      setCategories(loadedCategories);
     } catch {}
   }, []);
 
@@ -391,6 +461,9 @@ export default function StockAdjustment() {
             newQuantity: String(it.newQuantity),
             search: it.itemName,
             showDropdown: false,
+            source: it.source ?? "master",
+            subHubId: it.subHubId,
+            productId: it.productId,
           }))
         : [{ itemId: "", itemName: "", unit: "", quantityBefore: 0, newQuantity: "", search: "", showDropdown: false }],
     );
@@ -416,18 +489,29 @@ export default function StockAdjustment() {
     setFormRows((rows) =>
       rows.map((r, i) =>
         i === index
-          ? { ...r, itemId: item.id, itemName: item.name, unit: item.unit, quantityBefore: item.currentStock, search: item.name, showDropdown: false }
+          ? {
+              ...r,
+              itemId: item.id,
+              itemName: item.name,
+              unit: item.unit,
+              quantityBefore: item.currentStock,
+              search: item.name,
+              showDropdown: false,
+              source: item.source ?? "master",
+              subHubId: item.subHubId,
+              productId: item.productId,
+            }
           : r,
       ),
     );
   }
 
   function clearItem(index: number) {
-    updateRow(index, { itemId: "", itemName: "", unit: "", quantityBefore: 0, search: "", showDropdown: false });
+    updateRow(index, { itemId: "", itemName: "", unit: "", quantityBefore: 0, search: "", showDropdown: false, source: undefined, subHubId: undefined, productId: undefined });
   }
 
   function onSearchChange(index: number, val: string, open: boolean) {
-    updateRow(index, { search: val, showDropdown: open, itemId: "", itemName: "", unit: "", quantityBefore: 0 });
+    updateRow(index, { search: val, showDropdown: open, itemId: "", itemName: "", unit: "", quantityBefore: 0, source: undefined, subHubId: undefined, productId: undefined });
   }
 
   async function handleSave() {
@@ -446,7 +530,13 @@ export default function StockAdjustment() {
         date: formDate,
         reason: formReason,
         notes: formNotes,
-        items: validRows.map((r) => ({ itemId: r.itemId, newQuantity: Number(r.newQuantity) })),
+        items: validRows.map((r) => ({
+          itemId: r.itemId,
+          source: r.source ?? "master",
+          subHubId: r.subHubId,
+          productId: r.productId,
+          newQuantity: Number(r.newQuantity),
+        })),
       };
       if (editingId) {
         await apiFetch(`/api/vendor-items/stock-adjustments/${editingId}`, { method: "PUT", body: JSON.stringify(payload) });
