@@ -12,6 +12,7 @@ const categorySchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     description: { type: String, default: "" },
     linkedSubHubCategoryName: { type: String, default: "" },
+    linkedSubHubCategoryNames: { type: [String], default: [] },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
   },
   { timestamps: true },
@@ -54,12 +55,28 @@ function toId(id: string) {
   }
 }
 
+function normalizeLinkedSubHubCategoryNames(source: any): string[] {
+  const names = Array.isArray(source?.linkedSubHubCategoryNames)
+    ? source.linkedSubHubCategoryNames
+    : [];
+  const legacyName = String(source?.linkedSubHubCategoryName ?? "").trim();
+  return Array.from(
+    new Set(
+      [...names, legacyName]
+        .map((name) => String(name ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
 function serializeCategory(doc: any) {
+  const linkedSubHubCategoryNames = normalizeLinkedSubHubCategoryNames(doc);
   return {
     id: String(doc._id),
     name: doc.name ?? "",
     description: doc.description ?? "",
-    linkedSubHubCategoryName: doc.linkedSubHubCategoryName ?? "",
+    linkedSubHubCategoryName: linkedSubHubCategoryNames[0] ?? "",
+    linkedSubHubCategoryNames,
     status: doc.status ?? "active",
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -146,14 +163,16 @@ router.get("/categories", async (req, res) => {
     const masterCategories = await Category.find({}).sort({ name: 1 });
     const subHubCategoryMap = await getSubHubCategoryMap();
     const result = masterCategories.map((c: any) => {
-      const linkedName = String(c.linkedSubHubCategoryName ?? "").trim();
-      const entry = linkedName ? subHubCategoryMap.get(linkedName.toLowerCase()) : undefined;
+      const linkedNames = normalizeLinkedSubHubCategoryNames(c);
+      const entries = linkedNames
+        .map((name) => subHubCategoryMap.get(name.toLowerCase()))
+        .filter(Boolean) as { hubs: string[]; displayName: string; productCount: number }[];
       return {
         ...serializeCategory(c),
         source: "master" as const,
-        subHubs: entry ? Array.from(new Set(entry.hubs)).sort((a, b) => a.localeCompare(b)) : [],
-        subHubCount: entry ? new Set(entry.hubs).size : 0,
-        linkedProductCount: entry?.productCount ?? 0,
+        subHubs: Array.from(new Set(entries.flatMap((entry) => entry.hubs))).sort((a, b) => a.localeCompare(b)),
+        subHubCount: new Set(entries.flatMap((entry) => entry.hubs)).size,
+        linkedProductCount: entries.reduce((sum, entry) => sum + entry.productCount, 0),
       };
     });
     res.json({ categories: result, total: result.length });
@@ -171,10 +190,12 @@ router.post("/categories", async (req, res) => {
       res.status(400).json({ error: "ValidationError", message: "Category name is required" });
       return;
     }
+    const linkedSubHubCategoryNames = normalizeLinkedSubHubCategoryNames(req.body);
     const category = await Category.create({
       name,
       description: String(req.body.description ?? "").trim(),
-      linkedSubHubCategoryName: String(req.body.linkedSubHubCategoryName ?? "").trim(),
+      linkedSubHubCategoryName: linkedSubHubCategoryNames[0] ?? "",
+      linkedSubHubCategoryNames,
       status: req.body.status === "inactive" ? "inactive" : "active",
     });
     res.status(201).json({ category: serializeCategory(category) });
@@ -196,7 +217,11 @@ router.put("/categories/:id", async (req, res) => {
     const update: any = {};
     if (req.body.name !== undefined) update.name = String(req.body.name).trim();
     if (req.body.description !== undefined) update.description = String(req.body.description).trim();
-    if (req.body.linkedSubHubCategoryName !== undefined) update.linkedSubHubCategoryName = String(req.body.linkedSubHubCategoryName ?? "").trim();
+    if (req.body.linkedSubHubCategoryName !== undefined || req.body.linkedSubHubCategoryNames !== undefined) {
+      const linkedSubHubCategoryNames = normalizeLinkedSubHubCategoryNames(req.body);
+      update.linkedSubHubCategoryName = linkedSubHubCategoryNames[0] ?? "";
+      update.linkedSubHubCategoryNames = linkedSubHubCategoryNames;
+    }
     if (req.body.status !== undefined) update.status = req.body.status === "inactive" ? "inactive" : "active";
     if (!update.name && req.body.name !== undefined) {
       res.status(400).json({ error: "ValidationError", message: "Category name is required" });

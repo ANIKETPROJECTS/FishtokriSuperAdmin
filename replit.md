@@ -110,8 +110,8 @@ scripts/
 - Vendor Items are managed separately at `/vendor-items` in `artifacts/fishtokri-admin/src/pages/vendor-items.tsx`.
 - Vendor Items now use an inventory-style table UI and store richer attributes: item code/SKU, item type, purchase price, selling price, opening stock, current stock, and unit.
 - Vendor Items use master DB collections `vendor_item_categories` and `vendor_items` for raw materials, uncut food items, packaging, and equipment purchased from vendors.
-- Vendor Categories now show only categories created in Vendor Management. They can optionally store `linkedSubHubCategoryName` to connect a vendor category (for example, Raw Chicken) to a sub-hub menu category (for example, Chicken).
-- Vendor Items displays linked categories as sub-hub products using product-style columns, while unlinked categories such as Electronics or Equipment continue to use normal vendor item inventory columns.
+- Vendor Categories now show only categories created in Vendor Management. They can optionally store `linkedSubHubCategoryNames` to connect a vendor category (for example, Raw Chicken) to one or more sub-hub menu categories (for example, Chicken plus Eggs).
+- Vendor Items displays linked categories as sub-hub products using product-style columns for every linked sub-hub category, while unlinked categories such as Electronics or Equipment continue to use normal vendor item inventory columns.
 - The purchase flow requires selecting a destination Super Hub and Sub Hub for tracking, but purchased items are selected only from existing Vendor Item categories and Vendor Items.
 - Vendor purchases no longer create, update, or load customer-facing sub-hub menu products.
 - Purchase item records store the selected `vendorItemId` and `vendorItemCategoryId` along with batch quantity, shelf life, unit, cost/unit, expiry date, and total price.
