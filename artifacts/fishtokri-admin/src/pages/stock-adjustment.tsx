@@ -108,6 +108,7 @@ function ItemSelector({
   const [open, setOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const portalRef = useRef<HTMLDivElement>(null);
 
   const availableItems = allItems.filter(
     (item) => !(usedIds.has(item.id) && item.id !== row.itemId),
@@ -144,7 +145,9 @@ function ItemSelector({
   useEffect(() => {
     if (!open) return;
     function onMouseDown(e: MouseEvent) {
-      if (wrapperRef.current?.contains(e.target as Node)) return;
+      const target = e.target as Node;
+      if (wrapperRef.current?.contains(target)) return;
+      if (portalRef.current?.contains(target)) return;
       doClose();
     }
     document.addEventListener("mousedown", onMouseDown);
@@ -166,6 +169,7 @@ function ItemSelector({
 
   const dropdownContent = (
     <div
+      ref={portalRef}
       style={dropdownStyle}
       className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
     >
