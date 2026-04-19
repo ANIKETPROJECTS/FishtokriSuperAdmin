@@ -48,6 +48,13 @@ type VendorItem = {
   categoryId: string;
 };
 
+type VendorCategory = {
+  id: string;
+  name: string;
+  linkedSubHubCategoryName?: string;
+  linkedSubHubCategoryNames?: string[];
+};
+
 type AdjustmentItem = {
   itemId: string;
   itemName: string;
@@ -92,6 +99,7 @@ function ItemSelector({
   row,
   idx,
   allItems,
+  categories,
   usedIds,
   onSelect,
   onClear,
@@ -100,6 +108,7 @@ function ItemSelector({
   row: FormRow;
   idx: number;
   allItems: VendorItem[];
+  categories: VendorCategory[];
   usedIds: Set<string>;
   onSelect: (idx: number, item: VendorItem) => void;
   onClear: (idx: number) => void;
@@ -120,7 +129,15 @@ function ItemSelector({
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(item);
   }
-  const allCategories = Object.keys(grouped).sort();
+  const categoryNames = new Set<string>();
+  for (const category of categories) {
+    const name = category.name.trim();
+    if (name) categoryNames.add(name);
+  }
+  for (const itemCategory of Object.keys(grouped)) {
+    if (itemCategory.trim()) categoryNames.add(itemCategory);
+  }
+  const allCategories = Array.from(categoryNames).sort((a, b) => a.localeCompare(b));
 
   const q = row.search.trim().toLowerCase();
   const isSearching = q.length > 0;
@@ -221,7 +238,7 @@ function ItemSelector({
                 >
                   <span className="text-sm font-medium text-gray-800">{cat}</span>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">{grouped[cat].length}</span>
+                    <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">{grouped[cat]?.length ?? 0}</span>
                     <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
                   </div>
                 </button>
@@ -310,6 +327,7 @@ export default function StockAdjustment() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [allItems, setAllItems] = useState<VendorItem[]>([]);
+  const [categories, setCategories] = useState<VendorCategory[]>([]);
 
   const [formDate, setFormDate] = useState(toInputDate(new Date()));
   const [formReason, setFormReason] = useState("");
@@ -337,8 +355,12 @@ export default function StockAdjustment() {
 
   const loadItems = useCallback(async () => {
     try {
-      const data = await apiFetch("/api/vendor-items/items");
-      setAllItems(data.items ?? []);
+      const [itemData, categoryData] = await Promise.all([
+        apiFetch("/api/vendor-items/items"),
+        apiFetch("/api/vendor-items/categories"),
+      ]);
+      setAllItems(itemData.items ?? []);
+      setCategories(categoryData.categories ?? []);
     } catch {}
   }, []);
 
@@ -546,6 +568,7 @@ export default function StockAdjustment() {
                             row={row}
                             idx={idx}
                             allItems={allItems}
+                            categories={categories}
                             usedIds={usedIds}
                             onSelect={selectItem}
                             onClear={clearItem}
