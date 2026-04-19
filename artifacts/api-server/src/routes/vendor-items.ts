@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { mongoose } from "../db/index.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { SuperHub } from "../db/models/super-hub.js";
 import { SubHub } from "../db/models/sub-hub.js";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 
@@ -479,6 +480,10 @@ router.put("/hub-products/:subHubId/:productId", async (req, res) => {
 const stockAdjustmentSchema = new mongoose.Schema(
   {
     date: { type: Date, default: Date.now },
+    superHubId: { type: mongoose.Schema.Types.ObjectId },
+    superHubName: { type: String, default: "" },
+    subHubId: { type: mongoose.Schema.Types.ObjectId },
+    subHubName: { type: String, default: "" },
     voucherNumber: { type: Number },
     reason: { type: String, default: "" },
     notes: { type: String, default: "" },
@@ -510,6 +515,10 @@ function serializeAdjustment(doc: any) {
   return {
     id: String(doc._id),
     date: doc.date,
+    superHubId: doc.superHubId ? String(doc.superHubId) : "",
+    superHubName: doc.superHubName ?? "",
+    subHubId: doc.subHubId ? String(doc.subHubId) : "",
+    subHubName: doc.subHubName ?? "",
     voucherNumber: doc.voucherNumber,
     reason: doc.reason ?? "",
     notes: doc.notes ?? "",
@@ -528,6 +537,29 @@ function serializeAdjustment(doc: any) {
     })),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+  };
+}
+
+async function resolveStockAdjustmentHubContext(superHubId: string, subHubId: string) {
+  const superHubOid = toId(String(superHubId ?? ""));
+  const subHubOid = toId(String(subHubId ?? ""));
+  if (!superHubOid || !subHubOid) {
+    throw new Error("Select a valid Super Hub and Sub Hub");
+  }
+  const [superHub, subHub] = await Promise.all([
+    SuperHub.findById(superHubOid).lean() as any,
+    SubHub.findById(subHubOid).lean() as any,
+  ]);
+  if (!superHub) throw new Error("Selected Super Hub was not found");
+  if (!subHub) throw new Error("Selected Sub Hub was not found");
+  if (String(subHub.superHubId) !== String(superHub._id)) {
+    throw new Error("Selected Sub Hub does not belong to the selected Super Hub");
+  }
+  return {
+    superHubId: superHub._id,
+    superHubName: String(superHub.name ?? ""),
+    subHubId: subHub._id,
+    subHubName: String(subHub.name ?? ""),
   };
 }
 
@@ -560,11 +592,11 @@ async function restoreAdjustmentItem(oldItem: any, Item: any) {
   await Item.findByIdAndUpdate(oldItem.itemId, { $set: { currentStock: Math.max(0, restored) } });
 }
 
-async function applyAdjustmentInput(ri: any, Item: any) {
+async function applyAdjustmentInput(ri: any, Item: any, selectedSubHubId: string) {
   const source = ri.source === "hub" ? "hub" : "master";
   const newQuantity = Number(ri.newQuantity) || 0;
   if (source === "hub") {
-    const productRef = await getHubAdjustmentProduct(String(ri.subHubId ?? ""), String(ri.productId ?? ri.itemId ?? ""));
+    const productRef = await getHubAdjustmentProduct(selectedSubHubId, String(ri.productId ?? ri.itemId ?? ""));
     if (!productRef) return null;
     const quantityBefore = Number(productRef.product.quantity) || 0;
     const quantityAdjusted = newQuantity - quantityBefore;
@@ -575,7 +607,7 @@ async function applyAdjustmentInput(ri: any, Item: any) {
     return {
       itemId: productRef.productOid,
       source,
-      subHubId: toId(String(ri.subHubId)),
+      subHubId: toId(selectedSubHubId),
       productId: productRef.productOid,
       itemName: String(productRef.product.name ?? ""),
       unit: String(productRef.product.unit ?? ""),
@@ -595,6 +627,7 @@ async function applyAdjustmentInput(ri: any, Item: any) {
   return {
     itemId: oid,
     source,
+    subHubId: toId(selectedSubHubId),
     itemName: item.name,
     unit: item.unit ?? "",
     quantityBefore,
@@ -635,14 +668,16 @@ router.post("/stock-adjustments", async (req, res) => {
 
     const rawItems: any[] = Array.isArray(req.body.items) ? req.body.items : [];
     const adjustmentItems: any[] = [];
+    const hubContext = await resolveStockAdjustmentHubContext(String(req.body.superHubId ?? ""), String(req.body.subHubId ?? ""));
 
     for (const ri of rawItems) {
-      const adjustmentItem = await applyAdjustmentInput(ri, Item);
+      const adjustmentItem = await applyAdjustmentInput(ri, Item, String(hubContext.subHubId));
       if (adjustmentItem) adjustmentItems.push(adjustmentItem);
     }
 
     const doc = await StockAdjustment.create({
       date: req.body.date ? new Date(req.body.date) : new Date(),
+      ...hubContext,
       voucherNumber: nextVoucherNumber,
       reason: String(req.body.reason ?? "").trim(),
       notes: String(req.body.notes ?? "").trim(),
@@ -680,14 +715,19 @@ router.put("/stock-adjustments/:id", async (req, res) => {
 
     const rawItems: any[] = Array.isArray(req.body.items) ? req.body.items : [];
     const adjustmentItems: any[] = [];
+    const hubContext = await resolveStockAdjustmentHubContext(String(req.body.superHubId ?? ""), String(req.body.subHubId ?? ""));
 
     for (const ri of rawItems) {
-      const adjustmentItem = await applyAdjustmentInput(ri, Item);
+      const adjustmentItem = await applyAdjustmentInput(ri, Item, String(hubContext.subHubId));
       if (adjustmentItem) adjustmentItems.push(adjustmentItem);
     }
 
     const update: any = {};
     if (req.body.date !== undefined) update.date = new Date(req.body.date);
+    update.superHubId = hubContext.superHubId;
+    update.superHubName = hubContext.superHubName;
+    update.subHubId = hubContext.subHubId;
+    update.subHubName = hubContext.subHubName;
     if (req.body.reason !== undefined) update.reason = String(req.body.reason).trim();
     if (req.body.notes !== undefined) update.notes = String(req.body.notes).trim();
     update.items = adjustmentItems;

@@ -71,6 +71,18 @@ type HubProduct = {
   }[];
 };
 
+type SuperHubOption = {
+  id: string;
+  name: string;
+};
+
+type SubHubOption = {
+  id: string;
+  superHubId: string;
+  superHubName: string;
+  name: string;
+};
+
 type AdjustmentItem = {
   itemId: string;
   itemName: string;
@@ -86,6 +98,10 @@ type AdjustmentItem = {
 type StockAdjustment = {
   id: string;
   date: string;
+  superHubId?: string;
+  superHubName?: string;
+  subHubId?: string;
+  subHubName?: string;
   voucherNumber: number;
   reason: string;
   notes: string;
@@ -359,8 +375,12 @@ export default function StockAdjustment() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [allItems, setAllItems] = useState<VendorItem[]>([]);
   const [categories, setCategories] = useState<VendorCategory[]>([]);
+  const [superHubs, setSuperHubs] = useState<SuperHubOption[]>([]);
+  const [subHubs, setSubHubs] = useState<SubHubOption[]>([]);
 
   const [formDate, setFormDate] = useState(toInputDate(new Date()));
+  const [formSuperHubId, setFormSuperHubId] = useState("");
+  const [formSubHubId, setFormSubHubId] = useState("");
   const [formReason, setFormReason] = useState("");
   const [formNotes, setFormNotes] = useState("");
   const [formRows, setFormRows] = useState<FormRow[]>([
@@ -368,6 +388,7 @@ export default function StockAdjustment() {
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
+  const filteredSubHubs = subHubs.filter((hub) => hub.superHubId === formSuperHubId);
 
   const loadAdjustments = useCallback(async () => {
     setLoading(true);
@@ -383,6 +404,19 @@ export default function StockAdjustment() {
       setLoading(false);
     }
   }, [page, limit, search, toast]);
+
+  const loadHubs = useCallback(async () => {
+    try {
+      const [superHubData, subHubData] = await Promise.all([
+        apiFetch("/api/super-hubs"),
+        apiFetch("/api/sub-hubs"),
+      ]);
+      setSuperHubs(superHubData.superHubs ?? []);
+      setSubHubs(subHubData.subHubs ?? []);
+    } catch (err: any) {
+      toast({ title: "Failed to load hubs", description: err.message, variant: "destructive" });
+    }
+  }, [toast]);
 
   const loadItems = useCallback(async () => {
     try {
@@ -408,15 +442,15 @@ export default function StockAdjustment() {
           linkedBySubHubCategory.set(key, [...(linkedBySubHubCategory.get(key) ?? []), category]);
         }
       }
-      const selectableItems: VendorItem[] = masterItems.filter((item) => !linkedCategoryIds.has(item.categoryId));
+      const selectableItems: VendorItem[] = formSubHubId ? masterItems.filter((item) => !linkedCategoryIds.has(item.categoryId)) : [];
       for (const product of (hubProductData.products ?? []) as HubProduct[]) {
         const vendorCategories = linkedBySubHubCategory.get(String(product.category ?? "").trim().toLowerCase()) ?? [];
         for (const vendorCategory of vendorCategories) {
-          const hubs = product.hubs ?? [];
+          const hubs = (product.hubs ?? []).filter((hub) => hub.subHubId === formSubHubId);
           for (const hub of hubs) {
             selectableItems.push({
               id: `hub:${vendorCategory.id}:${hub.subHubId}:${hub.productId}`,
-              name: hubs.length > 1 ? `${product.name} (${hub.subHubName})` : product.name,
+              name: formSubHubId ? product.name : `${product.name} (${hub.subHubName})`,
               unit: hub.unit || "unit",
               currentStock: Number(hub.quantity ?? 0),
               itemType: "Hub Product",
@@ -432,14 +466,17 @@ export default function StockAdjustment() {
       setAllItems(selectableItems);
       setCategories(loadedCategories);
     } catch {}
-  }, []);
+  }, [formSubHubId]);
 
   useEffect(() => { loadAdjustments(); }, [loadAdjustments]);
+  useEffect(() => { loadHubs(); }, [loadHubs]);
   useEffect(() => { loadItems(); }, [loadItems]);
 
   function openAddForm() {
     setEditingId(null);
     setFormDate(toInputDate(new Date()));
+    setFormSuperHubId("");
+    setFormSubHubId("");
     setFormReason("");
     setFormNotes("");
     setFormRows([{ itemId: "", itemName: "", unit: "", quantityBefore: 0, newQuantity: "", search: "", showDropdown: false }]);
@@ -449,6 +486,8 @@ export default function StockAdjustment() {
   function openEditForm(adj: StockAdjustment) {
     setEditingId(adj.id);
     setFormDate(toInputDate(new Date(adj.date)));
+    setFormSuperHubId(adj.superHubId ?? "");
+    setFormSubHubId(adj.subHubId ?? "");
     setFormReason(adj.reason);
     setFormNotes(adj.notes);
     setFormRows(
@@ -514,7 +553,22 @@ export default function StockAdjustment() {
     updateRow(index, { search: val, showDropdown: open, itemId: "", itemName: "", unit: "", quantityBefore: 0, source: undefined, subHubId: undefined, productId: undefined });
   }
 
+  function handleSuperHubChange(superHubId: string) {
+    setFormSuperHubId(superHubId);
+    setFormSubHubId("");
+    setFormRows([{ itemId: "", itemName: "", unit: "", quantityBefore: 0, newQuantity: "", search: "", showDropdown: false }]);
+  }
+
+  function handleSubHubChange(subHubId: string) {
+    setFormSubHubId(subHubId);
+    setFormRows([{ itemId: "", itemName: "", unit: "", quantityBefore: 0, newQuantity: "", search: "", showDropdown: false }]);
+  }
+
   async function handleSave() {
+    if (!formSuperHubId || !formSubHubId) {
+      toast({ title: "Select Super Hub and Sub Hub first", variant: "destructive" });
+      return;
+    }
     const validRows = formRows.filter((r) => r.itemId && r.newQuantity !== "");
     if (validRows.length === 0) {
       toast({ title: "Add at least one item", variant: "destructive" });
@@ -528,12 +582,14 @@ export default function StockAdjustment() {
     try {
       const payload = {
         date: formDate,
+        superHubId: formSuperHubId,
+        subHubId: formSubHubId,
         reason: formReason,
         notes: formNotes,
         items: validRows.map((r) => ({
           itemId: r.itemId,
           source: r.source ?? "master",
-          subHubId: r.subHubId,
+          subHubId: r.source === "hub" ? (r.subHubId || formSubHubId) : formSubHubId,
           productId: r.productId,
           newQuantity: Number(r.newQuantity),
         })),
@@ -586,7 +642,38 @@ export default function StockAdjustment() {
 
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-6">
           {/* Header fields */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Super Hub <span className="text-red-500">*</span>
+              </Label>
+              <select
+                value={formSuperHubId}
+                onChange={(e) => handleSuperHubChange(e.target.value)}
+                className="w-full h-9 px-3 text-sm border border-gray-200 rounded-md bg-white outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+              >
+                <option value="">Select Super Hub</option>
+                {superHubs.map((hub) => (
+                  <option key={hub.id} value={hub.id}>{hub.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Sub Hub <span className="text-red-500">*</span>
+              </Label>
+              <select
+                value={formSubHubId}
+                onChange={(e) => handleSubHubChange(e.target.value)}
+                disabled={!formSuperHubId}
+                className="w-full h-9 px-3 text-sm border border-gray-200 rounded-md bg-white outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
+              >
+                <option value="">{formSuperHubId ? "Select Sub Hub" : "Select Super Hub first"}</option>
+                {filteredSubHubs.map((hub) => (
+                  <option key={hub.id} value={hub.id}>{hub.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</Label>
               <Input
@@ -624,6 +711,11 @@ export default function StockAdjustment() {
 
           {/* Item table */}
           <div className="space-y-3">
+            {!formSubHubId && (
+              <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                Select a Super Hub and Sub Hub before choosing items. Linked product stock will be adjusted only in the selected sub hub.
+              </div>
+            )}
             <div className="w-full overflow-x-auto rounded-lg border border-gray-100">
               <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
                 <colgroup>
@@ -731,7 +823,7 @@ export default function StockAdjustment() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !formSuperHubId || !formSubHubId}
               className="bg-[#1A56DB] hover:bg-[#1447B4] min-w-[80px]"
             >
               {saving ? "Saving..." : "Save"}
@@ -778,6 +870,7 @@ export default function StockAdjustment() {
               <tr className="bg-gray-50 text-left border-b border-gray-100">
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Voucher No</th>
+                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Hub</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Reason</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
@@ -788,11 +881,11 @@ export default function StockAdjustment() {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Loading...</td>
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400">Loading...</td>
                 </tr>
               ) : adjustments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400">
                     No stock adjustments found.{" "}
                     <button onClick={openAddForm} className="text-[#1A56DB] hover:underline">Add one now.</button>
                   </td>
@@ -802,6 +895,14 @@ export default function StockAdjustment() {
                   <tr key={adj.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 text-gray-700">{formatDate(adj.date)}</td>
                     <td className="px-4 py-3 text-gray-700 font-mono">{adj.voucherNumber}</td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {adj.subHubName || adj.superHubName ? (
+                        <div>
+                          <p className="font-medium text-gray-700">{adj.subHubName || "—"}</p>
+                          <p className="text-xs text-gray-400">{adj.superHubName}</p>
+                        </div>
+                      ) : "—"}
+                    </td>
                     <td className="px-4 py-3 text-gray-700">{adj.reason || "—"}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
