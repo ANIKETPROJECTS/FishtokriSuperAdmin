@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { ArrowLeft, Plus, Trash2, Search, ChevronLeft, ChevronRight, Pencil, X, CheckCircle2 } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { ArrowLeft, Plus, ChevronLeft, ChevronRight, Pencil, X, CheckCircle2, Trash2, Search, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,15 +8,6 @@ import { useToast } from "@/hooks/use-toast";
 
 function getToken() {
   return localStorage.getItem("fishtokri_token") ?? "";
-}
-
-function getAdminData() {
-  try {
-    const raw = localStorage.getItem("fishtokri_admin");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
 }
 
 async function apiFetch(path: string, options: RequestInit = {}) {
@@ -53,6 +44,7 @@ type VendorItem = {
   currentStock: number;
   itemType: string;
   categoryName: string;
+  categoryId: string;
 };
 
 type AdjustmentItem = {
@@ -95,6 +87,128 @@ const REASONS = [
   "Other",
 ];
 
+function ItemSelector({
+  row,
+  idx,
+  allItems,
+  usedIds,
+  onSelect,
+  onClear,
+  onSearchChange,
+}: {
+  row: FormRow;
+  idx: number;
+  allItems: VendorItem[];
+  usedIds: Set<string>;
+  onSelect: (idx: number, item: VendorItem) => void;
+  onClear: (idx: number) => void;
+  onSearchChange: (idx: number, val: string, open: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const q = row.search.trim().toLowerCase();
+  const filtered = allItems.filter((item) => {
+    if (usedIds.has(item.id) && item.id !== row.itemId) return false;
+    if (!q) return true;
+    return (
+      item.name.toLowerCase().includes(q) ||
+      item.categoryName.toLowerCase().includes(q) ||
+      item.itemType.toLowerCase().includes(q)
+    );
+  });
+
+  const grouped: Record<string, VendorItem[]> = {};
+  for (const item of filtered) {
+    const cat = item.categoryName || "Uncategorized";
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(item);
+  }
+  const categories = Object.keys(grouped).sort();
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <div className="relative flex items-center">
+        <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
+        <input
+          type="text"
+          value={row.search}
+          onChange={(e) => {
+            onSearchChange(idx, e.target.value, true);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder={row.itemId ? row.itemName : "Choose Item"}
+          className={`w-full h-9 pl-8 pr-8 text-sm border rounded-md outline-none transition-all
+            focus:ring-2 focus:ring-blue-200 focus:border-blue-400
+            ${row.itemId ? "bg-blue-50/50 border-blue-200 text-gray-800 font-medium" : "border-gray-200 bg-white text-gray-700"}
+          `}
+        />
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+          {row.itemId ? (
+            <button
+              type="button"
+              onClick={() => { onClear(idx); setOpen(false); }}
+              className="text-gray-400 hover:text-red-500 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
+          )}
+        </div>
+      </div>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-[100] bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-64 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-gray-400 text-center">No items found</div>
+          ) : (
+            categories.map((cat) => (
+              <div key={cat}>
+                <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 sticky top-0">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{cat}</span>
+                </div>
+                {grouped[cat].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      onSelect(idx, item);
+                      setOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors flex items-center justify-between gap-3 border-b border-gray-50 last:border-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
+                      <p className="text-xs text-gray-400">{item.itemType}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-xs font-semibold text-gray-600">{item.currentStock}</p>
+                      <p className="text-[10px] text-gray-400 uppercase">{item.unit}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StockAdjustment() {
   const { toast } = useToast();
   const [view, setView] = useState<"list" | "form">("list");
@@ -107,7 +221,6 @@ export default function StockAdjustment() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-
   const [allItems, setAllItems] = useState<VendorItem[]>([]);
 
   const [formDate, setFormDate] = useState(toInputDate(new Date()));
@@ -118,7 +231,6 @@ export default function StockAdjustment() {
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
-  const adminData = getAdminData();
 
   const loadAdjustments = useCallback(async () => {
     setLoading(true);
@@ -139,17 +251,11 @@ export default function StockAdjustment() {
     try {
       const data = await apiFetch("/api/vendor-items/items");
       setAllItems(data.items ?? []);
-    } catch {
-    }
+    } catch {}
   }, []);
 
-  useEffect(() => {
-    loadAdjustments();
-  }, [loadAdjustments]);
-
-  useEffect(() => {
-    loadItems();
-  }, [loadItems]);
+  useEffect(() => { loadAdjustments(); }, [loadAdjustments]);
+  useEffect(() => { loadItems(); }, [loadItems]);
 
   function openAddForm() {
     setEditingId(null);
@@ -200,28 +306,18 @@ export default function StockAdjustment() {
     setFormRows((rows) =>
       rows.map((r, i) =>
         i === index
-          ? {
-              ...r,
-              itemId: item.id,
-              itemName: item.name,
-              unit: item.unit,
-              quantityBefore: item.currentStock,
-              search: item.name,
-              showDropdown: false,
-            }
+          ? { ...r, itemId: item.id, itemName: item.name, unit: item.unit, quantityBefore: item.currentStock, search: item.name, showDropdown: false }
           : r,
       ),
     );
   }
 
-  function getFilteredItems(rowSearch: string, currentRowItemId: string) {
-    const q = rowSearch.trim().toLowerCase();
-    const usedIds = new Set(formRows.map((r) => r.itemId).filter(Boolean));
-    return allItems.filter((item) => {
-      if (usedIds.has(item.id) && item.id !== currentRowItemId) return false;
-      if (!q) return true;
-      return item.name.toLowerCase().includes(q) || item.categoryName.toLowerCase().includes(q);
-    });
+  function clearItem(index: number) {
+    updateRow(index, { itemId: "", itemName: "", unit: "", quantityBefore: 0, search: "", showDropdown: false });
+  }
+
+  function onSearchChange(index: number, val: string, open: boolean) {
+    updateRow(index, { search: val, showDropdown: open, itemId: "", itemName: "", unit: "", quantityBefore: 0 });
   }
 
   async function handleSave() {
@@ -240,22 +336,13 @@ export default function StockAdjustment() {
         date: formDate,
         reason: formReason,
         notes: formNotes,
-        items: validRows.map((r) => ({
-          itemId: r.itemId,
-          newQuantity: Number(r.newQuantity),
-        })),
+        items: validRows.map((r) => ({ itemId: r.itemId, newQuantity: Number(r.newQuantity) })),
       };
       if (editingId) {
-        await apiFetch(`/api/vendor-items/stock-adjustments/${editingId}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
+        await apiFetch(`/api/vendor-items/stock-adjustments/${editingId}`, { method: "PUT", body: JSON.stringify(payload) });
         toast({ title: "Stock adjustment updated" });
       } else {
-        await apiFetch("/api/vendor-items/stock-adjustments", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
+        await apiFetch("/api/vendor-items/stock-adjustments", { method: "POST", body: JSON.stringify(payload) });
         toast({ title: "Stock adjustment saved" });
       }
       setView("list");
@@ -280,13 +367,15 @@ export default function StockAdjustment() {
     }
   }
 
+  const usedIds = new Set(formRows.map((r) => r.itemId).filter(Boolean));
+
   if (view === "form") {
     return (
-      <div className="space-y-6 max-w-5xl">
+      <div className="space-y-5">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setView("list")}
-            className="flex items-center gap-1 text-gray-500 hover:text-gray-800 transition-colors text-sm font-medium"
+            className="flex items-center gap-1.5 text-gray-500 hover:text-gray-800 transition-colors text-sm font-medium"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -296,9 +385,10 @@ export default function StockAdjustment() {
         </div>
 
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Header fields */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Date</Label>
+              <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</Label>
               <Input
                 type="date"
                 value={formDate}
@@ -307,7 +397,7 @@ export default function StockAdjustment() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Reason <span className="text-red-500">*</span>
               </Label>
               <Input
@@ -315,16 +405,14 @@ export default function StockAdjustment() {
                 onChange={(e) => setFormReason(e.target.value)}
                 placeholder="Enter reason"
                 className="h-9"
-                list="reason-list"
+                list="reason-datalist"
               />
-              <datalist id="reason-list">
-                {REASONS.map((r) => (
-                  <option key={r} value={r} />
-                ))}
+              <datalist id="reason-datalist">
+                {REASONS.map((r) => <option key={r} value={r} />)}
               </datalist>
             </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Notes</Label>
+            <div className="space-y-1.5 col-span-2">
+              <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Notes</Label>
               <Input
                 value={formNotes}
                 onChange={(e) => setFormNotes(e.target.value)}
@@ -334,106 +422,87 @@ export default function StockAdjustment() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-sm">
+          {/* Item table */}
+          <div className="space-y-3">
+            <div className="w-full overflow-x-auto rounded-lg border border-gray-100">
+              <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+                <colgroup>
+                  <col style={{ width: "38%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "18%" }} />
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "6%" }} />
+                </colgroup>
                 <thead>
-                  <tr className="bg-gray-50 border border-gray-100 rounded-lg">
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[35%]">
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       Item Details <span className="text-red-500">*</span>
                     </th>
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[12%]">Unit</th>
-                    <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-[15%]">Qty Available</th>
-                    <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-[18%]">New Qty On Hand</th>
-                    <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-[14%]">Qty Adjusted</th>
-                    <th className="px-3 py-2.5 w-8"></th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Qty Available</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">New Qty On Hand</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Qty Adjusted</th>
+                    <th className="px-3 py-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {formRows.map((row, idx) => {
                     const newQtyNum = row.newQuantity === "" ? NaN : Number(row.newQuantity);
-                    const adjusted = isNaN(newQtyNum) ? 0 : newQtyNum - row.quantityBefore;
-                    const filteredItems = getFilteredItems(row.search, row.itemId);
+                    const adjusted = isNaN(newQtyNum) ? null : newQtyNum - row.quantityBefore;
 
                     return (
-                      <tr key={idx} className="hover:bg-gray-50/50">
-                        <td className="px-3 py-2 relative">
-                          <div className="relative">
-                            <div className="flex items-center gap-1">
-                              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                              <Input
-                                value={row.search}
-                                onChange={(e) => {
-                                  updateRow(idx, { search: e.target.value, showDropdown: true, itemId: "", itemName: "", unit: "", quantityBefore: 0 });
-                                }}
-                                onFocus={() => updateRow(idx, { showDropdown: true })}
-                                onBlur={() => setTimeout(() => updateRow(idx, { showDropdown: false }), 150)}
-                                placeholder="Choose Item"
-                                className="h-8 pl-8 text-sm"
-                              />
-                              {row.itemId && (
-                                <button
-                                  onClick={() => updateRow(idx, { itemId: "", itemName: "", unit: "", quantityBefore: 0, search: "", showDropdown: false })}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                            {row.showDropdown && filteredItems.length > 0 && (
-                              <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1">
-                                {filteredItems.slice(0, 20).map((item) => (
-                                  <button
-                                    key={item.id}
-                                    onMouseDown={() => selectItem(idx, item)}
-                                    className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-center justify-between gap-2"
-                                  >
-                                    <div>
-                                      <p className="text-sm font-medium text-gray-800">{item.name}</p>
-                                      <p className="text-xs text-gray-400">{item.categoryName}</p>
-                                    </div>
-                                    <span className="text-xs text-gray-400 flex-shrink-0">{item.currentStock} {item.unit}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                      <tr key={idx} className="hover:bg-gray-50/40 transition-colors">
+                        <td className="px-4 py-2.5">
+                          <ItemSelector
+                            row={row}
+                            idx={idx}
+                            allItems={allItems}
+                            usedIds={usedIds}
+                            onSelect={selectItem}
+                            onClear={clearItem}
+                            onSearchChange={onSearchChange}
+                          />
                         </td>
-                        <td className="px-3 py-2">
-                          <span className="text-sm text-gray-600">{row.unit || "—"}</span>
+                        <td className="px-3 py-2.5">
+                          <span className="text-sm text-gray-600 font-medium">
+                            {row.unit || <span className="text-gray-300">—</span>}
+                          </span>
                         </td>
-                        <td className="px-3 py-2 text-right">
-                          <span className="text-sm text-gray-700">{row.itemId ? row.quantityBefore : "—"}</span>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className="text-sm text-gray-700">
+                            {row.itemId ? row.quantityBefore : <span className="text-gray-300">—</span>}
+                          </span>
                         </td>
-                        <td className="px-3 py-2">
-                          <Input
+                        <td className="px-3 py-2.5">
+                          <input
                             type="number"
                             value={row.newQuantity}
                             onChange={(e) => updateRow(idx, { newQuantity: e.target.value })}
                             placeholder="0"
-                            className="h-8 text-sm text-right"
                             disabled={!row.itemId}
                             min={0}
+                            className={`w-full h-9 px-3 text-sm text-center border rounded-md outline-none transition-all
+                              focus:ring-2 focus:ring-blue-200 focus:border-blue-400
+                              ${!row.itemId ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed" : "border-gray-200 bg-white"}
+                            `}
                           />
                         </td>
-                        <td className="px-3 py-2 text-right">
-                          {row.itemId && row.newQuantity !== "" ? (
-                            <span
-                              className={`text-sm font-semibold ${
-                                adjusted > 0 ? "text-emerald-600" : adjusted < 0 ? "text-red-500" : "text-gray-500"
-                              }`}
-                            >
+                        <td className="px-3 py-2.5 text-center">
+                          {adjusted !== null ? (
+                            <span className={`text-sm font-bold ${adjusted > 0 ? "text-emerald-600" : adjusted < 0 ? "text-red-500" : "text-gray-400"}`}>
                               {adjusted > 0 ? `+${adjusted}` : adjusted}
                             </span>
                           ) : (
-                            <span className="text-sm text-gray-300">—</span>
+                            <span className="text-gray-300 text-sm">—</span>
                           )}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2.5 text-center">
                           <button
+                            type="button"
                             onClick={() => removeRow(idx)}
                             disabled={formRows.length === 1}
-                            className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -446,8 +515,9 @@ export default function StockAdjustment() {
             </div>
 
             <button
+              type="button"
               onClick={addRow}
-              className="flex items-center gap-1.5 text-sm text-[#1A56DB] hover:text-[#1447B4] font-medium mt-1 px-1"
+              className="flex items-center gap-1.5 text-sm text-[#1A56DB] hover:text-[#1447B4] font-medium px-1 transition-colors"
             >
               <Plus className="w-4 h-4" />
               Add Row
@@ -478,10 +548,7 @@ export default function StockAdjustment() {
           <h1 className="text-2xl font-bold text-[#162B4D]">Stock Adjustment</h1>
           <p className="text-sm text-gray-500 mt-1">Increase or decrease stock levels for multiple items at once.</p>
         </div>
-        <Button
-          onClick={openAddForm}
-          className="gap-2 bg-[#1A56DB] hover:bg-[#1447B4]"
-        >
+        <Button onClick={openAddForm} className="gap-2 bg-[#1A56DB] hover:bg-[#1447B4]">
           <Plus className="w-4 h-4" />
           Add Stock Adjustment
         </Button>
@@ -520,17 +587,13 @@ export default function StockAdjustment() {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">
-                    Loading...
-                  </td>
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Loading...</td>
                 </tr>
               ) : adjustments.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">
                     No stock adjustments found.{" "}
-                    <button onClick={openAddForm} className="text-[#1A56DB] hover:underline">
-                      Add one now.
-                    </button>
+                    <button onClick={openAddForm} className="text-[#1A56DB] hover:underline">Add one now.</button>
                   </td>
                 </tr>
               ) : (
@@ -549,37 +612,22 @@ export default function StockAdjustment() {
                             </span>
                           </span>
                         ))}
-                        {adj.items.length > 3 && (
-                          <span className="text-xs text-gray-400">+{adj.items.length - 3} more</span>
-                        )}
+                        {adj.items.length > 3 && <span className="text-xs text-gray-400">+{adj.items.length - 3} more</span>}
                         {adj.items.length === 0 && <span className="text-gray-400 text-xs">—</span>}
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Approved
+                        <CheckCircle2 className="w-3 h-3" /> Approved
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{adj.createdBy}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openEditForm(adj)}
-                          className="h-8 w-8 p-0"
-                          title="Edit"
-                        >
+                        <Button size="sm" variant="outline" onClick={() => openEditForm(adj)} className="h-8 w-8 p-0" title="Edit">
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setDeleteId(adj.id)}
-                          className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:border-red-200"
-                          title="Delete"
-                        >
+                        <Button size="sm" variant="outline" onClick={() => setDeleteId(adj.id)} className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:border-red-200" title="Delete">
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
@@ -593,40 +641,23 @@ export default function StockAdjustment() {
 
         {totalPages > 1 && (
           <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
-            <span>
-              Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total} Results
-            </span>
+            <span>Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total} Results</span>
             <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="h-8 w-8 p-0"
-              >
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="h-8 w-8 p-0">
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                const p = i + 1;
-                return (
-                  <Button
-                    key={p}
-                    variant={p === page ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setPage(p)}
-                    className={`h-8 w-8 p-0 ${p === page ? "bg-[#162B4D] hover:bg-[#1e3a6e] text-white" : ""}`}
-                  >
-                    {p}
-                  </Button>
-                );
-              })}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="h-8 w-8 p-0"
-              >
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map((p) => (
+                <Button
+                  key={p}
+                  variant={p === page ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setPage(p)}
+                  className={`h-8 w-8 p-0 ${p === page ? "bg-[#162B4D] hover:bg-[#1e3a6e] text-white" : ""}`}
+                >
+                  {p}
+                </Button>
+              ))}
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="h-8 w-8 p-0">
                 <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
@@ -643,15 +674,8 @@ export default function StockAdjustment() {
             This will reverse all stock changes made by this adjustment. This action cannot be undone.
           </p>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeleteId(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteId && handleDelete(deleteId)}
-            >
-              Delete
-            </Button>
+            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteId && handleDelete(deleteId)}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
