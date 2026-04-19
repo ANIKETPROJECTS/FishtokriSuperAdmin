@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { FolderOpen, FolderPlus, Pencil, Trash2, Search, Boxes, ArrowUpDown, LayoutGrid, LayoutList } from "lucide-react";
+import { FolderOpen, FolderPlus, Pencil, Trash2, Search, Boxes, ArrowUpDown, LayoutGrid, LayoutList, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,9 @@ type VendorCategory = {
   description: string;
   status: "active" | "inactive";
   createdAt?: string;
+  source: "master" | "subhub";
+  subHubs: string[];
+  subHubCount: number;
 };
 
 function getToken() {
@@ -34,6 +37,21 @@ async function apiFetch(path: string, options: RequestInit = {}) {
   return data;
 }
 
+function HubsBadge({ subHubs, subHubCount }: { subHubs: string[]; subHubCount: number }) {
+  if (subHubCount === 0) return <span className="text-gray-300 text-xs">—</span>;
+  const label = subHubCount === 1 ? subHubs[0] : `${subHubCount} hubs`;
+  const title = subHubs.join(", ");
+  return (
+    <span
+      title={title}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium cursor-default"
+    >
+      <Store className="w-3 h-3" />
+      {label}
+    </span>
+  );
+}
+
 export default function VendorCategories() {
   const { toast } = useToast();
   const [categories, setCategories] = useState<VendorCategory[]>([]);
@@ -41,7 +59,8 @@ export default function VendorCategories() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name_asc" | "name_desc" | "items_high" | "items_low">("newest");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "master" | "subhub">("all");
+  const [sortBy, setSortBy] = useState<"name_asc" | "name_desc" | "newest" | "oldest" | "items_high" | "items_low" | "hubs_high">("name_asc");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<VendorCategory | null>(null);
@@ -74,7 +93,8 @@ export default function VendorCategories() {
     let result = categories.filter((c) => {
       const matchSearch = !search.trim() || c.name.toLowerCase().includes(search.toLowerCase()) || c.description.toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === "all" || c.status === statusFilter;
-      return matchSearch && matchStatus;
+      const matchSource = sourceFilter === "all" || c.source === sourceFilter;
+      return matchSearch && matchStatus && matchSource;
     });
     result = [...result].sort((a, b) => {
       switch (sortBy) {
@@ -84,16 +104,19 @@ export default function VendorCategories() {
         case "name_desc": return b.name.localeCompare(a.name);
         case "items_high": return (itemCounts[b.id] ?? 0) - (itemCounts[a.id] ?? 0);
         case "items_low": return (itemCounts[a.id] ?? 0) - (itemCounts[b.id] ?? 0);
+        case "hubs_high": return b.subHubCount - a.subHubCount;
         default: return 0;
       }
     });
     return result;
-  }, [categories, search, statusFilter, sortBy, itemCounts]);
+  }, [categories, search, statusFilter, sourceFilter, sortBy, itemCounts]);
 
-  const activeCount = categories.filter((c) => c.status === "active").length;
-  const inactiveCount = categories.filter((c) => c.status === "inactive").length;
+  const masterCount = categories.filter((c) => c.source === "master").length;
+  const subHubOnlyCount = categories.filter((c) => c.source === "subhub").length;
+  const uniqueSubHubs = new Set(categories.flatMap((c) => c.subHubs)).size;
 
   const handleDelete = async (cat: VendorCategory) => {
+    if (cat.source === "subhub") return;
     const count = itemCounts[cat.id] ?? 0;
     if (count > 0) {
       toast({ title: "Cannot delete", description: `Move or delete the ${count} item(s) in "${cat.name}" first.`, variant: "destructive" });
@@ -109,33 +132,40 @@ export default function VendorCategories() {
     }
   };
 
+  const hasActiveFilters = search || statusFilter !== "all" || sourceFilter !== "all" || sortBy !== "name_asc";
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[#162B4D]">Vendor Item Categories</h1>
-          <p className="text-sm text-gray-500 mt-1">Organise vendor items by category — e.g. Raw Chicken, Whole Fish, Packaging.</p>
+          <p className="text-sm text-gray-500 mt-1">All unique categories across vendor management and sub hub menus.</p>
         </div>
         <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="gap-2 bg-[#1A56DB] hover:bg-[#1447B4]">
           <FolderPlus className="w-4 h-4" /> Add Category
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
           <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Total Categories</p>
           <p className="text-2xl font-bold text-[#162B4D] mt-2">{categories.length}</p>
-          <p className="text-xs text-gray-500 mt-1">All vendor item categories</p>
+          <p className="text-xs text-gray-500 mt-1">Across all hubs</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Active</p>
-          <p className="text-2xl font-bold text-green-600 mt-2">{activeCount}</p>
-          <p className="text-xs text-gray-500 mt-1">Currently active</p>
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Vendor Categories</p>
+          <p className="text-2xl font-bold text-[#162B4D] mt-2">{masterCount}</p>
+          <p className="text-xs text-gray-500 mt-1">In vendor management</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Inactive</p>
-          <p className="text-2xl font-bold text-gray-400 mt-2">{inactiveCount}</p>
-          <p className="text-xs text-gray-500 mt-1">Currently inactive</p>
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Hub-Only</p>
+          <p className="text-2xl font-bold text-blue-600 mt-2">{subHubOnlyCount}</p>
+          <p className="text-xs text-gray-500 mt-1">From sub hub menus only</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Sub Hubs</p>
+          <p className="text-2xl font-bold text-green-600 mt-2">{uniqueSubHubs}</p>
+          <p className="text-xs text-gray-500 mt-1">Contributing hubs</p>
         </div>
       </div>
 
@@ -165,25 +195,36 @@ export default function VendorCategories() {
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={sourceFilter} onValueChange={(v: any) => setSourceFilter(v)}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="All Sources" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sources</SelectItem>
+                <SelectItem value="master">Vendor Only</SelectItem>
+                <SelectItem value="subhub">Hub Menu Only</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
-              <SelectTrigger className="w-44">
+              <SelectTrigger className="w-40">
                 <ArrowUpDown className="w-3.5 h-3.5 mr-1 text-gray-400" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="newest">Newest First</SelectItem>
-                <SelectItem value="oldest">Oldest First</SelectItem>
                 <SelectItem value="name_asc">Name A → Z</SelectItem>
                 <SelectItem value="name_desc">Name Z → A</SelectItem>
+                <SelectItem value="newest">Newest First</SelectItem>
+                <SelectItem value="oldest">Oldest First</SelectItem>
                 <SelectItem value="items_high">Most Items</SelectItem>
                 <SelectItem value="items_low">Fewest Items</SelectItem>
+                <SelectItem value="hubs_high">Most Hubs</SelectItem>
               </SelectContent>
             </Select>
-            {(search || statusFilter !== "all" || sortBy !== "newest") && (
+            {hasActiveFilters && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setSearch(""); setStatusFilter("all"); setSortBy("newest"); }}
+                onClick={() => { setSearch(""); setStatusFilter("all"); setSourceFilter("all"); setSortBy("name_asc"); }}
                 className="text-gray-400 hover:text-gray-600 px-2"
               >
                 Reset
@@ -217,7 +258,7 @@ export default function VendorCategories() {
               {categories.length === 0 ? "No categories yet" : "No categories match your filters"}
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              {categories.length === 0 ? "Add your first vendor item category to get started." : "Try adjusting the search or status filter."}
+              {categories.length === 0 ? "Add your first vendor item category to get started." : "Try adjusting the search or filters."}
             </p>
             {categories.length === 0 && (
               <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="mt-4 gap-2 bg-[#1A56DB] hover:bg-[#1447B4]">
@@ -233,6 +274,7 @@ export default function VendorCategories() {
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sub Hubs</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date Added</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Actions</th>
@@ -240,6 +282,7 @@ export default function VendorCategories() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((cat) => {
+                  const isMaster = cat.source === "master";
                   const dateAdded = cat.createdAt ? new Date(cat.createdAt) : null;
                   const dateLabel = dateAdded ? dateAdded.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
                   const timeLabel = dateAdded ? dateAdded.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -247,20 +290,32 @@ export default function VendorCategories() {
                     <tr key={cat.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${isMaster ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-500"}`}>
                             <FolderOpen className="w-4 h-4" />
                           </div>
-                          <p className="font-semibold text-[#162B4D]">{cat.name}</p>
+                          <div>
+                            <p className="font-semibold text-[#162B4D]">{cat.name}</p>
+                            {!isMaster && (
+                              <span className="text-[10px] font-medium text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-full">Hub Menu</span>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-5 py-3 text-gray-500 max-w-xs">
                         {cat.description || <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-5 py-3">
-                        <div className="flex items-center gap-1.5 text-gray-600">
-                          <Boxes className="w-3.5 h-3.5 text-gray-400" />
-                          <span>{itemCounts[cat.id] ?? 0}</span>
-                        </div>
+                        {isMaster ? (
+                          <div className="flex items-center gap-1.5 text-gray-600">
+                            <Boxes className="w-3.5 h-3.5 text-gray-400" />
+                            <span>{itemCounts[cat.id] ?? 0}</span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        <HubsBadge subHubs={cat.subHubs} subHubCount={cat.subHubCount} />
                       </td>
                       <td className="px-5 py-3">
                         <p className="text-sm text-gray-700">{dateLabel}</p>
@@ -272,14 +327,18 @@ export default function VendorCategories() {
                         </span>
                       </td>
                       <td className="px-5 py-3">
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="ghost" onClick={() => { setEditing(cat); setModalOpen(true); }} className="h-8 w-8 p-0">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleDelete(cat)} className="h-8 w-8 p-0 text-gray-400 hover:text-red-600">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
+                        {isMaster ? (
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => { setEditing(cat); setModalOpen(true); }} className="h-8 w-8 p-0">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => handleDelete(cat)} className="h-8 w-8 p-0 text-gray-400 hover:text-red-600">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">Hub managed</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -290,6 +349,7 @@ export default function VendorCategories() {
         ) : (
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filtered.map((cat) => {
+              const isMaster = cat.source === "master";
               const dateAdded = cat.createdAt ? new Date(cat.createdAt) : null;
               const dateLabel = dateAdded ? dateAdded.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
               const timeLabel = dateAdded ? dateAdded.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -298,10 +358,15 @@ export default function VendorCategories() {
                 <div key={cat.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50 hover:bg-white hover:shadow-md transition-all flex flex-col gap-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isMaster ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-500"}`}>
                         <FolderOpen className="w-5 h-5" />
                       </div>
-                      <p className="font-bold text-[#162B4D] text-sm leading-tight truncate">{cat.name}</p>
+                      <div className="min-w-0">
+                        <p className="font-bold text-[#162B4D] text-sm leading-tight truncate">{cat.name}</p>
+                        {!isMaster && (
+                          <span className="text-[10px] font-medium text-blue-500">Hub Menu</span>
+                        )}
+                      </div>
                     </div>
                     <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${cat.status === "active" ? "bg-green-50 text-green-700" : "bg-gray-200 text-gray-500"}`}>
                       {cat.status}
@@ -314,10 +379,22 @@ export default function VendorCategories() {
                     <p className="text-xs text-gray-300 italic">No description</p>
                   )}
 
+                  {cat.subHubCount > 0 && (
+                    <div>
+                      <HubsBadge subHubs={cat.subHubs} subHubCount={cat.subHubCount} />
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between text-xs text-gray-500 border-t border-gray-100 pt-3 mt-auto">
                     <div className="flex items-center gap-1.5">
-                      <Boxes className="w-3.5 h-3.5 text-gray-400" />
-                      <span>{count} item{count !== 1 ? "s" : ""}</span>
+                      {isMaster ? (
+                        <>
+                          <Boxes className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{count} item{count !== 1 ? "s" : ""}</span>
+                        </>
+                      ) : (
+                        <span className="text-gray-400 italic text-[11px]">Hub managed</span>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="text-gray-600">{dateLabel}</p>
@@ -325,24 +402,26 @@ export default function VendorCategories() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2 border-t border-gray-100 pt-3">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => { setEditing(cat); setModalOpen(true); }}
-                      className="flex-1 h-8 gap-1.5 text-xs"
-                    >
-                      <Pencil className="w-3 h-3" /> Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleDelete(cat)}
-                      className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
+                  {isMaster && (
+                    <div className="flex gap-2 border-t border-gray-100 pt-3">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { setEditing(cat); setModalOpen(true); }}
+                        className="flex-1 h-8 gap-1.5 text-xs"
+                      >
+                        <Pencil className="w-3 h-3" /> Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDelete(cat)}
+                        className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               );
             })}

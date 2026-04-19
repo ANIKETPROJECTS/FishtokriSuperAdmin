@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { mongoose } from "../db/index.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { SubHub } from "../db/models/sub-hub.js";
+import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
@@ -86,8 +88,62 @@ function serializeItem(doc: any) {
 router.get("/categories", async (req, res) => {
   try {
     const Category = getCategoryModel();
-    const categories = await Category.find({}).sort({ name: 1 });
-    res.json({ categories: categories.map(serializeCategory), total: categories.length });
+    const masterCategories = await Category.find({}).sort({ name: 1 });
+
+    const subHubs = await SubHub.find({ dbName: { $ne: "" } }).lean();
+    const subHubCategoryMap = new Map<string, { hubs: string[]; displayName: string }>();
+
+    await Promise.allSettled(
+      subHubs.map(async (hub: any) => {
+        if (!hub.dbName) return;
+        try {
+          const conn = await getSubHubDbConnection(hub.dbName);
+          const cats = await conn.db.collection("categories").find({}).toArray();
+          for (const cat of cats) {
+            const rawName = String(cat.name ?? "").trim();
+            if (!rawName) continue;
+            const key = rawName.toLowerCase();
+            if (!subHubCategoryMap.has(key)) {
+              subHubCategoryMap.set(key, { hubs: [], displayName: rawName });
+            }
+            subHubCategoryMap.get(key)!.hubs.push(hub.name);
+          }
+        } catch {
+        }
+      })
+    );
+
+    const masterNames = new Set(masterCategories.map((c: any) => String(c.name).trim().toLowerCase()));
+    const result = masterCategories.map((c: any) => {
+      const key = String(c.name).trim().toLowerCase();
+      const entry = subHubCategoryMap.get(key);
+      return {
+        ...serializeCategory(c),
+        source: "master" as const,
+        subHubs: entry?.hubs ?? [],
+        subHubCount: entry?.hubs.length ?? 0,
+      };
+    });
+
+    for (const [key, entry] of subHubCategoryMap.entries()) {
+      if (!masterNames.has(key)) {
+        result.push({
+          id: `subhub:${key}`,
+          name: entry.displayName,
+          description: "",
+          status: "active" as const,
+          createdAt: undefined as any,
+          updatedAt: undefined as any,
+          source: "subhub" as const,
+          subHubs: entry.hubs,
+          subHubCount: entry.hubs.length,
+        });
+      }
+    }
+
+    result.sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({ categories: result, total: result.length });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch vendor item categories");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch categories" });
