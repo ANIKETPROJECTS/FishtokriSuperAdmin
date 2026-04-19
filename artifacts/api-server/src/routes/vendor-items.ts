@@ -351,4 +351,89 @@ router.delete("/items/:id", async (req, res) => {
   }
 });
 
+router.get("/hub-products", async (req, res) => {
+  try {
+    const subHubs = await SubHub.find({ dbName: { $ne: "" } }).lean();
+    const productMap = new Map<string, {
+      name: string;
+      category: string;
+      totalQuantity: number;
+      hubs: { subHubId: string; subHubName: string; dbName: string; productId: string; quantity: number; price: number; unit: string; status: string }[];
+    }>();
+
+    await Promise.allSettled(
+      subHubs.map(async (hub: any) => {
+        if (!hub.dbName) return;
+        try {
+          const conn = await getSubHubDbConnection(hub.dbName);
+          const products = await conn.db.collection("products").find({}).toArray();
+          for (const p of products) {
+            const rawName = String(p.name ?? "").trim();
+            if (!rawName) continue;
+            const key = rawName.toLowerCase();
+            if (!productMap.has(key)) {
+              productMap.set(key, { name: rawName, category: String(p.category ?? ""), totalQuantity: 0, hubs: [] });
+            }
+            const entry = productMap.get(key)!;
+            const qty = Number(p.quantity) || 0;
+            entry.totalQuantity += qty;
+            entry.hubs.push({
+              subHubId: String(hub._id),
+              subHubName: hub.name,
+              dbName: hub.dbName,
+              productId: String(p._id),
+              quantity: qty,
+              price: Number(p.price) || 0,
+              unit: String(p.unit ?? "kg"),
+              status: p.isArchived ? "inactive" : "active",
+            });
+          }
+        } catch {
+        }
+      })
+    );
+
+    const products = Array.from(productMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ products, total: products.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch hub products");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch hub products" });
+  }
+});
+
+router.put("/hub-products/:subHubId/:productId", async (req, res) => {
+  try {
+    const subHub = await SubHub.findById(req.params.subHubId).lean() as any;
+    if (!subHub || !subHub.dbName) {
+      res.status(404).json({ error: "NotFound", message: "Sub hub not found or has no database" });
+      return;
+    }
+    const oid = toId(req.params.productId);
+    if (!oid) {
+      res.status(400).json({ error: "InvalidId", message: "Invalid product ID" });
+      return;
+    }
+    const conn = await getSubHubDbConnection(subHub.dbName);
+    const update: any = {};
+    if (req.body.quantity !== undefined) update.quantity = Number(req.body.quantity) || 0;
+    if (req.body.price !== undefined) update.price = Number(req.body.price) || 0;
+    if (req.body.unit !== undefined) update.unit = String(req.body.unit).trim();
+    if (req.body.status !== undefined) update.isArchived = req.body.status === "inactive";
+    update.updatedAt = new Date();
+    const result = await conn.db.collection("products").findOneAndUpdate(
+      { _id: oid },
+      { $set: update },
+      { returnDocument: "after" }
+    );
+    if (!result) {
+      res.status(404).json({ error: "NotFound", message: "Product not found" });
+      return;
+    }
+    res.json({ product: result });
+  } catch (err: any) {
+    req.log.error({ err }, "Failed to update hub product");
+    res.status(500).json({ error: "InternalError", message: err.message ?? "Failed to update hub product" });
+  }
+});
+
 export default router;

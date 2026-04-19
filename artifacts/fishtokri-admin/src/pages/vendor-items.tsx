@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, Boxes, CheckCircle2, ChevronDown, FolderPlus, Pencil, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ArrowUpDown, Boxes, CheckCircle2, FolderPlus, Pencil, Plus, Search, SlidersHorizontal, Store, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,7 +31,29 @@ type VendorItem = {
   notes: string;
 };
 
-const units = ["kg", "g", "pcs", "box", "tray", "crate", "litre", "pack", "bag", "unt", "pac"];
+type HubEntry = {
+  subHubId: string;
+  subHubName: string;
+  dbName: string;
+  productId: string;
+  quantity: number;
+  price: number;
+  unit: string;
+  status: string;
+};
+
+type HubProduct = {
+  name: string;
+  category: string;
+  totalQuantity: number;
+  hubs: HubEntry[];
+};
+
+type DisplayItem =
+  | { source: "master"; item: VendorItem }
+  | { source: "hub"; product: HubProduct };
+
+const units = ["kg", "g", "pcs", "box", "tray", "crate", "litre", "pack", "bag", "unt", "pac", "per kg", "per pcs"];
 const itemTypes = ["Raw Material", "Fish", "Mutton", "Packaging", "Equipment", "Cleaning", "Consumable", "Other"];
 
 function getToken() {
@@ -57,29 +79,42 @@ function formatRupees(value: number) {
   return Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function getDisplayName(d: DisplayItem) {
+  return d.source === "master" ? d.item.name : d.product.name;
+}
+
+function getDisplayCategory(d: DisplayItem) {
+  return d.source === "master" ? d.item.categoryName : d.product.category;
+}
+
 export default function VendorItems() {
   const { toast } = useToast();
   const [categories, setCategories] = useState<VendorCategory[]>([]);
-  const [items, setItems] = useState<VendorItem[]>([]);
+  const [masterItems, setMasterItems] = useState<VendorItem[]>([]);
+  const [hubProducts, setHubProducts] = useState<HubProduct[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedType, setSelectedType] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "master" | "hub">("all");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "code" | "stock" | "purchase" | "selling">("name");
   const [loading, setLoading] = useState(true);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [itemModalOpen, setItemModalOpen] = useState(false);
+  const [hubModalOpen, setHubModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<VendorCategory | null>(null);
   const [editingItem, setEditingItem] = useState<VendorItem | null>(null);
+  const [editingHubProduct, setEditingHubProduct] = useState<HubProduct | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [catData, itemData] = await Promise.all([
+      const [catData, itemData, hubData] = await Promise.all([
         apiFetch("/api/vendor-items/categories"),
         apiFetch("/api/vendor-items/items"),
+        apiFetch("/api/vendor-items/hub-products"),
       ]);
       setCategories(catData.categories ?? []);
-      setItems((itemData.items ?? []).map((item: Partial<VendorItem>) => ({
+      setMasterItems((itemData.items ?? []).map((item: Partial<VendorItem>) => ({
         id: item.id ?? "",
         name: item.name ?? "",
         itemCode: item.itemCode ?? "",
@@ -95,6 +130,7 @@ export default function VendorItems() {
         status: item.status ?? "active",
         notes: item.notes ?? "",
       })));
+      setHubProducts(hubData.products ?? []);
     } catch (err: any) {
       toast({ title: "Could not load vendor items", description: err.message, variant: "destructive" });
     } finally {
@@ -102,37 +138,70 @@ export default function VendorItems() {
     }
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
+
+  const masterItemNames = useMemo(() => new Set(masterItems.map((i) => i.name.toLowerCase())), [masterItems]);
+
+  const allDisplayItems: DisplayItem[] = useMemo(() => {
+    const result: DisplayItem[] = masterItems.map((item) => ({ source: "master", item }));
+    for (const p of hubProducts) {
+      if (!masterItemNames.has(p.name.toLowerCase())) {
+        result.push({ source: "hub", product: p });
+      }
+    }
+    return result;
+  }, [masterItems, hubProducts, masterItemNames]);
 
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const result = items.filter((item) => {
-      const matchesCategory = selectedCategory === "all" || item.categoryId === selectedCategory;
-      const matchesType = selectedType === "all" || item.itemType === selectedType;
-      const matchesSearch = !q || [item.name, item.itemCode, item.categoryName, item.itemType, item.description, item.notes].some((value) => value.toLowerCase().includes(q));
-      return matchesCategory && matchesType && matchesSearch;
+    const result = allDisplayItems.filter((d) => {
+      if (sourceFilter !== "all" && d.source !== sourceFilter) return false;
+      const name = getDisplayName(d).toLowerCase();
+      const cat = getDisplayCategory(d).toLowerCase();
+      if (q && !name.includes(q) && !cat.includes(q)) {
+        if (d.source === "master") {
+          const item = d.item;
+          if (![item.itemCode, item.itemType, item.description, item.notes].some((v) => v.toLowerCase().includes(q))) return false;
+        } else {
+          return false;
+        }
+      }
+      if (selectedCategory !== "all") {
+        if (d.source === "master") {
+          if (d.item.categoryId !== selectedCategory) return false;
+        } else {
+          const catName = categories.find((c) => c.id === selectedCategory)?.name ?? "";
+          if (d.product.category.toLowerCase() !== catName.toLowerCase()) return false;
+        }
+      }
+      if (selectedType !== "all" && d.source === "master" && d.item.itemType !== selectedType) return false;
+      return true;
     });
     return [...result].sort((a, b) => {
-      if (sortBy === "code") return a.itemCode.localeCompare(b.itemCode);
-      if (sortBy === "stock") return b.currentStock - a.currentStock;
-      if (sortBy === "purchase") return b.purchasePrice - a.purchasePrice;
-      if (sortBy === "selling") return b.sellingPrice - a.sellingPrice;
-      return a.name.localeCompare(b.name);
+      if (sortBy === "stock") {
+        const sa = a.source === "master" ? a.item.currentStock : a.product.totalQuantity;
+        const sb = b.source === "master" ? b.item.currentStock : b.product.totalQuantity;
+        return sb - sa;
+      }
+      if (sortBy === "purchase" && a.source === "master" && b.source === "master") return b.item.purchasePrice - a.item.purchasePrice;
+      if (sortBy === "selling") {
+        const pa = a.source === "master" ? a.item.sellingPrice : (a.product.hubs[0]?.price ?? 0);
+        const pb = b.source === "master" ? b.item.sellingPrice : (b.product.hubs[0]?.price ?? 0);
+        return pb - pa;
+      }
+      return getDisplayName(a).localeCompare(getDisplayName(b));
     });
-  }, [items, selectedCategory, selectedType, search, sortBy]);
+  }, [allDisplayItems, selectedCategory, selectedType, sourceFilter, search, sortBy, categories]);
 
-  const activeCategories = categories.filter((category) => category.status === "active").length;
-  const activeItems = items.filter((item) => item.status === "active").length;
-  const groupedCount = categories.filter((category) => items.some((item) => item.categoryId === category.id)).length;
+  const activeItems = masterItems.filter((i) => i.status === "active").length;
+  const groupedCount = categories.filter((c) => masterItems.some((i) => i.categoryId === c.id)).length;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#162B4D]">Vendor Items</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage vendor purchasable items with item code, type, prices, stock and unit attributes.</p>
+          <p className="text-sm text-gray-500 mt-1">Manage vendor purchasable items and all sub hub products in one place.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => { setEditingCategory(null); setCategoryModalOpen(true); }} className="gap-2">
@@ -144,11 +213,11 @@ export default function VendorItems() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <SummaryCard label="Categories" value={categories.length} helper={`${activeCategories} active`} />
-        <SummaryCard label="Vendor Items" value={items.length} helper={`${activeItems} active`} />
-        <SummaryCard label="Grouped" value={groupedCount} helper="Categories with items" />
-        <SummaryCard label="Filtered" value={filteredItems.length} helper="Shown in current view" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <SummaryCard label="Categories" value={categories.length} helper={`${groupedCount} with items`} />
+        <SummaryCard label="Vendor Items" value={masterItems.length} helper={`${activeItems} active`} />
+        <SummaryCard label="Hub Products" value={hubProducts.length} helper="From sub hub menus" />
+        <SummaryCard label="In View" value={filteredItems.length} helper="Shown in current view" />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -156,7 +225,7 @@ export default function VendorItems() {
           <div className="flex items-center gap-2 flex-wrap">
             <div>
               <h2 className="font-bold text-[#162B4D] leading-none">Items</h2>
-              <p className="text-xs text-gray-500 mt-1">{items.length} total</p>
+              <p className="text-xs text-gray-500 mt-1">{allDisplayItems.length} total</p>
             </div>
             <Button size="sm" variant={selectedCategory === "all" ? "default" : "outline"} onClick={() => setSelectedCategory("all")} className={selectedCategory === "all" ? "bg-[#162B4D] hover:bg-[#1e3a6e]" : ""}>
               All Items
@@ -167,15 +236,25 @@ export default function VendorItems() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                {categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
+                {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative">
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" className="pl-9 h-9 w-56" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" className="pl-9 h-9 w-48" />
             </div>
+            <Select value={sourceFilter} onValueChange={(v: any) => setSourceFilter(v)}>
+              <SelectTrigger className="h-9 w-36">
+                <SelectValue placeholder="Source" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sources</SelectItem>
+                <SelectItem value="master">Vendor Items</SelectItem>
+                <SelectItem value="hub">Hub Products</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={selectedType} onValueChange={setSelectedType}>
               <SelectTrigger className="h-9 w-36">
                 <Boxes className="w-4 h-4 mr-2 text-gray-400" />
@@ -187,7 +266,7 @@ export default function VendorItems() {
               </SelectContent>
             </Select>
             <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
-              <SelectTrigger className="h-9 w-40">
+              <SelectTrigger className="h-9 w-36">
                 <SlidersHorizontal className="w-4 h-4 mr-2 text-gray-400" />
                 <SelectValue />
               </SelectTrigger>
@@ -206,77 +285,141 @@ export default function VendorItems() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] text-sm">
+          <table className="w-full min-w-[1100px] text-sm">
             <thead>
               <tr className="bg-gray-50 text-left border-b border-gray-100">
-                <th className="px-3 py-3 w-10"><input type="checkbox" className="rounded border-gray-300" aria-label="Select all items" /></th>
                 <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
-                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Item Code</th>
+                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Code</th>
                 <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
                 <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
                 <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Purchase</th>
                 <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Sale</th>
                 <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Stock</th>
+                <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Hubs</th>
                 <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                 <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredItems.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-3 py-3"><input type="checkbox" className="rounded border-gray-300" aria-label={`Select ${item.name}`} /></td>
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={`w-1.5 h-1.5 rounded-full ${item.status === "active" ? "bg-emerald-500" : "bg-red-500"}`} />
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-800 truncate">{item.name}</p>
-                        {item.description && <p className="text-xs text-gray-400 truncate max-w-[260px]">{item.description}</p>}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-gray-600 font-mono text-xs">{item.itemCode || "-"}</td>
-                  <td className="px-3 py-3 text-gray-600">{item.itemType || "-"}</td>
-                  <td className="px-3 py-3 text-gray-600">{item.categoryName || "-"}</td>
-                  <td className="px-3 py-3 text-right text-gray-700">{formatRupees(item.purchasePrice)}</td>
-                  <td className="px-3 py-3 text-right">
-                    <span className="inline-flex justify-end min-w-20 rounded-md border border-gray-200 px-2 py-1 text-gray-700 bg-white">{formatRupees(item.sellingPrice)}</span>
-                  </td>
-                  <td className="px-3 py-3 text-right text-gray-700">{item.currentStock} <span className="text-xs text-gray-400 uppercase">{item.unit}</span></td>
-                  <td className="px-3 py-3">
-                    <span className={`inline-flex items-center gap-1 text-xs font-semibold ${item.status === "active" ? "text-emerald-700" : "text-red-600"}`}>
-                      <CheckCircle2 className="w-3 h-3" /> {item.status === "active" ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="outline" onClick={() => { setEditingItem(item); setItemModalOpen(true); }} className="h-8 w-8 p-0">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => deleteItem(item)} className="h-8 w-8 p-0 text-gray-400 hover:text-red-600">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filteredItems.map((d, idx) => {
+                if (d.source === "master") {
+                  const item = d.item;
+                  const hubProduct = hubProducts.find((p) => p.name.toLowerCase() === item.name.toLowerCase());
+                  return (
+                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${item.status === "active" ? "bg-emerald-500" : "bg-red-500"}`} />
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-800 truncate">{item.name}</p>
+                            {item.description && <p className="text-xs text-gray-400 truncate max-w-[200px]">{item.description}</p>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-gray-600 font-mono text-xs">{item.itemCode || "—"}</td>
+                      <td className="px-3 py-3 text-gray-600">{item.itemType || "—"}</td>
+                      <td className="px-3 py-3 text-gray-600">{item.categoryName || "—"}</td>
+                      <td className="px-3 py-3 text-right text-gray-700">{formatRupees(item.purchasePrice)}</td>
+                      <td className="px-3 py-3 text-right">
+                        <span className="inline-flex justify-end min-w-16 rounded-md border border-gray-200 px-2 py-0.5 text-gray-700 bg-white text-xs">{formatRupees(item.sellingPrice)}</span>
+                      </td>
+                      <td className="px-3 py-3 text-right text-gray-700">{item.currentStock} <span className="text-xs text-gray-400 uppercase">{item.unit}</span></td>
+                      <td className="px-3 py-3">
+                        {hubProduct ? (
+                          <button
+                            onClick={() => { setEditingHubProduct(hubProduct); setHubModalOpen(true); }}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-xs font-medium hover:bg-blue-100 transition-colors"
+                            title={hubProduct.hubs.map((h) => h.subHubName).join(", ")}
+                          >
+                            <Store className="w-3 h-3" />
+                            {hubProduct.hubs.length} hub{hubProduct.hubs.length !== 1 ? "s" : ""}
+                          </button>
+                        ) : <span className="text-gray-300 text-xs">—</span>}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex items-center gap-1 text-xs font-semibold ${item.status === "active" ? "text-emerald-700" : "text-red-600"}`}>
+                          <CheckCircle2 className="w-3 h-3" /> {item.status === "active" ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="outline" onClick={() => { setEditingItem(item); setItemModalOpen(true); }} className="h-8 w-8 p-0">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => deleteItem(item)} className="h-8 w-8 p-0 text-gray-400 hover:text-red-600">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                } else {
+                  const p = d.product;
+                  const avgPrice = p.hubs.length > 0 ? p.hubs.reduce((s, h) => s + h.price, 0) / p.hubs.length : 0;
+                  const primaryUnit = p.hubs[0]?.unit ?? "kg";
+                  const allActive = p.hubs.every((h) => h.status !== "inactive");
+                  return (
+                    <tr key={`hub:${p.name}:${idx}`} className="hover:bg-blue-50/30 transition-colors bg-blue-50/10">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${allActive ? "bg-emerald-500" : "bg-amber-500"}`} />
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-800 truncate">{p.name}</p>
+                            <span className="text-[10px] font-medium text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-full">Hub Product</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-gray-400 text-xs">—</td>
+                      <td className="px-3 py-3 text-gray-400 text-xs">—</td>
+                      <td className="px-3 py-3 text-gray-600">{p.category || "—"}</td>
+                      <td className="px-3 py-3 text-right text-gray-400">—</td>
+                      <td className="px-3 py-3 text-right">
+                        <span className="inline-flex justify-end min-w-16 rounded-md border border-gray-200 px-2 py-0.5 text-gray-700 bg-white text-xs">{formatRupees(avgPrice)}</span>
+                      </td>
+                      <td className="px-3 py-3 text-right text-gray-700">{p.totalQuantity} <span className="text-xs text-gray-400">{primaryUnit}</span></td>
+                      <td className="px-3 py-3">
+                        <button
+                          onClick={() => { setEditingHubProduct(p); setHubModalOpen(true); }}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-xs font-medium hover:bg-blue-100 transition-colors"
+                          title={p.hubs.map((h) => h.subHubName).join(", ")}
+                        >
+                          <Store className="w-3 h-3" />
+                          {p.hubs.length} hub{p.hubs.length !== 1 ? "s" : ""}
+                        </button>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex items-center gap-1 text-xs font-semibold ${allActive ? "text-emerald-700" : "text-amber-600"}`}>
+                          <CheckCircle2 className="w-3 h-3" /> {allActive ? "Active" : "Partial"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <Button size="sm" variant="outline" onClick={() => { setEditingHubProduct(p); setHubModalOpen(true); }} className="h-8 w-8 p-0">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                }
+              })}
             </tbody>
           </table>
           {!loading && filteredItems.length === 0 && (
             <div className="text-center py-16">
               <Boxes className="w-10 h-10 mx-auto text-gray-300" />
-              <p className="text-sm font-semibold text-gray-500 mt-3">No vendor items found</p>
-              <p className="text-xs text-gray-400 mt-1">Add raw materials, packaging, equipment, or other vendor items.</p>
+              <p className="text-sm font-semibold text-gray-500 mt-3">No items found</p>
+              <p className="text-xs text-gray-400 mt-1">Add vendor items or check sub hub menus for products.</p>
             </div>
           )}
-          {loading && <div className="text-center py-16 text-sm text-gray-400">Loading vendor items...</div>}
+          {loading && <div className="text-center py-16 text-sm text-gray-400">Loading items...</div>}
         </div>
 
         <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
           <div className="flex items-center gap-4">
             <span><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" /> Active</span>
             <span><span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1" /> Inactive</span>
+            <span><span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 mr-1" /> Hub Product</span>
           </div>
-          <span>Showing {filteredItems.length} of {items.length} items</span>
+          <span>Showing {filteredItems.length} of {allDisplayItems.length} items</span>
         </div>
       </div>
 
@@ -293,6 +436,12 @@ export default function VendorItems() {
         defaultCategoryId={selectedCategory === "all" ? categories[0]?.id ?? "" : selectedCategory}
         onClose={() => setItemModalOpen(false)}
         onSaved={() => { setItemModalOpen(false); setEditingItem(null); load(); }}
+      />
+      <HubProductModal
+        open={hubModalOpen}
+        product={editingHubProduct}
+        onClose={() => { setHubModalOpen(false); setEditingHubProduct(null); }}
+        onSaved={() => { setHubModalOpen(false); setEditingHubProduct(null); load(); }}
       />
     </div>
   );
@@ -316,6 +465,138 @@ function SummaryCard({ label, value, helper }: { label: string; value: number; h
       <p className="text-2xl font-bold text-[#162B4D] mt-2">{value}</p>
       <p className="text-xs text-gray-500 mt-1">{helper}</p>
     </div>
+  );
+}
+
+function HubProductModal({ open, product, onClose, onSaved }: {
+  open: boolean;
+  product: HubProduct | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [hubEdits, setHubEdits] = useState<Record<string, { quantity: string; price: string; unit: string }>>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open || !product) return;
+    const edits: Record<string, { quantity: string; price: string; unit: string }> = {};
+    for (const h of product.hubs) {
+      edits[`${h.subHubId}:${h.productId}`] = {
+        quantity: String(h.quantity),
+        price: String(h.price),
+        unit: h.unit,
+      };
+    }
+    setHubEdits(edits);
+  }, [open, product]);
+
+  const updateEdit = (key: string, field: "quantity" | "price" | "unit", value: string) => {
+    setHubEdits((prev) => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!product) return;
+    setSaving(true);
+    try {
+      await Promise.all(
+        product.hubs.map(async (h) => {
+          const key = `${h.subHubId}:${h.productId}`;
+          const edit = hubEdits[key];
+          if (!edit) return;
+          await apiFetch(`/api/vendor-items/hub-products/${h.subHubId}/${h.productId}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              quantity: Number(edit.quantity) || 0,
+              price: Number(edit.price) || 0,
+              unit: edit.unit,
+            }),
+          });
+        })
+      );
+      toast({ title: "Hub product updated", description: `Updated ${product.name} across ${product.hubs.length} hub(s)` });
+      onSaved();
+    } catch (err: any) {
+      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!product) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit Hub Product — {product.name}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="text-sm text-gray-500">
+            Manage stock quantity and price for <span className="font-semibold text-[#162B4D]">{product.name}</span> across {product.hubs.length} sub hub{product.hubs.length !== 1 ? "s" : ""}.
+            {product.category && <span> Category: <span className="font-medium text-gray-700">{product.category}</span></span>}
+          </div>
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-4 gap-2 text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">
+              <span>Sub Hub</span>
+              <span>Quantity / Stock</span>
+              <span>Price (₹)</span>
+              <span>Unit</span>
+            </div>
+            {product.hubs.map((h) => {
+              const key = `${h.subHubId}:${h.productId}`;
+              const edit = hubEdits[key] ?? { quantity: String(h.quantity), price: String(h.price), unit: h.unit };
+              return (
+                <div key={key} className="grid grid-cols-4 gap-2 items-center bg-gray-50 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Store className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                    <span className="text-sm font-medium text-gray-700 truncate">{h.subHubName}</span>
+                  </div>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={edit.quantity}
+                    onChange={(e) => updateEdit(key, "quantity", e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={edit.price}
+                    onChange={(e) => updateEdit(key, "price", e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                  <Select value={edit.unit} onValueChange={(v) => updateEdit(key, "unit", v)}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
+            Total stock across all hubs: <span className="font-bold">{product.hubs.reduce((s, h) => {
+              const key = `${h.subHubId}:${h.productId}`;
+              return s + (Number(hubEdits[key]?.quantity) || 0);
+            }, 0)}</span>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4]">
+              {saving ? "Saving..." : "Update All Hubs"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -476,7 +757,7 @@ function ItemModal({ open, item, categories, defaultCategoryId, onClose, onSaved
                 <Select value={categoryId} onValueChange={setCategoryId}>
                   <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
-                    {categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
+                    {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -508,29 +789,29 @@ function ItemModal({ open, item, categories, defaultCategoryId, onClose, onSaved
                 </Select>
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Description</Label>
-              <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1A56DB]" rows={3} placeholder="Describe the item, quality, size, or usage." />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Description</Label>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1A56DB] resize-none" rows={2} />
+              </div>
               <div className="space-y-1.5">
                 <Label>Notes</Label>
-                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional purchase or handling notes" />
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1A56DB] resize-none" rows={2} />
               </div>
-              <div className="space-y-1.5">
-                <Label>Status</Label>
-                <Select value={status} onValueChange={(value: "active" | "inactive") => setStatus(value)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select value={status} onValueChange={(value: "active" | "inactive") => setStatus(value)}>
+                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4]">{saving ? "Saving..." : "Save"}</Button>
+              <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4]">{saving ? "Saving..." : item ? "Update" : "Add Item"}</Button>
             </DialogFooter>
           </form>
         )}
