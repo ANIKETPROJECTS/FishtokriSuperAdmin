@@ -31,12 +31,12 @@ name = "Start application"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "console"
+outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "bash scripts/start-api-only.sh"
-waitForPort = 8080
+args = "bash scripts/dev.sh"
+waitForPort = 5000
 
 [agent]
 stack = "PNPM_WORKSPACE"
