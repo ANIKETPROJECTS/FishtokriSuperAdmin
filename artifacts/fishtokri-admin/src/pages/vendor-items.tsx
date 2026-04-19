@@ -177,16 +177,19 @@ export default function VendorItems() {
   const selectedCategoryIsLinked = Boolean(selectedCategoryInfo && getLinkedSubHubCategoryNames(selectedCategoryInfo).length > 0);
 
   const allDisplayItems: DisplayItem[] = useMemo(() => {
-    const linkedBySubHubCategory = new Map(
-      categories
-        .flatMap((c) => getLinkedSubHubCategoryNames(c).map((name) => [name.toLowerCase(), c] as const))
-    );
+    const linkedBySubHubCategory = new Map<string, VendorCategory[]>();
+    for (const category of categories) {
+      for (const name of getLinkedSubHubCategoryNames(category)) {
+        const key = name.toLowerCase();
+        linkedBySubHubCategory.set(key, [...(linkedBySubHubCategory.get(key) ?? []), category]);
+      }
+    }
     const result: DisplayItem[] = masterItems
       .filter((item) => !linkedCategoryIds.has(item.categoryId))
       .map((item) => ({ source: "master", item }));
     for (const p of hubProducts) {
-      const vendorCategory = linkedBySubHubCategory.get(String(p.category ?? "").trim().toLowerCase());
-      if (vendorCategory) {
+      const vendorCategories = linkedBySubHubCategory.get(String(p.category ?? "").trim().toLowerCase()) ?? [];
+      for (const vendorCategory of vendorCategories) {
         result.push({ source: "hub", product: p, vendorCategory });
       }
     }

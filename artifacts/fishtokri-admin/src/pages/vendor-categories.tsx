@@ -104,7 +104,7 @@ export default function VendorCategories() {
       setCategories(cats);
       setSubHubCategories(subHubData.categories ?? []);
       const counts: Record<string, number> = {};
-      for (const cat of cats) counts[cat.id] = 0;
+      for (const cat of cats) counts[cat.id] = getLinkedSubHubCategoryNames(cat).length > 0 ? Number(cat.linkedProductCount) || 0 : 0;
       for (const item of itemData.items ?? []) {
         if (counts[item.categoryId] !== undefined) counts[item.categoryId]++;
       }
