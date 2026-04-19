@@ -105,36 +105,55 @@ function ItemSelector({
   onSearchChange: (idx: number, val: string, open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const q = row.search.trim().toLowerCase();
-  const filtered = allItems.filter((item) => {
-    if (usedIds.has(item.id) && item.id !== row.itemId) return false;
-    if (!q) return true;
-    return (
-      item.name.toLowerCase().includes(q) ||
-      item.categoryName.toLowerCase().includes(q) ||
-      item.itemType.toLowerCase().includes(q)
-    );
-  });
+  const availableItems = allItems.filter(
+    (item) => !(usedIds.has(item.id) && item.id !== row.itemId),
+  );
 
   const grouped: Record<string, VendorItem[]> = {};
-  for (const item of filtered) {
+  for (const item of availableItems) {
     const cat = item.categoryName || "Uncategorized";
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(item);
   }
-  const categories = Object.keys(grouped).sort();
+  const allCategories = Object.keys(grouped).sort();
+
+  const q = row.search.trim().toLowerCase();
+  const isSearching = q.length > 0;
+
+  const searchResults = isSearching
+    ? availableItems.filter(
+        (item) =>
+          item.name.toLowerCase().includes(q) ||
+          item.categoryName.toLowerCase().includes(q),
+      )
+    : [];
+
+  function handleOpen() {
+    setOpen(true);
+    if (!isSearching) setSelectedCategory(null);
+  }
+
+  function handleClose() {
+    setOpen(false);
+    setSelectedCategory(null);
+  }
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        handleClose();
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (isSearching) setSelectedCategory(null);
+  }, [isSearching]);
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -147,61 +166,132 @@ function ItemSelector({
             onSearchChange(idx, e.target.value, true);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
-          placeholder={row.itemId ? row.itemName : "Choose Item"}
+          onFocus={handleOpen}
+          placeholder="Choose Item"
+          readOnly={!!row.itemId && !open}
           className={`w-full h-9 pl-8 pr-8 text-sm border rounded-md outline-none transition-all
             focus:ring-2 focus:ring-blue-200 focus:border-blue-400
-            ${row.itemId ? "bg-blue-50/50 border-blue-200 text-gray-800 font-medium" : "border-gray-200 bg-white text-gray-700"}
+            ${row.itemId ? "bg-blue-50/40 border-blue-200 text-gray-800 font-medium" : "border-gray-200 bg-white text-gray-600"}
           `}
         />
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+        <div className="absolute right-2 top-1/2 -translate-y-1/2">
           {row.itemId ? (
             <button
               type="button"
-              onClick={() => { onClear(idx); setOpen(false); }}
+              onMouseDown={(e) => { e.preventDefault(); onClear(idx); handleClose(); }}
               className="text-gray-400 hover:text-red-500 transition-colors"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           ) : (
-            <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
+            <ChevronDown
+              className={`w-3.5 h-3.5 text-gray-400 transition-transform pointer-events-none ${open ? "rotate-180" : ""}`}
+            />
           )}
         </div>
       </div>
 
       {open && (
-        <div className="absolute top-full left-0 right-0 z-[100] bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-64 overflow-y-auto">
-          {filtered.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-gray-400 text-center">No items found</div>
-          ) : (
-            categories.map((cat) => (
-              <div key={cat}>
-                <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 sticky top-0">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{cat}</span>
-                </div>
-                {grouped[cat].map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      onSelect(idx, item);
-                      setOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors flex items-center justify-between gap-3 border-b border-gray-50 last:border-0"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
-                      <p className="text-xs text-gray-400">{item.itemType}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-xs font-semibold text-gray-600">{item.currentStock}</p>
-                      <p className="text-[10px] text-gray-400 uppercase">{item.unit}</p>
-                    </div>
-                  </button>
-                ))}
+        <div className="absolute top-full left-0 z-[200] bg-white border border-gray-200 rounded-xl shadow-2xl mt-1 w-72 overflow-hidden">
+          {isSearching ? (
+            <>
+              <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Search results
+                </span>
               </div>
-            ))
+              <div className="max-h-60 overflow-y-auto">
+                {searchResults.length === 0 ? (
+                  <div className="px-4 py-4 text-sm text-gray-400 text-center">No items found</div>
+                ) : (
+                  searchResults.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); onSelect(idx, item); handleClose(); }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors flex items-center justify-between gap-3 border-b border-gray-50 last:border-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
+                        <p className="text-xs text-gray-400">{item.categoryName}</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-xs font-semibold text-gray-600">{item.currentStock} <span className="font-normal text-gray-400">{item.unit}</span></p>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          ) : selectedCategory === null ? (
+            <>
+              <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Select Category
+                </span>
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                {allCategories.length === 0 ? (
+                  <div className="px-4 py-4 text-sm text-gray-400 text-center">No categories available</div>
+                ) : (
+                  allCategories.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); setSelectedCategory(cat); }}
+                      className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors flex items-center justify-between gap-2 border-b border-gray-50 last:border-0"
+                    >
+                      <span className="text-sm font-medium text-gray-800">{cat}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
+                          {grouped[cat].length}
+                        </span>
+                        <ChevronLeft className="w-3.5 h-3.5 text-gray-400 rotate-180" />
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+                <button
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); setSelectedCategory(null); }}
+                  className="text-gray-400 hover:text-gray-700 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                  {selectedCategory}
+                </span>
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                {(grouped[selectedCategory] ?? []).length === 0 ? (
+                  <div className="px-4 py-4 text-sm text-gray-400 text-center">No items in this category</div>
+                ) : (
+                  (grouped[selectedCategory] ?? []).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); onSelect(idx, item); handleClose(); }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors flex items-center justify-between gap-3 border-b border-gray-50 last:border-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
+                        <p className="text-xs text-gray-400">{item.itemType || item.unit}</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-xs font-semibold text-gray-600">
+                          {item.currentStock} <span className="font-normal text-gray-400">{item.unit}</span>
+                        </p>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
           )}
         </div>
       )}
