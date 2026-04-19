@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
 
@@ -15,6 +15,7 @@ const masterAdminNavItems = [
       { href: "/vendors", label: "Vendor", icon: Handshake },
       { href: "/vendor-categories", label: "Categories", icon: FolderOpen },
       { href: "/vendor-items", label: "Items", icon: Boxes },
+      { href: "/stock-adjustment", label: "Stock Adjustment", icon: SlidersHorizontal },
     ],
   },
   {
@@ -81,7 +82,7 @@ function ExpandableNavItem({ href, label, icon: Icon, isActive, childActive, sub
       {/* Inline sub-menu */}
       <div
         style={{
-          maxHeight: open ? "200px" : "0px",
+          maxHeight: open ? "300px" : "0px",
           overflow: "hidden",
           transition: "max-height 0.2s ease",
         }}

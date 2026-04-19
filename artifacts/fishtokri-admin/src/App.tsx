@@ -25,6 +25,7 @@ import Vendors from "@/pages/vendors";
 import VendorManagementOverview from "@/pages/vendor-management-overview";
 import VendorItems from "@/pages/vendor-items";
 import VendorCategories from "@/pages/vendor-categories";
+import StockAdjustmentPage from "@/pages/stock-adjustment";
 import BankingOverview from "@/pages/banking-overview";
 import BankingAccounts from "@/pages/banking-accounts";
 import BankingReceipts from "@/pages/banking-receipts";
@@ -135,6 +136,9 @@ function App() {
             </Route>
             <Route path="/vendor-categories">
               <ProtectedRoute component={VendorCategories} requiredRole="master_admin" />
+            </Route>
+            <Route path="/stock-adjustment">
+              <ProtectedRoute component={StockAdjustmentPage} requiredRole="master_admin" />
             </Route>
             <Route path="/banking">
               <ProtectedRoute component={BankingOverview} requiredRole="master_admin" />

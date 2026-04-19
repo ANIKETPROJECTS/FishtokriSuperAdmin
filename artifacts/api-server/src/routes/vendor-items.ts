@@ -476,4 +476,216 @@ router.put("/hub-products/:subHubId/:productId", async (req, res) => {
   }
 });
 
+const stockAdjustmentSchema = new mongoose.Schema(
+  {
+    date: { type: Date, default: Date.now },
+    voucherNumber: { type: Number },
+    reason: { type: String, default: "" },
+    notes: { type: String, default: "" },
+    status: { type: String, enum: ["draft", "approved"], default: "approved" },
+    createdBy: { type: String, default: "admin" },
+    items: [
+      {
+        itemId: { type: mongoose.Schema.Types.ObjectId },
+        itemName: { type: String, default: "" },
+        unit: { type: String, default: "" },
+        quantityBefore: { type: Number, default: 0 },
+        newQuantity: { type: Number, default: 0 },
+        quantityAdjusted: { type: Number, default: 0 },
+      },
+    ],
+  },
+  { timestamps: true },
+);
+
+function getStockAdjustmentModel() {
+  if (mongoose.models["StockAdjustment"]) return mongoose.models["StockAdjustment"];
+  return mongoose.model("StockAdjustment", stockAdjustmentSchema, "stock_adjustments");
+}
+
+function serializeAdjustment(doc: any) {
+  return {
+    id: String(doc._id),
+    date: doc.date,
+    voucherNumber: doc.voucherNumber,
+    reason: doc.reason ?? "",
+    notes: doc.notes ?? "",
+    status: doc.status ?? "approved",
+    createdBy: doc.createdBy ?? "admin",
+    items: (doc.items ?? []).map((it: any) => ({
+      itemId: String(it.itemId ?? ""),
+      itemName: it.itemName ?? "",
+      unit: it.unit ?? "",
+      quantityBefore: it.quantityBefore ?? 0,
+      newQuantity: it.newQuantity ?? 0,
+      quantityAdjusted: it.quantityAdjusted ?? 0,
+    })),
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
+}
+
+router.get("/stock-adjustments", async (req, res) => {
+  try {
+    const StockAdjustment = getStockAdjustmentModel();
+    const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "10"), 10)));
+    const skip = (page - 1) * limit;
+    const query: any = {};
+    if (req.query.search) {
+      const regex = { $regex: String(req.query.search), $options: "i" };
+      query.$or = [{ reason: regex }, { createdBy: regex }];
+    }
+    const [docs, total] = await Promise.all([
+      StockAdjustment.find(query).sort({ voucherNumber: -1 }).skip(skip).limit(limit),
+      StockAdjustment.countDocuments(query),
+    ]);
+    res.json({ adjustments: docs.map(serializeAdjustment), total, page, limit });
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch stock adjustments");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch stock adjustments" });
+  }
+});
+
+router.post("/stock-adjustments", async (req, res) => {
+  try {
+    const StockAdjustment = getStockAdjustmentModel();
+    const Item = getItemModel();
+
+    const last = await StockAdjustment.findOne({}).sort({ voucherNumber: -1 }).lean() as any;
+    const nextVoucherNumber = last ? (last.voucherNumber ?? 0) + 1 : 1;
+
+    const rawItems: any[] = Array.isArray(req.body.items) ? req.body.items : [];
+    const adjustmentItems: any[] = [];
+
+    for (const ri of rawItems) {
+      if (!ri.itemId) continue;
+      const oid = toId(String(ri.itemId));
+      if (!oid) continue;
+      const item = await Item.findById(oid);
+      if (!item) continue;
+      const quantityBefore = item.currentStock ?? 0;
+      const newQuantity = Number(ri.newQuantity) ?? 0;
+      const quantityAdjusted = newQuantity - quantityBefore;
+      adjustmentItems.push({
+        itemId: oid,
+        itemName: item.name,
+        unit: item.unit ?? "",
+        quantityBefore,
+        newQuantity,
+        quantityAdjusted,
+      });
+      await Item.findByIdAndUpdate(oid, { $set: { currentStock: newQuantity } });
+    }
+
+    const doc = await StockAdjustment.create({
+      date: req.body.date ? new Date(req.body.date) : new Date(),
+      voucherNumber: nextVoucherNumber,
+      reason: String(req.body.reason ?? "").trim(),
+      notes: String(req.body.notes ?? "").trim(),
+      status: "approved",
+      createdBy: (req as any).admin?.name ?? "admin",
+      items: adjustmentItems,
+    });
+
+    res.status(201).json({ adjustment: serializeAdjustment(doc) });
+  } catch (err: any) {
+    req.log.error({ err }, "Failed to create stock adjustment");
+    res.status(500).json({ error: "InternalError", message: err.message ?? "Failed to create stock adjustment" });
+  }
+});
+
+router.put("/stock-adjustments/:id", async (req, res) => {
+  try {
+    const oid = toId(req.params.id);
+    if (!oid) {
+      res.status(400).json({ error: "InvalidId", message: "Invalid adjustment ID" });
+      return;
+    }
+    const StockAdjustment = getStockAdjustmentModel();
+    const Item = getItemModel();
+
+    const existing = await StockAdjustment.findById(oid);
+    if (!existing) {
+      res.status(404).json({ error: "NotFound", message: "Stock adjustment not found" });
+      return;
+    }
+
+    for (const oldItem of (existing.items ?? []) as any[]) {
+      if (!oldItem.itemId) continue;
+      const item = await Item.findById(oldItem.itemId);
+      if (!item) continue;
+      const restored = (item.currentStock ?? 0) - oldItem.quantityAdjusted;
+      await Item.findByIdAndUpdate(oldItem.itemId, { $set: { currentStock: Math.max(0, restored) } });
+    }
+
+    const rawItems: any[] = Array.isArray(req.body.items) ? req.body.items : [];
+    const adjustmentItems: any[] = [];
+
+    for (const ri of rawItems) {
+      if (!ri.itemId) continue;
+      const itemOid = toId(String(ri.itemId));
+      if (!itemOid) continue;
+      const item = await Item.findById(itemOid);
+      if (!item) continue;
+      const quantityBefore = item.currentStock ?? 0;
+      const newQuantity = Number(ri.newQuantity) ?? 0;
+      const quantityAdjusted = newQuantity - quantityBefore;
+      adjustmentItems.push({
+        itemId: itemOid,
+        itemName: item.name,
+        unit: item.unit ?? "",
+        quantityBefore,
+        newQuantity,
+        quantityAdjusted,
+      });
+      await Item.findByIdAndUpdate(itemOid, { $set: { currentStock: newQuantity } });
+    }
+
+    const update: any = {};
+    if (req.body.date !== undefined) update.date = new Date(req.body.date);
+    if (req.body.reason !== undefined) update.reason = String(req.body.reason).trim();
+    if (req.body.notes !== undefined) update.notes = String(req.body.notes).trim();
+    update.items = adjustmentItems;
+
+    const doc = await StockAdjustment.findByIdAndUpdate(oid, update, { returnDocument: "after" });
+    res.json({ adjustment: serializeAdjustment(doc) });
+  } catch (err: any) {
+    req.log.error({ err }, "Failed to update stock adjustment");
+    res.status(500).json({ error: "InternalError", message: err.message ?? "Failed to update stock adjustment" });
+  }
+});
+
+router.delete("/stock-adjustments/:id", async (req, res) => {
+  try {
+    const oid = toId(req.params.id);
+    if (!oid) {
+      res.status(400).json({ error: "InvalidId", message: "Invalid adjustment ID" });
+      return;
+    }
+    const StockAdjustment = getStockAdjustmentModel();
+    const Item = getItemModel();
+
+    const existing = await StockAdjustment.findById(oid);
+    if (!existing) {
+      res.status(404).json({ error: "NotFound", message: "Stock adjustment not found" });
+      return;
+    }
+
+    for (const oldItem of (existing.items ?? []) as any[]) {
+      if (!oldItem.itemId) continue;
+      const item = await Item.findById(oldItem.itemId);
+      if (!item) continue;
+      const restored = (item.currentStock ?? 0) - oldItem.quantityAdjusted;
+      await Item.findByIdAndUpdate(oldItem.itemId, { $set: { currentStock: Math.max(0, restored) } });
+    }
+
+    await StockAdjustment.findByIdAndDelete(oid);
+    res.json({ message: "Stock adjustment deleted" });
+  } catch (err: any) {
+    req.log.error({ err }, "Failed to delete stock adjustment");
+    res.status(500).json({ error: "InternalError", message: err.message ?? "Failed to delete stock adjustment" });
+  }
+});
+
 export default router;
