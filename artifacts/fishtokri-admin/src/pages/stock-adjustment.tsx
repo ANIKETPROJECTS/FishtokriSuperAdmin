@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, Plus, ChevronLeft, ChevronRight, Pencil, X, CheckCircle2, Trash2, Search, ChevronDown } from "lucide-react";
+import { ArrowLeft, Plus, ChevronRight, Pencil, X, CheckCircle2, Trash2, Search, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -133,7 +133,7 @@ function ItemSelector({
     : [];
 
   function doOpen() {
-    setSelectedCategory(null);
+    if (!open) setSelectedCategory(null);
     setOpen(true);
   }
 
@@ -162,7 +162,7 @@ function ItemSelector({
       position: "fixed",
       top: r.bottom + 4,
       left: r.left,
-      width: Math.max(r.width, 272),
+      width: isSearching ? Math.max(r.width, 272) : 560,
       zIndex: 9999,
     };
   }
@@ -199,69 +199,71 @@ function ItemSelector({
             ))}
           </div>
         </>
-      ) : selectedCategory === null ? (
-        <>
-          <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select Category</span>
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            {allCategories.length === 0 ? (
-              <div className="px-4 py-4 text-sm text-gray-400 text-center">No categories</div>
-            ) : allCategories.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); setSelectedCategory(cat); }}
-                className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors flex items-center justify-between gap-2 border-b border-gray-50 last:border-0"
-              >
-                <span className="text-sm font-medium text-gray-800">{cat}</span>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">{grouped[cat].length}</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-                </div>
-              </button>
-            ))}
-          </div>
-        </>
       ) : (
-        <>
-          <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
-            <button
-              type="button"
-              onMouseDown={(e) => { e.preventDefault(); setSelectedCategory(null); }}
-              className="text-gray-400 hover:text-gray-700 transition-colors p-0.5"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{selectedCategory}</span>
+        <div className="grid grid-cols-[260px_300px]">
+          <div className="border-r border-gray-100">
+            <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select Category</span>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              {allCategories.length === 0 ? (
+                <div className="px-4 py-4 text-sm text-gray-400 text-center">No categories</div>
+              ) : allCategories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onMouseEnter={() => setSelectedCategory(cat)}
+                  onFocus={() => setSelectedCategory(cat)}
+                  onMouseDown={(e) => { e.preventDefault(); setSelectedCategory(cat); }}
+                  className={`w-full text-left px-4 py-3 transition-colors flex items-center justify-between gap-2 border-b border-gray-50 last:border-0 ${
+                    selectedCategory === cat ? "bg-blue-50" : "hover:bg-blue-50"
+                  }`}
+                >
+                  <span className="text-sm font-medium text-gray-800">{cat}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">{grouped[cat].length}</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="max-h-64 overflow-y-auto">
-            {(grouped[selectedCategory] ?? []).length === 0 ? (
-              <div className="px-4 py-4 text-sm text-gray-400 text-center">No items</div>
-            ) : (grouped[selectedCategory] ?? []).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); onSelect(idx, item); doClose(); }}
-                className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors flex items-center justify-between gap-3 border-b border-gray-50 last:border-0"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
-                  <p className="text-xs text-gray-400">{item.itemType || item.unit}</p>
-                </div>
-                <p className="text-xs font-semibold text-gray-500 flex-shrink-0">
-                  {item.currentStock} <span className="font-normal text-gray-400">{item.unit}</span>
-                </p>
-              </button>
-            ))}
+          <div>
+            <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50">
+              <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                {selectedCategory ?? "Hover a category"}
+              </span>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              {selectedCategory === null ? (
+                <div className="px-4 py-8 text-sm text-gray-400 text-center">Hover over a category to see items</div>
+              ) : (grouped[selectedCategory] ?? []).length === 0 ? (
+                <div className="px-4 py-4 text-sm text-gray-400 text-center">No items</div>
+              ) : (grouped[selectedCategory] ?? []).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); onSelect(idx, item); doClose(); }}
+                  className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors flex items-center justify-between gap-3 border-b border-gray-50 last:border-0"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
+                    <p className="text-xs text-gray-400">{item.itemType || item.unit}</p>
+                  </div>
+                  <p className="text-xs font-semibold text-gray-500 flex-shrink-0">
+                    {item.currentStock} <span className="font-normal text-gray-400">{item.unit}</span>
+                  </p>
+                </button>
+              ))}
+            </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
 
   return (
-    <div ref={wrapperRef} className="relative w-full">
+    <div ref={wrapperRef} className="relative w-full" onMouseEnter={doOpen}>
       <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
       <input
         type="text"
