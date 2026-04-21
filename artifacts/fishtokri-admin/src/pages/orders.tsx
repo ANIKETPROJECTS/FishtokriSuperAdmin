@@ -375,6 +375,7 @@ export default function Orders() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [pickerCategory, setPickerCategory] = useState<string | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<{ productId: string; name: string; price: number; unit: string; quantity: number }[]>([]);
 
   // Coupons / timeslots / scheduling
@@ -484,13 +485,38 @@ export default function Orders() {
 
   const activeTimeslots = useMemo(() => timeslots.filter((t) => t.isActive !== false), [timeslots]);
 
+  const productCategories = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of subHubProducts) {
+      const cat = String(p.category || "").trim() || "Uncategorized";
+      map.set(cat, (map.get(cat) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [subHubProducts]);
+
   const filteredProducts = useMemo(() => {
     const q = productSearch.trim().toLowerCase();
-    if (!q) return subHubProducts;
-    return subHubProducts.filter((p) =>
+    let list = subHubProducts;
+    if (pickerCategory) {
+      const target = pickerCategory === "Uncategorized" ? "" : pickerCategory.toLowerCase();
+      list = list.filter((p) => {
+        const c = String(p.category ?? "").trim().toLowerCase();
+        return target === "" ? c === "" : c === target;
+      });
+    }
+    if (!q) return list;
+    return list.filter((p) =>
       [p.name, p.category, p.subCategory].some((v) => String(v ?? "").toLowerCase().includes(q))
     );
-  }, [subHubProducts, productSearch]);
+  }, [subHubProducts, productSearch, pickerCategory]);
+
+  const filteredCategories = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return productCategories;
+    return productCategories.filter((c) => c.name.toLowerCase().includes(q));
+  }, [productCategories, productSearch]);
 
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.trim().toLowerCase();
@@ -1341,6 +1367,62 @@ export default function Orders() {
           </DialogHeader>
 
           <div className="space-y-5 pt-1">
+            {/* HUB SELECTION (must be picked first) */}
+            <div className="space-y-2 p-3 rounded-2xl border border-blue-100 bg-blue-50/40">
+              <p className="text-[10px] font-bold text-[#1A56DB] uppercase tracking-widest">Step 1 · Fulfillment Hub *</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-gray-500">Super Hub</Label>
+                  <Select value={selectedSuperHubId} onValueChange={setSelectedSuperHubId} disabled={loadingSuperHubs}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder={loadingSuperHubs ? "Loading..." : "Select super hub"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {superHubs.length === 0 ? (
+                        <div className="p-2 text-xs text-gray-400 text-center">No super hubs found</div>
+                      ) : superHubs.map((h) => (
+                        <SelectItem key={h.id} value={h.id}>
+                          <span className="flex items-center gap-1.5">
+                            <Building2 className="w-3 h-3 text-gray-400" />
+                            {h.name}
+                            {h.location && <span className="text-[10px] text-gray-400">· {h.location}</span>}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-gray-500">Sub Hub</Label>
+                  <Select value={selectedSubHubId} onValueChange={setSelectedSubHubId} disabled={!selectedSuperHubId || loadingSubHubs}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder={
+                        !selectedSuperHubId ? "Select super hub first" :
+                        loadingSubHubs ? "Loading..." :
+                        subHubs.length === 0 ? "No sub-hubs" : "Select sub hub"
+                      } />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subHubs.map((h) => (
+                        <SelectItem key={h.id} value={h.id}>
+                          <span className="flex items-center gap-1.5">
+                            <Building2 className="w-3 h-3 text-gray-400" />
+                            {h.name}
+                            {h.location && <span className="text-[10px] text-gray-400">· {h.location}</span>}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {selectedSubHubId && (
+                <p className="text-[11px] text-gray-500 inline-flex items-center gap-1">
+                  <ShoppingBag className="w-3 h-3" /> {loadingProducts ? "Loading catalog..." : `${subHubProducts.length} products available in this sub-hub`}
+                </p>
+              )}
+            </div>
+
             {/* CUSTOMER SECTION */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -1678,68 +1760,12 @@ export default function Orders() {
               </div>
             )}
 
-            {/* HUB SELECTION */}
-            <div className="space-y-2">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Fulfillment Hub *</p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold text-gray-500">Super Hub</Label>
-                  <Select value={selectedSuperHubId} onValueChange={setSelectedSuperHubId} disabled={loadingSuperHubs}>
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder={loadingSuperHubs ? "Loading..." : "Select super hub"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {superHubs.length === 0 ? (
-                        <div className="p-2 text-xs text-gray-400 text-center">No super hubs found</div>
-                      ) : superHubs.map((h) => (
-                        <SelectItem key={h.id} value={h.id}>
-                          <span className="flex items-center gap-1.5">
-                            <Building2 className="w-3 h-3 text-gray-400" />
-                            {h.name}
-                            {h.location && <span className="text-[10px] text-gray-400">· {h.location}</span>}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold text-gray-500">Sub Hub</Label>
-                  <Select value={selectedSubHubId} onValueChange={setSelectedSubHubId} disabled={!selectedSuperHubId || loadingSubHubs}>
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder={
-                        !selectedSuperHubId ? "Select super hub first" :
-                        loadingSubHubs ? "Loading..." :
-                        subHubs.length === 0 ? "No sub-hubs" : "Select sub hub"
-                      } />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {subHubs.map((h) => (
-                        <SelectItem key={h.id} value={h.id}>
-                          <span className="flex items-center gap-1.5">
-                            <Building2 className="w-3 h-3 text-gray-400" />
-                            {h.name}
-                            {h.location && <span className="text-[10px] text-gray-400">· {h.location}</span>}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              {selectedSubHubId && (
-                <p className="text-[11px] text-gray-400 inline-flex items-center gap-1">
-                  <ShoppingBag className="w-3 h-3" /> {loadingProducts ? "Loading catalog..." : `${subHubProducts.length} products available in this sub-hub`}
-                </p>
-              )}
-            </div>
-
             {/* ITEMS */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Items <span className="text-gray-300">({totalItemCount})</span></p>
                 <div className="flex items-center gap-3">
-                  <Popover open={productPickerOpen} onOpenChange={setProductPickerOpen}>
+                  <Popover open={productPickerOpen} onOpenChange={(o) => { setProductPickerOpen(o); if (!o) { setPickerCategory(null); setProductSearch(""); } }}>
                     <PopoverTrigger asChild>
                       <button
                         type="button"
@@ -1755,17 +1781,31 @@ export default function Orders() {
                       sideOffset={6}
                       style={{ maxHeight: "min(420px, var(--radix-popover-content-available-height))" }}
                     >
-                      <div className="p-2 border-b border-gray-100 bg-gray-50/80">
+                      <div className="p-2 border-b border-gray-100 bg-gray-50/80 space-y-2">
+                        {pickerCategory && (
+                          <button
+                            type="button"
+                            onClick={() => { setPickerCategory(null); setProductSearch(""); }}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1A56DB] hover:underline"
+                          >
+                            <ChevronDown className="w-3 h-3 rotate-90" /> Back to categories
+                          </button>
+                        )}
                         <div className="relative">
                           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                           <Input
                             autoFocus
                             value={productSearch}
                             onChange={(e) => setProductSearch(e.target.value)}
-                            placeholder="Search products..."
+                            placeholder={pickerCategory ? `Search in ${pickerCategory}...` : "Search categories or products..."}
                             className="pl-7 h-8 text-sm"
                           />
                         </div>
+                        {pickerCategory && (
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                            {pickerCategory} <span className="text-gray-300">· {filteredProducts.length} item{filteredProducts.length === 1 ? "" : "s"}</span>
+                          </p>
+                        )}
                       </div>
                       <div
                         className="max-h-[320px] overflow-y-auto overscroll-contain py-1"
@@ -1774,6 +1814,28 @@ export default function Orders() {
                       >
                         {loadingProducts ? (
                           <p className="p-4 text-xs text-gray-400 text-center">Loading products...</p>
+                        ) : !pickerCategory && !productSearch.trim() ? (
+                          filteredCategories.length === 0 ? (
+                            <p className="p-4 text-xs text-gray-400 text-center">No categories available.</p>
+                          ) : (
+                            filteredCategories.map((c) => (
+                              <button
+                                key={c.name}
+                                type="button"
+                                onClick={() => { setPickerCategory(c.name); setProductSearch(""); }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-blue-50 transition-colors text-left"
+                              >
+                                <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                                  <Package className="w-4 h-4 text-[#1A56DB]" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold text-[#162B4D] truncate">{c.name}</p>
+                                  <p className="text-[11px] text-gray-400">{c.count} product{c.count === 1 ? "" : "s"}</p>
+                                </div>
+                                <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0 -rotate-90" />
+                              </button>
+                            ))
+                          )
                         ) : filteredProducts.length === 0 ? (
                           <p className="p-4 text-xs text-gray-400 text-center">No products match.</p>
                         ) : (
