@@ -314,6 +314,7 @@ router.put("/:id", async (req, res) => {
       status, notes,
       assignedDeliveryPersonId, assignedDeliveryPersonName,
       customerName, phone, address, deliveryArea,
+      paymentStatus, payments, paidAmount, paymentMode,
     } = req.body;
     const update: any = { updatedAt: new Date() };
     if (status !== undefined) update.status = status;
@@ -324,6 +325,30 @@ router.put("/:id", async (req, res) => {
     if (phone !== undefined) update.phone = phone;
     if (address !== undefined) update.address = address;
     if (deliveryArea !== undefined) update.deliveryArea = deliveryArea;
+
+    if (paymentStatus !== undefined && ["paid", "partial", "unpaid"].includes(String(paymentStatus))) {
+      update.paymentStatus = String(paymentStatus);
+    }
+    if (paymentMode !== undefined) update.paymentMode = paymentMode ? String(paymentMode) : "";
+    if (Array.isArray(payments)) {
+      update.payments = payments
+        .map((p: any) => ({
+          mode: String(p?.mode ?? "").trim(),
+          amount: Math.max(0, Number(p?.amount) || 0),
+          reference: p?.reference ? String(p.reference).trim() : "",
+          paidAt: p?.paidAt ? new Date(p.paidAt) : new Date(),
+        }))
+        .filter((p: any) => p.mode && p.amount > 0);
+    }
+    if (paidAmount !== undefined) {
+      const paidNum = Math.max(0, Number(paidAmount) || 0);
+      update.paidAmount = paidNum;
+      // recompute due against existing total
+      const conn0 = await getOrdersDb();
+      const existing = await conn0.db.collection(COLLECTION).findOne({ _id: oid }, { projection: { total: 1 } });
+      const totalNum = Number(existing?.total) || 0;
+      update.dueAmount = Math.max(0, totalNum - paidNum);
+    }
     const conn = await getOrdersDb();
     const result = await conn.db.collection(COLLECTION).findOneAndUpdate(
       { _id: oid },

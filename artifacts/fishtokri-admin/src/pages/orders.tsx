@@ -328,6 +328,11 @@ export default function Orders() {
   const [editStatus, setEditStatus] = useState("");
   const [savingStatus, setSavingStatus] = useState(false);
 
+  // Payment-on-deliver dialog
+  const [deliverPayOpen, setDeliverPayOpen] = useState(false);
+  const [deliverPayStatus, setDeliverPayStatus] = useState<"unpaid" | "partial" | "paid">("paid");
+  const [deliverPayEntries, setDeliverPayEntries] = useState<{ mode: string; amount: string; reference: string }[]>([]);
+
   // Delivery assignment
   const [deliveryPersons, setDeliveryPersons] = useState<any[]>([]);
   const [assigningDelivery, setAssigningDelivery] = useState(false);
@@ -904,6 +909,20 @@ export default function Orders() {
 
   const handleStatusUpdate = async () => {
     if (!selectedOrder || !editStatus) return;
+
+    // When marking as delivered, prompt for payment collection unless already fully paid.
+    if (editStatus === "delivered" && selectedOrder.paymentStatus !== "paid") {
+      const total = Number(selectedOrder.total) || 0;
+      const alreadyPaid = Number(selectedOrder.paidAmount) || 0;
+      const due = Math.max(0, total - alreadyPaid);
+      setDeliverPayStatus(due > 0 ? "paid" : "paid");
+      setDeliverPayEntries([
+        { mode: "cash", amount: String(due > 0 ? due : total), reference: "" },
+      ]);
+      setDeliverPayOpen(true);
+      return;
+    }
+
     setSavingStatus(true);
     try {
       await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify({ status: editStatus }) });
@@ -914,6 +933,77 @@ export default function Orders() {
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally { setSavingStatus(false); }
+  };
+
+  const deliverPayPaidTotal = useMemo(
+    () => deliverPayEntries.reduce((s, p) => s + (Number(p.amount) || 0), 0),
+    [deliverPayEntries]
+  );
+
+  const handleDeliverWithPayment = async () => {
+    if (!selectedOrder) return;
+    const orderTotal = Number(selectedOrder.total) || 0;
+    const existingPaid = Number(selectedOrder.paidAmount) || 0;
+    const existingPayments: any[] = Array.isArray(selectedOrder.payments) ? selectedOrder.payments : [];
+
+    if (deliverPayStatus !== "unpaid") {
+      const validEntries = deliverPayEntries.filter((p) => p.mode && Number(p.amount) > 0);
+      if (validEntries.length === 0) {
+        toast({ title: "Add payment details", description: "Enter at least one payment with mode and amount.", variant: "destructive" });
+        return;
+      }
+    }
+
+    const newPaidTotal = existingPaid + (deliverPayStatus === "unpaid" ? 0 : deliverPayPaidTotal);
+    if (deliverPayStatus === "paid" && newPaidTotal !== orderTotal) {
+      toast({ title: "Payment mismatch", description: `Total paid (${formatRupees(newPaidTotal)}) must equal order total (${formatRupees(orderTotal)}).`, variant: "destructive" });
+      return;
+    }
+    if (deliverPayStatus === "partial" && (newPaidTotal <= 0 || newPaidTotal >= orderTotal)) {
+      toast({ title: "Invalid partial payment", description: `Paid amount must be between ₹0 and ${formatRupees(orderTotal)}.`, variant: "destructive" });
+      return;
+    }
+
+    const mergedPayments = [
+      ...existingPayments,
+      ...(deliverPayStatus === "unpaid"
+        ? []
+        : deliverPayEntries
+            .filter((p) => p.mode && Number(p.amount) > 0)
+            .map((p) => ({
+              mode: p.mode,
+              amount: Number(p.amount) || 0,
+              reference: p.reference?.trim() || "",
+            }))),
+    ];
+
+    setSavingStatus(true);
+    try {
+      const payload: any = {
+        status: "delivered",
+        paymentStatus: deliverPayStatus,
+        paidAmount: newPaidTotal,
+        paymentMode: mergedPayments[0]?.mode,
+        payments: mergedPayments,
+      };
+      await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify(payload) });
+      toast({ title: "Marked as delivered", description: deliverPayStatus === "paid" ? "Payment recorded." : deliverPayStatus === "partial" ? "Partial payment recorded." : "No payment recorded." });
+      setSelectedOrder((o: any) => ({
+        ...o,
+        status: "delivered",
+        paymentStatus: deliverPayStatus,
+        paidAmount: newPaidTotal,
+        dueAmount: Math.max(0, orderTotal - newPaidTotal),
+        payments: mergedPayments,
+      }));
+      setDeliverPayOpen(false);
+      load();
+      loadStats();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingStatus(false);
+    }
   };
 
   const inlineAssign = async (orderId: string, personId: string) => {
@@ -2686,6 +2776,199 @@ export default function Orders() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment-on-deliver dialog */}
+      <Dialog open={deliverPayOpen} onOpenChange={(open) => { if (!savingStatus) setDeliverPayOpen(open); }}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              Mark as Delivered
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedOrder && (() => {
+            const orderTotal = Number(selectedOrder.total) || 0;
+            const existingPaid = Number(selectedOrder.paidAmount) || 0;
+            const remainingDue = Math.max(0, orderTotal - existingPaid);
+            const newPaidTotal = existingPaid + (deliverPayStatus === "unpaid" ? 0 : deliverPayPaidTotal);
+            const newDue = Math.max(0, orderTotal - newPaidTotal);
+
+            return (
+              <div className="space-y-4">
+                <div className="px-3 py-2 bg-gray-50 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between text-[12px] text-gray-500">
+                    <span>Order Total</span>
+                    <span className="font-semibold text-gray-700">{formatRupees(orderTotal)}</span>
+                  </div>
+                  {existingPaid > 0 && (
+                    <div className="flex items-center justify-between text-[12px] text-emerald-600">
+                      <span>Already Paid</span>
+                      <span>{formatRupees(existingPaid)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-[12px] text-amber-600">
+                    <span>Outstanding</span>
+                    <span className="font-semibold">{formatRupees(remainingDue)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Payment Status</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      { v: "unpaid", label: "Unpaid", color: "amber" },
+                      { v: "partial", label: "Partial", color: "blue" },
+                      { v: "paid", label: "Fully Paid", color: "emerald" },
+                    ] as const).map((opt) => {
+                      const active = deliverPayStatus === opt.v;
+                      const colorMap: Record<string, string> = {
+                        amber: active ? "border-amber-300 bg-amber-50 text-amber-800" : "border-gray-200 text-gray-500 hover:bg-gray-50",
+                        blue: active ? "border-blue-300 bg-blue-50 text-[#1A56DB]" : "border-gray-200 text-gray-500 hover:bg-gray-50",
+                        emerald: active ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-500 hover:bg-gray-50",
+                      };
+                      return (
+                        <button
+                          key={opt.v}
+                          type="button"
+                          onClick={() => {
+                            setDeliverPayStatus(opt.v);
+                            if (opt.v === "unpaid") {
+                              setDeliverPayEntries([]);
+                            } else if (deliverPayEntries.length === 0) {
+                              setDeliverPayEntries([
+                                { mode: "cash", amount: opt.v === "paid" ? String(remainingDue) : "", reference: "" },
+                              ]);
+                            } else if (opt.v === "paid") {
+                              setDeliverPayEntries((arr) =>
+                                arr.length === 1 ? [{ ...arr[0], amount: String(remainingDue) }] : arr
+                              );
+                            }
+                          }}
+                          className={`h-9 rounded-xl border text-xs font-semibold transition-colors ${colorMap[opt.color]}`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {deliverPayStatus !== "unpaid" && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Collected Payment</p>
+                    {deliverPayEntries.map((entry, idx) => {
+                      const ModeIcon = (PAYMENT_MODES.find((m) => m.value === entry.mode)?.Icon) || Tag;
+                      return (
+                        <div
+                          key={idx}
+                          className="grid grid-cols-12 gap-2 items-center p-2 rounded-xl border border-gray-100 bg-gray-50/40"
+                        >
+                          <div className="col-span-5 relative">
+                            <ModeIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                            <select
+                              value={entry.mode}
+                              onChange={(e) =>
+                                setDeliverPayEntries((arr) =>
+                                  arr.map((p, i) => (i === idx ? { ...p, mode: e.target.value } : p))
+                                )
+                              }
+                              className="w-full h-9 pl-8 pr-2 text-sm border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/30"
+                            >
+                              {PAYMENT_MODES.map((m) => (
+                                <option key={m.value} value={m.value}>{m.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="col-span-4 relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              value={entry.amount}
+                              onChange={(e) =>
+                                setDeliverPayEntries((arr) =>
+                                  arr.map((p, i) => (i === idx ? { ...p, amount: e.target.value } : p))
+                                )
+                              }
+                              placeholder="Amount"
+                              className="pl-6 h-9 text-sm"
+                            />
+                          </div>
+                          <Input
+                            value={entry.reference}
+                            onChange={(e) =>
+                              setDeliverPayEntries((arr) =>
+                                arr.map((p, i) => (i === idx ? { ...p, reference: e.target.value } : p))
+                              )
+                            }
+                            placeholder="Ref (opt)"
+                            className="col-span-2 h-9 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setDeliverPayEntries((arr) => arr.filter((_, i) => i !== idx))}
+                            disabled={deliverPayEntries.length === 1}
+                            className="col-span-1 h-9 flex items-center justify-center text-gray-400 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                            aria-label="Remove payment"
+                          >
+                            <Trash className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    <div className="flex items-center justify-between gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setDeliverPayEntries((arr) => [
+                            ...arr,
+                            {
+                              mode: "cash",
+                              amount: Math.max(0, remainingDue - deliverPayPaidTotal) > 0
+                                ? String(remainingDue - deliverPayPaidTotal)
+                                : "",
+                              reference: "",
+                            },
+                          ])
+                        }
+                        className="h-8 text-xs gap-1"
+                      >
+                        <Plus className="w-3 h-3" /> Add payment
+                      </Button>
+                      <div className="text-[11px] text-gray-500 flex items-center gap-3">
+                        <span>Collecting: <span className="font-semibold text-gray-700">{formatRupees(deliverPayPaidTotal)}</span></span>
+                        <span>
+                          New due:{" "}
+                          <span className={`font-semibold ${newDue > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                            {formatRupees(newDue)}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeliverPayOpen(false)} disabled={savingStatus} className="h-9">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeliverWithPayment}
+              disabled={savingStatus}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white h-9"
+            >
+              {savingStatus ? "Saving..." : "Mark as Delivered"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
