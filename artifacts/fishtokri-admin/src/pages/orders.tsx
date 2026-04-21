@@ -305,9 +305,10 @@ export default function Orders() {
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [creatingSaving, setCreatingSaving] = useState(false);
   const [customerMode, setCustomerMode] = useState<"existing" | "new">("existing");
+  const [allCustomers, setAllCustomers] = useState<any[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
-  const [customerResults, setCustomerResults] = useState<any[]>([]);
-  const [customerSearching, setCustomerSearching] = useState(false);
   const [chosenCustomer, setChosenCustomer] = useState<any>(null);
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "" });
   const [orderItems, setOrderItems] = useState<{ name: string; price: string; quantity: string; unit: string }[]>([
@@ -322,7 +323,7 @@ export default function Orders() {
 
   const resetCreateForm = useCallback(() => {
     setCustomerMode("existing");
-    setCustomerSearch(""); setCustomerResults([]); setChosenCustomer(null);
+    setCustomerSearch(""); setChosenCustomer(null); setCustomerDropdownOpen(false);
     setNewCustomer({ name: "", phone: "", email: "" });
     setOrderItems([{ name: "", price: "", quantity: "1", unit: "" }]);
     setOrderDeliveryType("delivery");
@@ -331,20 +332,24 @@ export default function Orders() {
     setOrderNotes("");
   }, []);
 
-  // Search customers (debounced)
+  // Load all customers when create-order modal opens
   useEffect(() => {
-    if (!creatingOrder || customerMode !== "existing") return;
-    const q = customerSearch.trim();
-    if (!q) { setCustomerResults([]); return; }
-    setCustomerSearching(true);
-    const t = setTimeout(() => {
-      apiFetch(`/api/customers?search=${encodeURIComponent(q)}&limit=10`)
-        .then((d) => setCustomerResults(d.customers ?? []))
-        .catch(() => setCustomerResults([]))
-        .finally(() => setCustomerSearching(false));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [customerSearch, customerMode, creatingOrder]);
+    if (!creatingOrder) return;
+    if (allCustomers.length > 0) return;
+    setLoadingCustomers(true);
+    apiFetch(`/api/customers?limit=100&sort=name_asc`)
+      .then((d) => setAllCustomers(d.customers ?? []))
+      .catch(() => setAllCustomers([]))
+      .finally(() => setLoadingCustomers(false));
+  }, [creatingOrder, allCustomers.length]);
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return allCustomers;
+    return allCustomers.filter((c) =>
+      [c.name, c.email, c.phone].some((v) => String(v ?? "").toLowerCase().includes(q))
+    );
+  }, [allCustomers, customerSearch]);
 
   const newOrderTotal = useMemo(() => {
     return orderItems.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
@@ -1091,67 +1096,121 @@ export default function Orders() {
 
               {customerMode === "existing" ? (
                 <div className="space-y-2">
-                  {chosenCustomer ? (
-                    <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[#1A56DB] flex items-center justify-center text-white font-bold text-sm">
-                          {chosenCustomer.name?.charAt(0).toUpperCase() || "?"}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-[#162B4D] text-sm">{chosenCustomer.name}</p>
-                          <p className="text-xs text-gray-500 flex items-center gap-2">
-                            {chosenCustomer.phone && <span className="inline-flex items-center gap-0.5"><Phone className="w-3 h-3" />{chosenCustomer.phone}</span>}
-                            {chosenCustomer.email && <span className="inline-flex items-center gap-0.5"><Mail className="w-3 h-3" />{chosenCustomer.email}</span>}
-                          </p>
-                        </div>
-                      </div>
-                      <button onClick={() => { setChosenCustomer(null); setSelectedAddressIdx(null); }} className="text-gray-400 hover:text-red-500">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                        <Input
-                          autoFocus
-                          value={customerSearch}
-                          onChange={(e) => setCustomerSearch(e.target.value)}
-                          placeholder="Search by name, phone or email..."
-                          className="pl-8 h-9 text-sm"
-                        />
-                      </div>
-                      {customerSearch.trim() && (
-                        <div className="border border-gray-100 rounded-xl max-h-56 overflow-y-auto bg-white">
-                          {customerSearching ? (
-                            <p className="p-3 text-xs text-gray-400 text-center">Searching...</p>
-                          ) : customerResults.length === 0 ? (
-                            <div className="p-4 text-center">
-                              <p className="text-xs text-gray-400">No customers found.</p>
-                              <button onClick={() => { setCustomerMode("new"); setNewCustomer((n) => ({ ...n, name: customerSearch.trim() })); }} className="mt-1 text-xs text-[#1A56DB] font-semibold hover:underline">
-                                Create new customer
-                              </button>
+                  <Popover open={customerDropdownOpen} onOpenChange={setCustomerDropdownOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors text-left"
+                      >
+                        {chosenCustomer ? (
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-8 h-8 rounded-full bg-[#1A56DB] flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                              {chosenCustomer.name?.charAt(0).toUpperCase() || "?"}
                             </div>
-                          ) : (
-                            customerResults.map((c) => (
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-[#162B4D] text-sm truncate">{chosenCustomer.name || "(No name)"}</p>
+                              <p className="text-[11px] text-gray-400 truncate">
+                                {chosenCustomer.phone || chosenCustomer.email || "—"}
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400 flex items-center gap-2">
+                            <User className="w-4 h-4" />
+                            {loadingCustomers ? "Loading customers..." : `Select a customer (${allCustomers.length} available)`}
+                          </span>
+                        )}
+                        <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${customerDropdownOpen ? "rotate-180" : ""}`} />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-[--radix-popover-trigger-width] shadow-xl border border-gray-100 rounded-2xl overflow-hidden" align="start" sideOffset={6}>
+                      <div className="p-2 border-b border-gray-100 bg-gray-50/80">
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                          <Input
+                            autoFocus
+                            value={customerSearch}
+                            onChange={(e) => setCustomerSearch(e.target.value)}
+                            placeholder="Search name, phone or email..."
+                            className="pl-7 h-8 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto py-1">
+                        {loadingCustomers ? (
+                          <p className="p-4 text-xs text-gray-400 text-center">Loading...</p>
+                        ) : filteredCustomers.length === 0 ? (
+                          <div className="p-4 text-center">
+                            <p className="text-xs text-gray-400">No customers match.</p>
+                            <button
+                              onClick={() => {
+                                setCustomerMode("new");
+                                setNewCustomer((n) => ({ ...n, name: customerSearch.trim() }));
+                                setCustomerDropdownOpen(false);
+                              }}
+                              className="mt-1 text-xs text-[#1A56DB] font-semibold hover:underline"
+                            >
+                              + Create new customer
+                            </button>
+                          </div>
+                        ) : (
+                          filteredCustomers.map((c) => {
+                            const isSelected = chosenCustomer?.id === c.id;
+                            return (
                               <button
                                 key={c.id}
-                                onClick={() => { setChosenCustomer(c); setSelectedAddressIdx(c.addresses?.length ? 0 : null); setOrderAddressMode(c.addresses?.length ? "saved" : "new"); }}
-                                className="w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 text-left border-b border-gray-50 last:border-b-0"
+                                onClick={() => {
+                                  setChosenCustomer(c);
+                                  setSelectedAddressIdx(c.addresses?.length ? 0 : null);
+                                  setOrderAddressMode(c.addresses?.length ? "saved" : "new");
+                                  setCustomerDropdownOpen(false);
+                                  setCustomerSearch("");
+                                }}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 transition-colors text-left ${isSelected ? "bg-blue-50/60" : ""}`}
                               >
-                                <div className="w-8 h-8 rounded-full bg-[#162B4D]/10 flex items-center justify-center text-[#162B4D] font-bold text-xs">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${isSelected ? "bg-[#1A56DB] text-white" : "bg-[#162B4D]/10 text-[#162B4D]"}`}>
                                   {c.name?.charAt(0).toUpperCase() || "?"}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="font-semibold text-[#162B4D] text-sm truncate">{c.name}</p>
-                                  <p className="text-xs text-gray-400 truncate">{c.phone || c.email || "—"}</p>
+                                  <p className={`text-sm font-semibold truncate ${isSelected ? "text-[#1A56DB]" : "text-[#162B4D]"}`}>
+                                    {c.name || "(No name)"}
+                                  </p>
+                                  <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                                    {c.phone && <span className="inline-flex items-center gap-0.5"><Phone className="w-2.5 h-2.5" />{c.phone}</span>}
+                                    {c.email && <span className="inline-flex items-center gap-0.5 truncate"><Mail className="w-2.5 h-2.5" />{c.email}</span>}
+                                  </div>
+                                  {Array.isArray(c.addresses) && c.addresses.length > 0 && (
+                                    <p className="text-[10px] text-emerald-600 mt-0.5 inline-flex items-center gap-0.5">
+                                      <Home className="w-2.5 h-2.5" /> {c.addresses.length} saved address{c.addresses.length > 1 ? "es" : ""}
+                                    </p>
+                                  )}
                                 </div>
+                                {isSelected && <Check className="w-4 h-4 text-[#1A56DB] flex-shrink-0" />}
                               </button>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </>
+                            );
+                          })
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  {chosenCustomer && (
+                    <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-bold text-[#1A56DB] uppercase tracking-widest">Customer Details</p>
+                        <button onClick={() => { setChosenCustomer(null); setSelectedAddressIdx(null); }} className="text-gray-400 hover:text-red-500">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                        <div className="flex items-center gap-1 text-gray-600"><User className="w-3 h-3 text-gray-400" /> {chosenCustomer.name || "—"}</div>
+                        <div className="flex items-center gap-1 text-gray-600"><Phone className="w-3 h-3 text-gray-400" /> {chosenCustomer.phone || "—"}</div>
+                        <div className="flex items-center gap-1 text-gray-600 col-span-2 truncate"><Mail className="w-3 h-3 text-gray-400" /> {chosenCustomer.email || "—"}</div>
+                        {chosenCustomer.dateOfBirth && (
+                          <div className="flex items-center gap-1 text-gray-600 col-span-2"><span className="text-gray-400">DOB:</span> {chosenCustomer.dateOfBirth}</div>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               ) : (
