@@ -352,7 +352,7 @@ export default function Orders() {
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [chosenCustomer, setChosenCustomer] = useState<any>(null);
-  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "" });
+  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "", alternatePhone: "", dateOfBirth: "", gender: "", notes: "" });
   const [orderItems, setOrderItems] = useState<{ name: string; price: string; quantity: string; unit: string }[]>([]);
   const [orderDeliveryType, setOrderDeliveryType] = useState<"delivery" | "takeaway">("delivery");
   const [orderAddressMode, setOrderAddressMode] = useState<"saved" | "new">("saved");
@@ -392,7 +392,7 @@ export default function Orders() {
   const resetCreateForm = useCallback(() => {
     setCustomerMode("existing");
     setCustomerSearch(""); setChosenCustomer(null); setCustomerDropdownOpen(false);
-    setNewCustomer({ name: "", phone: "", email: "" });
+    setNewCustomer({ name: "", phone: "", email: "", alternatePhone: "", dateOfBirth: "", gender: "", notes: "" });
     setOrderItems([]);
     setOrderDeliveryType("delivery");
     setOrderAddressMode("saved"); setSelectedAddressIdx(null);
@@ -571,12 +571,17 @@ export default function Orders() {
         toast({ title: "Customer name required", variant: "destructive" });
         return;
       }
-      if (!newCustomer.phone.trim() && !newCustomer.email.trim()) {
-        toast({ title: "Phone or email required", description: "Provide at least one contact.", variant: "destructive" });
+      const phoneTrim = newCustomer.phone.trim();
+      if (!phoneTrim) {
+        toast({ title: "Phone number required", description: "Phone is required for new customers.", variant: "destructive" });
+        return;
+      }
+      if (!/^\d{10}$/.test(phoneTrim)) {
+        toast({ title: "Invalid phone", description: "Phone must be a 10-digit number.", variant: "destructive" });
         return;
       }
       customerName = newCustomer.name.trim();
-      phone = newCustomer.phone.trim();
+      phone = phoneTrim;
       email = newCustomer.email.trim();
     }
 
@@ -665,6 +670,12 @@ export default function Orders() {
         notes: orderNotes.trim(),
         status: "pending",
         createCustomerIfMissing: customerMode === "new",
+        newCustomerExtras: customerMode === "new" ? {
+          alternatePhone: newCustomer.alternatePhone.trim(),
+          dateOfBirth: newCustomer.dateOfBirth.trim(),
+          gender: newCustomer.gender.trim(),
+          notes: newCustomer.notes.trim(),
+        } : undefined,
         // Pricing breakdown
         subtotal: itemsSubtotal,
         discount: couponDiscount,
@@ -1481,14 +1492,66 @@ export default function Orders() {
                     <Input value={newCustomer.name} onChange={(e) => setNewCustomer((n) => ({ ...n, name: e.target.value }))} className="h-9 text-sm" placeholder="Customer name" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-gray-500">Phone</Label>
-                    <Input value={newCustomer.phone} onChange={(e) => setNewCustomer((n) => ({ ...n, phone: e.target.value }))} className="h-9 text-sm" placeholder="10-digit phone" />
+                    <Label className="text-xs font-semibold text-gray-500">Phone *</Label>
+                    <Input
+                      value={newCustomer.phone}
+                      onChange={(e) => setNewCustomer((n) => ({ ...n, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
+                      className="h-9 text-sm"
+                      placeholder="10-digit phone"
+                      inputMode="numeric"
+                      maxLength={10}
+                    />
                   </div>
                   <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-500">Alternate Phone</Label>
+                    <Input
+                      value={newCustomer.alternatePhone}
+                      onChange={(e) => setNewCustomer((n) => ({ ...n, alternatePhone: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
+                      className="h-9 text-sm"
+                      placeholder="Optional"
+                      inputMode="numeric"
+                      maxLength={10}
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1.5">
                     <Label className="text-xs font-semibold text-gray-500">Email</Label>
                     <Input value={newCustomer.email} onChange={(e) => setNewCustomer((n) => ({ ...n, email: e.target.value }))} className="h-9 text-sm" placeholder="email@example.com" />
                   </div>
-                  <p className="col-span-2 text-[11px] text-gray-400">Provide phone or email — customer will be saved automatically.</p>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-500">Date of Birth</Label>
+                    <Input
+                      type="date"
+                      value={newCustomer.dateOfBirth}
+                      onChange={(e) => setNewCustomer((n) => ({ ...n, dateOfBirth: e.target.value }))}
+                      max={new Date().toISOString().slice(0, 10)}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-500">Gender</Label>
+                    <Select
+                      value={newCustomer.gender || "unspecified"}
+                      onValueChange={(v) => setNewCustomer((n) => ({ ...n, gender: v === "unspecified" ? "" : v }))}
+                    >
+                      <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select gender" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unspecified">Prefer not to say</SelectItem>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="female">Female</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2 space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-500">Internal Notes</Label>
+                    <Textarea
+                      value={newCustomer.notes}
+                      onChange={(e) => setNewCustomer((n) => ({ ...n, notes: e.target.value }))}
+                      placeholder="Anything to remember about this customer (optional)"
+                      className="text-sm min-h-[60px]"
+                    />
+                  </div>
+                  <p className="col-span-2 text-[11px] text-gray-400">Customer will be saved automatically. The delivery address you enter below becomes their first saved address.</p>
                 </div>
               )}
             </div>

@@ -125,6 +125,7 @@ router.post("/", async (req, res) => {
       superHubId,
       superHubName,
       createCustomerIfMissing,
+      newCustomerExtras,
       deliveryAddressDetail,
       subtotal,
       discount,
@@ -179,14 +180,22 @@ router.post("/", async (req, res) => {
       if (existing) {
         resolvedCustomerId = String(existing._id);
       } else {
+        const extras = (newCustomerExtras && typeof newCustomerExtras === "object") ? newCustomerExtras : {};
+        const firstAddress =
+          dt === "delivery" && deliveryAddressDetail && typeof deliveryAddressDetail === "object"
+            ? { label: "Home", ...deliveryAddressDetail }
+            : dt === "delivery" && address
+              ? { label: "Home", address: String(address).trim(), area: deliveryArea ?? "" }
+              : null;
         const newCustomer = {
           name: String(customerName).trim(),
           email: email ? String(email).toLowerCase().trim() : "",
           phone: phone ? String(phone).trim() : "",
-          dateOfBirth: "",
-          addresses: dt === "delivery" && address
-            ? [{ label: "Home", address: String(address).trim(), area: deliveryArea ?? "" }]
-            : [],
+          alternatePhone: extras.alternatePhone ? String(extras.alternatePhone).trim() : "",
+          dateOfBirth: extras.dateOfBirth ? String(extras.dateOfBirth).trim() : "",
+          gender: extras.gender ? String(extras.gender).trim() : "",
+          notes: extras.notes ? String(extras.notes).trim() : "",
+          addresses: firstAddress ? [firstAddress] : [],
           orders: [],
           usedCoupons: [],
           createdAt: new Date(),
