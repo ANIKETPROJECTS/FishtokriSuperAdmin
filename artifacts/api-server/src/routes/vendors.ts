@@ -48,6 +48,7 @@ const purchaseSchema = new mongoose.Schema(
     purchaseDate: { type: Date, default: Date.now },
     items: [purchaseItemSchema],
     totalAmount: { type: Number, default: 0 },
+    status: { type: String, enum: ["saved", "draft"], default: "saved" },
     notes: { type: String, default: "" },
     subHubId: { type: String, default: "" },
     subHubName: { type: String, default: "" },
@@ -125,6 +126,7 @@ function serializePurchase(doc: any) {
     vendorId: String(doc.vendorId),
     vendorName: doc.vendorName ?? "",
     invoiceNumber: doc.invoiceNumber ?? "",
+    status: doc.status ?? "saved",
     purchaseDate: doc.purchaseDate,
     items: (doc.items ?? []).map((item: any) => ({
       id: String(item._id),
@@ -283,6 +285,31 @@ router.delete("/:id", async (req, res) => {
 });
 
 // ─── PURCHASE ROUTES ──────────────────────────────────────────────────────────
+
+router.get("/next-invoice-number", async (req, res) => {
+  try {
+    const Purchase = getPurchaseModel();
+    const last = await Purchase.findOne({ invoiceNumber: /^INV-\d+$/ })
+      .sort({ createdAt: -1 })
+      .select({ invoiceNumber: 1 })
+      .lean();
+    let nextNum = 1;
+    if (last && (last as any).invoiceNumber) {
+      const m = String((last as any).invoiceNumber).match(/^INV-(\d+)$/);
+      if (m) nextNum = parseInt(m[1], 10) + 1;
+    }
+    // Ensure uniqueness in case of gaps / parallel inserts
+    let candidate = `INV-${String(nextNum).padStart(3, "0")}`;
+    while (await Purchase.exists({ invoiceNumber: candidate })) {
+      nextNum += 1;
+      candidate = `INV-${String(nextNum).padStart(3, "0")}`;
+    }
+    res.json({ invoiceNumber: candidate });
+  } catch (err) {
+    (req as any)?.log?.error?.({ err }, "Failed to compute next invoice number");
+    res.status(500).json({ error: "InternalError", message: "Failed to compute next invoice number" });
+  }
+});
 
 router.get("/all-purchases", async (req, res) => {
   try {
@@ -486,7 +513,8 @@ router.post("/:vendorId/purchases", async (req, res) => {
     const vendor = await Vendor.findById(req.params.vendorId);
     if (!vendor) { res.status(404).json({ error: "NotFound", message: "Vendor not found" }); return; }
 
-    const { invoiceNumber, purchaseDate, items, notes, subHubId, subHubName, superHubId, superHubName, createdByName, createdByEmail } = req.body;
+    const { invoiceNumber, purchaseDate, items, notes, subHubId, subHubName, superHubId, superHubName, createdByName, createdByEmail, status } = req.body;
+    const purchaseStatus: "saved" | "draft" = status === "draft" ? "draft" : "saved";
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: "ValidationError", message: "At least one item is required" });
@@ -529,6 +557,7 @@ router.post("/:vendorId/purchases", async (req, res) => {
       purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(),
       items: processedItems,
       totalAmount,
+      status: purchaseStatus,
       notes: notes?.trim() || "",
       subHubId: subHubId || "",
       subHubName: subHubName?.trim() || "",
@@ -537,6 +566,12 @@ router.post("/:vendorId/purchases", async (req, res) => {
       createdByName: adminName,
       createdByEmail: adminEmail,
     });
+
+    // Drafts don't affect vendor stats or inventory
+    if (purchaseStatus === "draft") {
+      res.status(201).json({ purchase: serializePurchase(purchase) });
+      return;
+    }
 
     // Update vendor stats
     (vendor as any).totalPurchases = ((vendor as any).totalPurchases || 0) + 1;

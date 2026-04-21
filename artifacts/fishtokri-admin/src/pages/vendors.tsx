@@ -5,7 +5,7 @@ import {
   ShoppingCart, X, ChevronLeft, ChevronRight, RefreshCw, Tag,
   IndianRupee, TrendingUp, Calendar, FileText, ChevronDown, Check,
   Boxes, Hash, History, Filter, LayoutList, AlertTriangle,
-  User, Clock, Layers,
+  User, Clock, Layers, Printer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1467,7 +1467,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
   onSaved: () => void;
 }) {
   const [form, setForm] = useState(emptyPurchase());
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<null | "draft" | "save" | "print">(null);
   const { toast } = useToast();
 
   const [vendorItemCategories, setVendorItemCategories] = useState<VendorItemCategory[]>([]);
@@ -1481,11 +1481,15 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     Promise.all([
       apiFetch("/api/vendor-items/categories"),
       apiFetch("/api/vendor-items/items"),
+      apiFetch("/api/vendors/next-invoice-number").catch(() => ({ invoiceNumber: "" })),
     ])
-      .then(([categoriesData, itemsData]) => {
+      .then(([categoriesData, itemsData, invoiceData]) => {
         if (!active) return;
         setVendorItemCategories((categoriesData.categories || []).filter((cat: VendorItemCategory) => cat.status !== "inactive"));
         setVendorItems((itemsData.items || []).filter((item: VendorCatalogItem) => item.status !== "inactive"));
+        if (invoiceData?.invoiceNumber) {
+          setForm(f => f.invoiceNumber ? f : { ...f, invoiceNumber: invoiceData.invoiceNumber });
+        }
       })
       .catch(() => {
         if (!active) return;
@@ -1569,29 +1573,34 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
   const roundOffAmount = Number(form.roundOff) || 0;
   const totalAmount = Math.max(0, subtotal - discountAmount + extraChargeAmount + taxAmount + roundOffAmount);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const savePurchase = async (mode: "draft" | "save" | "print") => {
     const validItems = form.items.filter(i => i.existingCategory && i.existingProductId && i.productName.trim() && Number(i.quantity) > 0);
-    if (validItems.length === 0) {
+    if (mode !== "draft" && validItems.length === 0) {
       toast({ title: "Please add at least one item with a quantity", variant: "destructive" });
-      return;
+      return null;
     }
-    setSaving(true);
+    if (mode === "draft" && form.items.every(i => !i.existingCategory && !i.existingProductId && !Number(i.quantity))) {
+      toast({ title: "Add at least one item before saving as draft", variant: "destructive" });
+      return null;
+    }
+    setSaving(mode);
     try {
       const admin = getCurrentAdmin();
-      const itemsWithMeta = validItems.map(item => ({
+      const sourceItems = mode === "draft" && validItems.length === 0 ? form.items : validItems;
+      const itemsWithMeta = sourceItems.map(item => ({
         ...item,
-        quantity: Number(item.quantity),
+        quantity: Number(item.quantity) || 0,
         categoryName: item.category || "",
         vendorItemId: item.existingProductId,
         vendorItemCategoryId: item.existingCategory,
-        batches: [{ quantity: String(item.quantity), shelfLifeDays: "" }],
+        batches: [{ quantity: String(Number(item.quantity) || 0), shelfLifeDays: "" }],
       }));
-      await apiFetch(`/api/vendors/${vendor.id}/purchases`, {
+      const data = await apiFetch(`/api/vendors/${vendor.id}/purchases`, {
         method: "POST",
         body: JSON.stringify({
           ...form,
           items: itemsWithMeta,
+          status: mode === "draft" ? "draft" : "saved",
           subHubId: "",
           subHubName: "",
           superHubId: "",
@@ -1600,14 +1609,94 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
           createdByEmail: admin.email,
         }),
       });
-      toast({ title: "Purchase saved!", description: `${validItems.length} item(s) recorded.` });
+      if (mode === "draft") {
+        toast({ title: "Draft saved", description: "You can find it in Invoices." });
+      } else {
+        toast({ title: "Purchase saved!", description: `${validItems.length} item(s) recorded.` });
+      }
       onSaved();
+      const saved = data?.purchase;
       setForm(emptyPurchase());
+      // Refresh next invoice number so the form is ready for another entry
+      apiFetch("/api/vendors/next-invoice-number").then(d => {
+        if (d?.invoiceNumber) setForm(f => ({ ...f, invoiceNumber: d.invoiceNumber }));
+      }).catch(() => {});
+      return saved;
     } catch (err: any) {
       toast({ title: "Failed to save purchase", description: err.message, variant: "destructive" });
+      return null;
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
+  };
+
+  const printInvoice = (purchase: any) => {
+    const items = purchase?.items ?? [];
+    const rows = items.map((it: any, i: number) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${(it.categoryName ?? "")}</td>
+        <td>${(it.productName ?? "")}</td>
+        <td style="text-align:right">${Number(it.quantity ?? 0)}</td>
+        <td>${(it.unit ?? "")}</td>
+        <td style="text-align:right">₹${Number(it.pricePerUnit ?? 0).toFixed(2)}</td>
+        <td style="text-align:right">₹${Number(it.totalPrice ?? 0).toFixed(2)}</td>
+      </tr>`).join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8" />
+      <title>Invoice ${purchase?.invoiceNumber ?? ""}</title>
+      <style>
+        body{font-family:Inter,Arial,sans-serif;color:#162B4D;padding:24px;max-width:800px;margin:0 auto}
+        h1{font-size:20px;margin:0 0 4px} .muted{color:#6b7280;font-size:12px}
+        .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #162B4D;padding-bottom:12px;margin-bottom:16px}
+        table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+        th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}
+        th{background:#f9fafb;font-size:11px;text-transform:uppercase;color:#6b7280}
+        .totals{margin-top:16px;width:280px;margin-left:auto;font-size:13px}
+        .totals .row{display:flex;justify-content:space-between;padding:4px 0}
+        .total{background:#162B4D;color:#fff;padding:10px;display:flex;justify-content:space-between;font-weight:700;margin-top:6px;border-radius:4px}
+        @media print { .no-print{display:none} }
+      </style></head><body>
+      <div class="head">
+        <div>
+          <h1>Purchase Invoice</h1>
+          <div class="muted">Invoice No: <strong>${purchase?.invoiceNumber ?? "-"}</strong></div>
+          <div class="muted">Date: ${purchase?.purchaseDate ? new Date(purchase.purchaseDate).toLocaleDateString() : "-"}</div>
+        </div>
+        <div style="text-align:right">
+          <h1>${vendor.name}</h1>
+          <div class="muted">${vendor.phone ?? ""}</div>
+          <div class="muted">${vendor.email ?? ""}</div>
+          <div class="muted">${vendor.address ?? ""}</div>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>#</th><th>Category</th><th>Item</th><th style="text-align:right">Qty</th><th>Unit</th><th style="text-align:right">Cost/Unit</th><th style="text-align:right">Total</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="totals">
+        <div class="row"><span>Subtotal</span><span>₹${Number(subtotal).toFixed(2)}</span></div>
+        ${discountAmount ? `<div class="row"><span>Discount</span><span>− ₹${discountAmount.toFixed(2)}</span></div>` : ""}
+        ${extraChargeAmount ? `<div class="row"><span>Extra Charge</span><span>+ ₹${extraChargeAmount.toFixed(2)}</span></div>` : ""}
+        ${taxAmount ? `<div class="row"><span>Tax</span><span>₹${taxAmount.toFixed(2)}</span></div>` : ""}
+        ${roundOffAmount ? `<div class="row"><span>Round Off</span><span>₹${roundOffAmount.toFixed(2)}</span></div>` : ""}
+        <div class="total"><span>Total</span><span>₹${Number(purchase?.totalAmount ?? totalAmount).toFixed(2)}</span></div>
+      </div>
+      ${purchase?.notes ? `<p class="muted" style="margin-top:16px"><strong>Notes:</strong> ${purchase.notes}</p>` : ""}
+      <script>window.onload=()=>{setTimeout(()=>window.print(),200)}</script>
+      </body></html>`;
+    const w = window.open("", "_blank", "width=900,height=700");
+    if (!w) {
+      toast({ title: "Pop-up blocked", description: "Allow pop-ups to print the invoice.", variant: "destructive" });
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void savePurchase("save");
   };
 
   return (
@@ -1966,17 +2055,39 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
             <div className="text-xs text-gray-500">
               {form.items.filter(i => i.existingProductId && Number(i.quantity) > 0).length} item(s) ready
             </div>
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" onClick={onBack} className="h-9">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button type="button" variant="outline" onClick={onBack} disabled={!!saving} className="h-9">
                 Cancel
               </Button>
               <Button
+                type="button"
+                variant="outline"
+                disabled={!!saving}
+                onClick={() => savePurchase("draft")}
+                className="h-9 gap-1.5 border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                <FileText className="w-4 h-4" />
+                {saving === "draft" ? "Saving..." : "Save as Draft"}
+              </Button>
+              <Button
                 type="submit"
-                disabled={saving}
+                disabled={!!saving}
                 className="h-9 bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5"
               >
                 <ShoppingCart className="w-4 h-4" />
-                {saving ? "Saving..." : "Save Purchase"}
+                {saving === "save" ? "Saving..." : "Save"}
+              </Button>
+              <Button
+                type="button"
+                disabled={!!saving}
+                onClick={async () => {
+                  const saved = await savePurchase("print");
+                  if (saved) printInvoice(saved);
+                }}
+                className="h-9 bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+              >
+                <Printer className="w-4 h-4" />
+                {saving === "print" ? "Saving..." : "Save & Print"}
               </Button>
             </div>
           </div>
@@ -1988,14 +2099,18 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
 
 // ─── ALL TRANSACTIONS PAGE ────────────────────────────────────────────────────
 
-function AllTransactionsPage({
+export function AllTransactionsPage({
   onBack,
   initialVendorId,
   initialVendorName,
+  pageTitle,
+  pageSubtitle,
 }: {
-  onBack: () => void;
+  onBack?: () => void;
   initialVendorId?: string;
   initialVendorName?: string;
+  pageTitle?: string;
+  pageSubtitle?: string;
 }) {
   const { toast } = useToast();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -2266,16 +2381,20 @@ function AllTransactionsPage({
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#162B4D] transition-colors shrink-0">
-            <ChevronLeft className="w-4 h-4" /> Back to Vendors
-          </button>
-          <span className="text-gray-300">|</span>
+          {onBack && (
+            <>
+              <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#162B4D] transition-colors shrink-0">
+                <ChevronLeft className="w-4 h-4" /> Back to Vendors
+              </button>
+              <span className="text-gray-300">|</span>
+            </>
+          )}
           <div className="min-w-0">
             <h1 className="text-xl font-bold text-[#162B4D] leading-none">
-              {initialVendorName ? `${initialVendorName} — History` : "Transaction History"}
+              {pageTitle ?? (initialVendorName ? `${initialVendorName} — History` : "Transaction History")}
             </h1>
             <p className="text-xs text-gray-400 mt-0.5">
-              {initialVendorName ? `All purchases from ${initialVendorName}` : "All vendor purchases across all hubs"}
+              {pageSubtitle ?? (initialVendorName ? `All purchases from ${initialVendorName}` : "All vendor purchases across all hubs")}
             </p>
           </div>
         </div>
