@@ -2371,11 +2371,21 @@ export default function Orders() {
                               inputMode="decimal"
                               min={0}
                               value={entry.amount}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const raw = Number(e.target.value);
+                                const otherSum = paymentEntries.reduce(
+                                  (s, p, i) => s + (i === idx ? 0 : Number(p.amount) || 0),
+                                  0
+                                );
+                                const maxAllowed = Math.max(0, newOrderTotal - otherSum);
+                                let next = e.target.value;
+                                if (Number.isFinite(raw) && raw > maxAllowed) {
+                                  next = String(maxAllowed);
+                                }
                                 setPaymentEntries((arr) =>
-                                  arr.map((p, i) => (i === idx ? { ...p, amount: e.target.value } : p))
-                                )
-                              }
+                                  arr.map((p, i) => (i === idx ? { ...p, amount: next } : p))
+                                );
+                              }}
                               placeholder="Amount"
                               className="pl-6 h-9 text-sm"
                             />
@@ -2895,11 +2905,21 @@ export default function Orders() {
                               inputMode="decimal"
                               min={0}
                               value={entry.amount}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const raw = Number(e.target.value);
+                                const otherSum = deliverPayEntries.reduce(
+                                  (s, p, i) => s + (i === idx ? 0 : Number(p.amount) || 0),
+                                  0
+                                );
+                                const maxAllowed = Math.max(0, remainingDue - otherSum);
+                                let next = e.target.value;
+                                if (Number.isFinite(raw) && raw > maxAllowed) {
+                                  next = String(maxAllowed);
+                                }
                                 setDeliverPayEntries((arr) =>
-                                  arr.map((p, i) => (i === idx ? { ...p, amount: e.target.value } : p))
-                                )
-                              }
+                                  arr.map((p, i) => (i === idx ? { ...p, amount: next } : p))
+                                );
+                              }}
                               placeholder="Amount"
                               className="pl-6 h-9 text-sm"
                             />
