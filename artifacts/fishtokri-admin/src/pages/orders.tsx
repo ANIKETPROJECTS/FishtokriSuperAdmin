@@ -381,7 +381,7 @@ export default function Orders() {
   // Coupons / timeslots / scheduling
   const [coupons, setCoupons] = useState<any[]>([]);
   const [loadingCoupons, setLoadingCoupons] = useState(false);
-  const [appliedCouponId, setAppliedCouponId] = useState<string>("");
+  const [appliedCouponIds, setAppliedCouponIds] = useState<string[]>([]);
   const [couponCode, setCouponCode] = useState<string>("");
   const [couponError, setCouponError] = useState<string>("");
   const [timeslots, setTimeslots] = useState<any[]>([]);
@@ -406,7 +406,7 @@ export default function Orders() {
     setSelectedSuperHubId(""); setSelectedSubHubId("");
     setSubHubs([]); setSubHubProducts([]); setSelectedProducts([]);
     setProductSearch(""); setProductPickerOpen(false);
-    setCoupons([]); setAppliedCouponId(""); setCouponCode(""); setCouponError("");
+    setCoupons([]); setAppliedCouponIds([]); setCouponCode(""); setCouponError("");
     setTimeslots([]); setSelectedTimeslotId("");
     setOrderScheduleType("slot");
     setOrderDate(new Date().toISOString().slice(0, 10));
@@ -448,7 +448,7 @@ export default function Orders() {
   useEffect(() => {
     if (!selectedSubHubId) {
       setSubHubProducts([]); setCoupons([]); setTimeslots([]);
-      setAppliedCouponId(""); setSelectedTimeslotId("");
+      setAppliedCouponIds([]); setSelectedTimeslotId("");
       return;
     }
     setLoadingProducts(true);
@@ -470,7 +470,7 @@ export default function Orders() {
       .finally(() => setLoadingTimeslots(false));
 
     setSelectedProducts([]);
-    setAppliedCouponId(""); setCouponCode(""); setCouponError("");
+    setAppliedCouponIds([]); setCouponCode(""); setCouponError("");
     setSelectedTimeslotId("");
   }, [selectedSubHubId]);
 
@@ -537,21 +537,28 @@ export default function Orders() {
     return cust + selectedProducts.length;
   }, [orderItems, selectedProducts]);
 
-  const appliedCoupon = useMemo(
-    () => activeCoupons.find((c) => String(c._id) === appliedCouponId) || null,
-    [activeCoupons, appliedCouponId]
+  const appliedCoupons = useMemo(
+    () => appliedCouponIds
+      .map((id) => activeCoupons.find((c) => String(c._id) === id))
+      .filter(Boolean) as any[],
+    [activeCoupons, appliedCouponIds]
   );
 
   const couponDiscount = useMemo(() => {
-    if (!appliedCoupon) return 0;
-    const min = Number(appliedCoupon.minOrderAmount) || 0;
-    if (itemsSubtotal < min) return 0;
-    const v = Number(appliedCoupon.discountValue) || 0;
-    if (appliedCoupon.type === "percentage") {
-      return Math.min(itemsSubtotal, Math.round((itemsSubtotal * v) / 100));
+    if (appliedCoupons.length === 0) return 0;
+    let total = 0;
+    for (const c of appliedCoupons) {
+      const min = Number(c.minOrderAmount) || 0;
+      if (itemsSubtotal < min) continue;
+      const v = Number(c.discountValue) || 0;
+      if (c.type === "percentage") {
+        total += Math.round((itemsSubtotal * v) / 100);
+      } else {
+        total += v;
+      }
     }
-    return Math.min(itemsSubtotal, v);
-  }, [appliedCoupon, itemsSubtotal]);
+    return Math.min(itemsSubtotal, total);
+  }, [appliedCoupons, itemsSubtotal]);
 
   const selectedTimeslot = useMemo(
     () => activeTimeslots.find((t) => String(t._id) === selectedTimeslotId) || null,
@@ -565,6 +572,13 @@ export default function Orders() {
     [itemsSubtotal, couponDiscount, slotExtraCharge]
   );
 
+  const toggleCoupon = (id: string) => {
+    setAppliedCouponIds((ids) =>
+      ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
+    );
+    setCouponError("");
+  };
+
   const applyCouponByCode = () => {
     const code = couponCode.trim().toUpperCase();
     if (!code) { setCouponError("Enter a coupon code"); return; }
@@ -572,7 +586,10 @@ export default function Orders() {
     if (!match) { setCouponError("Invalid or inactive coupon"); return; }
     const min = Number(match.minOrderAmount) || 0;
     if (itemsSubtotal < min) { setCouponError(`Min order ₹${min} required`); return; }
-    setAppliedCouponId(String(match._id));
+    const id = String(match._id);
+    if (appliedCouponIds.includes(id)) { setCouponError("Coupon already applied"); return; }
+    setAppliedCouponIds((ids) => [...ids, id]);
+    setCouponCode("");
     setCouponError("");
   };
 
@@ -707,10 +724,20 @@ export default function Orders() {
         discount: couponDiscount,
         slotCharge: slotExtraCharge,
         total: newOrderTotal,
-        // Coupon
-        couponId: appliedCoupon ? String(appliedCoupon._id) : undefined,
-        couponCode: appliedCoupon?.code,
-        couponTitle: appliedCoupon?.title,
+        // Coupons (multi)
+        couponId: appliedCoupons[0] ? String(appliedCoupons[0]._id) : undefined,
+        couponCode: appliedCoupons[0]?.code,
+        couponTitle: appliedCoupons[0]?.title,
+        couponIds: appliedCoupons.map((c) => String(c._id)),
+        couponCodes: appliedCoupons.map((c) => c.code),
+        coupons: appliedCoupons.map((c) => ({
+          id: String(c._id),
+          code: c.code,
+          title: c.title,
+          type: c.type,
+          discountValue: Number(c.discountValue) || 0,
+          minOrderAmount: Number(c.minOrderAmount) || 0,
+        })),
         // Schedule
         scheduleType: orderScheduleType,
         deliveryDate: orderDate,
@@ -1977,7 +2004,12 @@ export default function Orders() {
                 </div>
                 {couponDiscount > 0 && (
                   <div className="flex items-center justify-between text-[11px] text-emerald-600">
-                    <span className="inline-flex items-center gap-1"><Ticket className="w-3 h-3" /> Coupon {appliedCoupon?.code}</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Ticket className="w-3 h-3" />
+                      {appliedCoupons.length > 1
+                        ? `Coupons (${appliedCoupons.length})`
+                        : `Coupon ${appliedCoupons[0]?.code ?? ""}`}
+                    </span>
                     <span>− {formatRupees(couponDiscount)}</span>
                   </div>
                 )}
@@ -1994,86 +2026,113 @@ export default function Orders() {
               </div>
             </div>
 
-            {/* COUPON */}
-            <div className="space-y-2">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Coupon</p>
-              {appliedCoupon ? (
-                <div className="flex items-center gap-2 p-3 rounded-xl border border-emerald-200 bg-emerald-50">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white">
-                    <Ticket className="w-4 h-4" />
+            {/* COUPON — only after a product/item is added */}
+            {totalItemCount > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Coupons</p>
+
+                {appliedCoupons.length > 0 && (
+                  <div className="space-y-1.5">
+                    {appliedCoupons.map((c) => {
+                      const min = Number(c.minOrderAmount) || 0;
+                      const v = Number(c.discountValue) || 0;
+                      const eligible = itemsSubtotal >= min;
+                      const saved = !eligible
+                        ? 0
+                        : c.type === "percentage"
+                          ? Math.round((itemsSubtotal * v) / 100)
+                          : v;
+                      return (
+                        <div
+                          key={String(c._id)}
+                          className="flex items-center gap-2 p-2.5 rounded-xl border border-emerald-200 bg-emerald-50"
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center text-white shrink-0">
+                            <Ticket className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-emerald-800 truncate">
+                              {c.code}{" "}
+                              <span className="text-[11px] font-normal text-emerald-600">
+                                {eligible ? `· saved ${formatRupees(saved)}` : `· min ₹${min} required`}
+                              </span>
+                            </p>
+                            {c.title && <p className="text-[11px] text-emerald-700 truncate">{c.title}</p>}
+                          </div>
+                          <button
+                            onClick={() => toggleCoupon(String(c._id))}
+                            className="text-emerald-700 hover:text-red-500"
+                            aria-label="Remove coupon"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-emerald-800">{appliedCoupon.code} <span className="text-[11px] font-normal text-emerald-600">· saved {formatRupees(couponDiscount)}</span></p>
-                    {appliedCoupon.title && <p className="text-[11px] text-emerald-700 truncate">{appliedCoupon.title}</p>}
+                )}
+
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <Input
+                      value={couponCode}
+                      onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(""); }}
+                      placeholder="Enter coupon code"
+                      className="pl-7 h-9 text-sm"
+                    />
                   </div>
-                  <button
-                    onClick={() => { setAppliedCouponId(""); setCouponCode(""); setCouponError(""); }}
-                    className="text-emerald-700 hover:text-red-500"
-                    aria-label="Remove coupon"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={applyCouponByCode}
+                    disabled={!couponCode.trim()}
+                    className="h-9 text-sm"
+                  >Apply</Button>
                 </div>
-              ) : (
-                <>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                      <Input
-                        value={couponCode}
-                        onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(""); }}
-                        placeholder={selectedSubHubId ? "Enter coupon code" : "Select sub-hub first"}
-                        disabled={!selectedSubHubId}
-                        className="pl-7 h-9 text-sm"
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={applyCouponByCode}
-                      disabled={!selectedSubHubId || !couponCode.trim()}
-                      className="h-9 text-sm"
-                    >Apply</Button>
-                  </div>
-                  {couponError && <p className="text-[11px] text-red-500">{couponError}</p>}
-                  {selectedSubHubId && activeCoupons.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-[10px] text-gray-400 uppercase font-semibold">Available coupons</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {activeCoupons.slice(0, 8).map((c) => {
-                          const min = Number(c.minOrderAmount) || 0;
-                          const eligible = itemsSubtotal >= min;
-                          return (
-                            <button
-                              key={String(c._id)}
-                              type="button"
-                              disabled={!eligible}
-                              onClick={() => { setAppliedCouponId(String(c._id)); setCouponCode(String(c.code)); setCouponError(""); }}
-                              className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors inline-flex items-center gap-1 ${
-                                eligible
+                {couponError && <p className="text-[11px] text-red-500">{couponError}</p>}
+
+                {activeCoupons.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">Available coupons</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {activeCoupons.slice(0, 8).map((c) => {
+                        const id = String(c._id);
+                        const min = Number(c.minOrderAmount) || 0;
+                        const eligible = itemsSubtotal >= min;
+                        const isApplied = appliedCouponIds.includes(id);
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            disabled={!eligible && !isApplied}
+                            onClick={() => toggleCoupon(id)}
+                            className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors inline-flex items-center gap-1 ${
+                              isApplied
+                                ? "border-emerald-300 bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                                : eligible
                                   ? "border-blue-200 bg-blue-50 text-[#1A56DB] hover:bg-blue-100"
                                   : "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
-                              }`}
-                              title={c.title || c.description || ""}
-                            >
-                              <Ticket className="w-3 h-3" />
-                              {c.code}
-                              <span className="text-[10px] font-normal opacity-70">
-                                {c.type === "percentage" ? `${c.discountValue}% off` : `₹${c.discountValue} off`}
-                                {min > 0 ? ` · min ₹${min}` : ""}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                            }`}
+                            title={c.title || c.description || ""}
+                          >
+                            <Ticket className="w-3 h-3" />
+                            {c.code}
+                            <span className="text-[10px] font-normal opacity-70">
+                              {c.type === "percentage" ? `${c.discountValue}% off` : `₹${c.discountValue} off`}
+                              {min > 0 ? ` · min ₹${min}` : ""}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
-                  )}
-                  {selectedSubHubId && !loadingCoupons && activeCoupons.length === 0 && (
-                    <p className="text-[11px] text-gray-400">No active coupons for this sub-hub.</p>
-                  )}
-                </>
-              )}
-            </div>
+                  </div>
+                )}
+                {selectedSubHubId && !loadingCoupons && activeCoupons.length === 0 && (
+                  <p className="text-[11px] text-gray-400">No active coupons for this sub-hub.</p>
+                )}
+              </div>
+            )}
 
             {/* SCHEDULE */}
             <div className="space-y-2">
