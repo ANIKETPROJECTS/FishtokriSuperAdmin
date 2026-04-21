@@ -81,6 +81,48 @@ function orderTotal(items: any[]) {
   return (items ?? []).reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
 }
 
+// ─── ADDRESS FORMATTING ───────────────────────────────────────────────────────
+function getAddressFields(a: any) {
+  if (!a) return null;
+  return {
+    label: a.label || a.type || "",
+    contactName: a.name || a.contactName || "",
+    phone: a.phone || a.contactPhone || a.mobile || "",
+    houseNo: a.houseNo || a.flatNo || a.house || a.apartment || "",
+    building: a.building || a.buildingName || a.society || "",
+    street: a.street || a.streetName || a.road || a.addressLine1 || "",
+    area: a.area || a.locality || a.neighbourhood || "",
+    landmark: a.landmark || "",
+    city: a.city || "",
+    state: a.state || "",
+    pincode: a.pincode || a.zipCode || a.zip || "",
+    instructions: a.instructions || a.deliveryInstructions || "",
+    isDefault: !!a.isDefault,
+  };
+}
+
+function formatAddressLines(a: any): string[] {
+  const f = getAddressFields(a);
+  if (!f) return [];
+  const lines = [
+    [f.houseNo, f.building].filter(Boolean).join(", "),
+    [f.street, f.area].filter(Boolean).join(", "),
+    f.landmark ? `Landmark: ${f.landmark}` : "",
+    [f.city, f.state, f.pincode].filter(Boolean).join(", "),
+  ].filter(Boolean);
+  // Fallbacks for legacy short-form addresses
+  if (lines.length === 0) {
+    const legacy = a?.address || a?.line1 || a?.fullAddress || "";
+    if (legacy) lines.push(legacy);
+    if (f.area && !legacy.includes(f.area)) lines.push(f.area);
+  }
+  return lines;
+}
+
+function formatAddressOneLine(a: any): string {
+  return formatAddressLines(a).join(" · ");
+}
+
 // ─── FILTER DELIVERY PERSONS BY HUB ───────────────────────────────────────────
 function getDeliveryPersonsForOrder(order: any, allPersons: any[]) {
   const orderSuperIds: string[] = [
@@ -311,37 +353,98 @@ export default function Orders() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [chosenCustomer, setChosenCustomer] = useState<any>(null);
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "" });
-  const [orderItems, setOrderItems] = useState<{ name: string; price: string; quantity: string; unit: string }[]>([
-    { name: "", price: "", quantity: "1", unit: "" },
-  ]);
+  const [orderItems, setOrderItems] = useState<{ name: string; price: string; quantity: string; unit: string }[]>([]);
   const [orderDeliveryType, setOrderDeliveryType] = useState<"delivery" | "takeaway">("delivery");
-  const [orderAddress, setOrderAddress] = useState("");
-  const [orderArea, setOrderArea] = useState("");
   const [orderAddressMode, setOrderAddressMode] = useState<"saved" | "new">("saved");
   const [selectedAddressIdx, setSelectedAddressIdx] = useState<number | null>(null);
+  const [newAddress, setNewAddress] = useState({
+    label: "Home", contactName: "", phone: "",
+    houseNo: "", building: "", street: "", area: "", landmark: "",
+    city: "", state: "", pincode: "", instructions: "",
+  });
   const [orderNotes, setOrderNotes] = useState("");
+
+  // Hub & product picker state
+  const [superHubs, setSuperHubs] = useState<any[]>([]);
+  const [loadingSuperHubs, setLoadingSuperHubs] = useState(false);
+  const [selectedSuperHubId, setSelectedSuperHubId] = useState<string>("");
+  const [subHubs, setSubHubs] = useState<any[]>([]);
+  const [loadingSubHubs, setLoadingSubHubs] = useState(false);
+  const [selectedSubHubId, setSelectedSubHubId] = useState<string>("");
+  const [subHubProducts, setSubHubProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<{ productId: string; name: string; price: number; unit: string; quantity: number }[]>([]);
 
   const resetCreateForm = useCallback(() => {
     setCustomerMode("existing");
     setCustomerSearch(""); setChosenCustomer(null); setCustomerDropdownOpen(false);
     setNewCustomer({ name: "", phone: "", email: "" });
-    setOrderItems([{ name: "", price: "", quantity: "1", unit: "" }]);
+    setOrderItems([]);
     setOrderDeliveryType("delivery");
-    setOrderAddress(""); setOrderArea("");
     setOrderAddressMode("saved"); setSelectedAddressIdx(null);
+    setNewAddress({
+      label: "Home", contactName: "", phone: "",
+      houseNo: "", building: "", street: "", area: "", landmark: "",
+      city: "", state: "", pincode: "", instructions: "",
+    });
     setOrderNotes("");
+    setSelectedSuperHubId(""); setSelectedSubHubId("");
+    setSubHubs([]); setSubHubProducts([]); setSelectedProducts([]);
+    setProductSearch(""); setProductPickerOpen(false);
   }, []);
 
   // Load all customers when create-order modal opens
   useEffect(() => {
     if (!creatingOrder) return;
-    if (allCustomers.length > 0) return;
-    setLoadingCustomers(true);
-    apiFetch(`/api/customers?limit=100&sort=name_asc`)
-      .then((d) => setAllCustomers(d.customers ?? []))
-      .catch(() => setAllCustomers([]))
-      .finally(() => setLoadingCustomers(false));
-  }, [creatingOrder, allCustomers.length]);
+    if (allCustomers.length === 0) {
+      setLoadingCustomers(true);
+      apiFetch(`/api/customers?limit=100&sort=name_asc`)
+        .then((d) => setAllCustomers(d.customers ?? []))
+        .catch(() => setAllCustomers([]))
+        .finally(() => setLoadingCustomers(false));
+    }
+    if (superHubs.length === 0) {
+      setLoadingSuperHubs(true);
+      apiFetch(`/api/super-hubs`)
+        .then((d) => setSuperHubs(d.superHubs ?? []))
+        .catch(() => setSuperHubs([]))
+        .finally(() => setLoadingSuperHubs(false));
+    }
+  }, [creatingOrder, allCustomers.length, superHubs.length]);
+
+  // Load sub-hubs when super-hub changes
+  useEffect(() => {
+    if (!selectedSuperHubId) { setSubHubs([]); setSelectedSubHubId(""); return; }
+    setLoadingSubHubs(true);
+    apiFetch(`/api/super-hubs/${selectedSuperHubId}/sub-hubs`)
+      .then((d) => setSubHubs(d.subHubs ?? []))
+      .catch(() => setSubHubs([]))
+      .finally(() => setLoadingSubHubs(false));
+    setSelectedSubHubId("");
+    setSubHubProducts([]);
+    setSelectedProducts([]);
+  }, [selectedSuperHubId]);
+
+  // Load products when sub-hub changes
+  useEffect(() => {
+    if (!selectedSubHubId) { setSubHubProducts([]); return; }
+    setLoadingProducts(true);
+    apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/products`)
+      .then((d) => setSubHubProducts(d.products ?? []))
+      .catch(() => setSubHubProducts([]))
+      .finally(() => setLoadingProducts(false));
+    setSelectedProducts([]);
+  }, [selectedSubHubId]);
+
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return subHubProducts;
+    return subHubProducts.filter((p) =>
+      [p.name, p.category, p.subCategory].some((v) => String(v ?? "").toLowerCase().includes(q))
+    );
+  }, [subHubProducts, productSearch]);
 
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.trim().toLowerCase();
@@ -352,8 +455,15 @@ export default function Orders() {
   }, [allCustomers, customerSearch]);
 
   const newOrderTotal = useMemo(() => {
-    return orderItems.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
-  }, [orderItems]);
+    const customSum = orderItems.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
+    const productSum = selectedProducts.reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.quantity) || 0), 0);
+    return customSum + productSum;
+  }, [orderItems, selectedProducts]);
+
+  const totalItemCount = useMemo(() => {
+    const cust = orderItems.filter((it) => it.name.trim() && Number(it.quantity) > 0).length;
+    return cust + selectedProducts.length;
+  }, [orderItems, selectedProducts]);
 
   const handleCreateOrder = async () => {
     // Validate customer
@@ -385,8 +495,17 @@ export default function Orders() {
       email = newCustomer.email.trim();
     }
 
-    // Validate items
-    const cleanItems = orderItems
+    // Validate hub
+    if (!selectedSuperHubId || !selectedSubHubId) {
+      toast({ title: "Select a hub", description: "Choose both super-hub and sub-hub to fulfil this order.", variant: "destructive" });
+      return;
+    }
+
+    // Validate items (products + custom)
+    const productItems = selectedProducts
+      .filter((p) => p.quantity > 0)
+      .map((p) => ({ productId: p.productId, name: p.name, price: p.price, quantity: p.quantity, unit: p.unit }));
+    const customItems = orderItems
       .map((it) => ({
         name: it.name.trim(),
         price: Number(it.price) || 0,
@@ -394,28 +513,45 @@ export default function Orders() {
         unit: it.unit.trim(),
       }))
       .filter((it) => it.name && it.quantity > 0);
+    const cleanItems = [...productItems, ...customItems];
     if (cleanItems.length === 0) {
-      toast({ title: "Add at least one item", description: "Each item needs a name and quantity.", variant: "destructive" });
+      toast({ title: "Add at least one item", description: "Pick a product from the sub-hub catalog or add a custom item.", variant: "destructive" });
       return;
     }
 
     // Resolve address for delivery
     let address = "";
     let deliveryArea = "";
+    let deliveryAddressDetail: any = undefined;
     if (orderDeliveryType === "delivery") {
       if (chosenCustomer && orderAddressMode === "saved" && selectedAddressIdx !== null) {
         const a = (chosenCustomer.addresses ?? [])[selectedAddressIdx];
-        address = a?.address ?? a?.line1 ?? a?.fullAddress ?? "";
-        deliveryArea = a?.area ?? a?.locality ?? a?.city ?? "";
+        address = formatAddressOneLine(a) || a?.address || a?.line1 || a?.fullAddress || "";
+        const f = getAddressFields(a);
+        deliveryArea = f?.area || f?.city || "";
+        deliveryAddressDetail = a;
       } else {
-        address = orderAddress.trim();
-        deliveryArea = orderArea.trim();
+        const f = newAddress;
+        if (!f.pincode || !/^\d{6}$/.test(f.pincode)) {
+          toast({ title: "Pincode required", description: "Enter a valid 6-digit pincode for the delivery address.", variant: "destructive" });
+          return;
+        }
+        if (!f.city) {
+          toast({ title: "City required", description: "Enter a city for the delivery address.", variant: "destructive" });
+          return;
+        }
+        address = formatAddressOneLine(f);
+        deliveryArea = f.area || f.city || "";
+        deliveryAddressDetail = { ...f };
       }
       if (!address) {
         toast({ title: "Delivery address required", variant: "destructive" });
         return;
       }
     }
+
+    const superHub = superHubs.find((h) => h.id === selectedSuperHubId);
+    const subHub = subHubs.find((h) => h.id === selectedSubHubId);
 
     setCreatingSaving(true);
     try {
@@ -426,6 +562,11 @@ export default function Orders() {
         deliveryType: orderDeliveryType,
         address,
         deliveryArea,
+        deliveryAddressDetail,
+        superHubId: selectedSuperHubId,
+        superHubName: superHub?.name ?? "",
+        subHubId: selectedSubHubId,
+        subHubName: subHub?.name ?? "",
         notes: orderNotes.trim(),
         status: "pending",
         createCustomerIfMissing: customerMode === "new",
@@ -1141,7 +1282,11 @@ export default function Orders() {
                           />
                         </div>
                       </div>
-                      <div className="max-h-64 overflow-y-auto py-1">
+                      <div
+                        className="max-h-[320px] overflow-y-auto overscroll-contain py-1"
+                        onWheel={(e) => e.stopPropagation()}
+                        onTouchMove={(e) => e.stopPropagation()}
+                      >
                         {loadingCustomers ? (
                           <p className="p-4 text-xs text-gray-400 text-center">Loading...</p>
                         ) : filteredCustomers.length === 0 ? (
@@ -1287,31 +1432,63 @@ export default function Orders() {
                   )}
                 </div>
                 {chosenCustomer && orderAddressMode === "saved" && Array.isArray(chosenCustomer.addresses) && chosenCustomer.addresses.length > 0 ? (
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1">
                     {chosenCustomer.addresses.map((a: any, i: number) => {
-                      const addrText = a?.address ?? a?.line1 ?? a?.fullAddress ?? "";
-                      const areaText = a?.area ?? a?.locality ?? a?.city ?? "";
+                      const f = getAddressFields(a);
+                      const lines = formatAddressLines(a);
+                      const isSelected = selectedAddressIdx === i;
                       return (
                         <button
                           key={i}
                           onClick={() => setSelectedAddressIdx(i)}
-                          className={`w-full flex items-start gap-2 p-2.5 rounded-xl border text-left transition-all ${selectedAddressIdx === i ? "border-[#1A56DB] bg-blue-50" : "border-gray-100 bg-white hover:border-gray-200"}`}
+                          className={`w-full flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${isSelected ? "border-[#1A56DB] bg-blue-50" : "border-gray-100 bg-white hover:border-gray-200"}`}
                         >
-                          <Home className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${selectedAddressIdx === i ? "text-[#1A56DB]" : "text-gray-400"}`} />
-                          <div className="flex-1 min-w-0">
-                            {a?.label && <p className="text-xs font-bold text-[#162B4D]">{a.label}</p>}
-                            <p className="text-xs text-gray-600">{addrText}</p>
-                            {areaText && <p className="text-[11px] text-gray-400">{areaText}</p>}
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isSelected ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-gray-400"}`}>
+                            <Home className="w-3.5 h-3.5" />
                           </div>
-                          {selectedAddressIdx === i && <Check className="w-3.5 h-3.5 text-[#1A56DB] flex-shrink-0" />}
+                          <div className="flex-1 min-w-0 space-y-0.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="text-xs font-bold text-[#162B4D]">{f?.label || `Address ${i + 1}`}</p>
+                              {f?.isDefault && <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">DEFAULT</span>}
+                              {f?.contactName && <span className="text-[10px] text-gray-500">· {f.contactName}</span>}
+                              {f?.phone && <span className="text-[10px] text-gray-400 inline-flex items-center gap-0.5"><Phone className="w-2.5 h-2.5" />{f.phone}</span>}
+                            </div>
+                            {lines.length > 0 ? (
+                              lines.map((ln, li) => (
+                                <p key={li} className="text-[11.5px] text-gray-600 leading-tight">{ln}</p>
+                              ))
+                            ) : (
+                              <p className="text-[11px] text-gray-400 italic">No address details</p>
+                            )}
+                            {f?.instructions && <p className="text-[10px] text-amber-700 italic mt-0.5">Note: {f.instructions}</p>}
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-[#1A56DB] flex-shrink-0 mt-1" />}
                         </button>
                       );
                     })}
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <Input value={orderAddress} onChange={(e) => setOrderAddress(e.target.value)} placeholder="Full address" className="h-9 text-sm" />
-                    <Input value={orderArea} onChange={(e) => setOrderArea(e.target.value)} placeholder="Area / locality" className="h-9 text-sm" />
+                  <div className="space-y-2 p-3 bg-gray-50/60 border border-gray-100 rounded-xl">
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input value={newAddress.label} onChange={(e) => setNewAddress((a) => ({ ...a, label: e.target.value }))} placeholder="Label (Home/Work)" className="h-9 text-sm" />
+                      <Input value={newAddress.contactName} onChange={(e) => setNewAddress((a) => ({ ...a, contactName: e.target.value }))} placeholder="Contact name" className="h-9 text-sm" />
+                      <Input value={newAddress.phone} onChange={(e) => setNewAddress((a) => ({ ...a, phone: e.target.value }))} placeholder="Contact phone" className="h-9 text-sm" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input value={newAddress.houseNo} onChange={(e) => setNewAddress((a) => ({ ...a, houseNo: e.target.value }))} placeholder="House / Flat no." className="h-9 text-sm" />
+                      <Input value={newAddress.building} onChange={(e) => setNewAddress((a) => ({ ...a, building: e.target.value }))} placeholder="Building / Society" className="h-9 text-sm" />
+                    </div>
+                    <Input value={newAddress.street} onChange={(e) => setNewAddress((a) => ({ ...a, street: e.target.value }))} placeholder="Street / Road" className="h-9 text-sm" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input value={newAddress.area} onChange={(e) => setNewAddress((a) => ({ ...a, area: e.target.value }))} placeholder="Area / Locality" className="h-9 text-sm" />
+                      <Input value={newAddress.landmark} onChange={(e) => setNewAddress((a) => ({ ...a, landmark: e.target.value }))} placeholder="Landmark" className="h-9 text-sm" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input value={newAddress.city} onChange={(e) => setNewAddress((a) => ({ ...a, city: e.target.value }))} placeholder="City *" className="h-9 text-sm" />
+                      <Input value={newAddress.state} onChange={(e) => setNewAddress((a) => ({ ...a, state: e.target.value }))} placeholder="State" className="h-9 text-sm" />
+                      <Input value={newAddress.pincode} onChange={(e) => setNewAddress((a) => ({ ...a, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="Pincode *" className="h-9 text-sm" />
+                    </div>
+                    <Input value={newAddress.instructions} onChange={(e) => setNewAddress((a) => ({ ...a, instructions: e.target.value }))} placeholder="Delivery instructions (optional)" className="h-9 text-sm" />
                   </div>
                 )}
               </div>
@@ -1327,31 +1504,236 @@ export default function Orders() {
               </div>
             )}
 
+            {/* HUB SELECTION */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Fulfillment Hub *</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-gray-500">Super Hub</Label>
+                  <Select value={selectedSuperHubId} onValueChange={setSelectedSuperHubId} disabled={loadingSuperHubs}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder={loadingSuperHubs ? "Loading..." : "Select super hub"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {superHubs.length === 0 ? (
+                        <div className="p-2 text-xs text-gray-400 text-center">No super hubs found</div>
+                      ) : superHubs.map((h) => (
+                        <SelectItem key={h.id} value={h.id}>
+                          <span className="flex items-center gap-1.5">
+                            <Building2 className="w-3 h-3 text-gray-400" />
+                            {h.name}
+                            {h.location && <span className="text-[10px] text-gray-400">· {h.location}</span>}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-gray-500">Sub Hub</Label>
+                  <Select value={selectedSubHubId} onValueChange={setSelectedSubHubId} disabled={!selectedSuperHubId || loadingSubHubs}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder={
+                        !selectedSuperHubId ? "Select super hub first" :
+                        loadingSubHubs ? "Loading..." :
+                        subHubs.length === 0 ? "No sub-hubs" : "Select sub hub"
+                      } />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subHubs.map((h) => (
+                        <SelectItem key={h.id} value={h.id}>
+                          <span className="flex items-center gap-1.5">
+                            <Building2 className="w-3 h-3 text-gray-400" />
+                            {h.name}
+                            {h.location && <span className="text-[10px] text-gray-400">· {h.location}</span>}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {selectedSubHubId && (
+                <p className="text-[11px] text-gray-400 inline-flex items-center gap-1">
+                  <ShoppingBag className="w-3 h-3" /> {loadingProducts ? "Loading catalog..." : `${subHubProducts.length} products available in this sub-hub`}
+                </p>
+              )}
+            </div>
+
             {/* ITEMS */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Items</p>
-                <button onClick={() => setOrderItems((arr) => [...arr, { name: "", price: "", quantity: "1", unit: "" }])} className="text-xs font-semibold text-[#1A56DB] hover:underline inline-flex items-center gap-1">
-                  <Plus className="w-3 h-3" /> Add item
-                </button>
-              </div>
-              <div className="space-y-2">
-                {orderItems.map((it, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                    <Input value={it.name} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} placeholder="Item name" className="h-9 text-sm col-span-5" />
-                    <Input value={it.price} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, price: e.target.value } : x))} placeholder="Price" type="number" className="h-9 text-sm col-span-2" />
-                    <Input value={it.quantity} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x))} placeholder="Qty" type="number" className="h-9 text-sm col-span-2" />
-                    <Input value={it.unit} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, unit: e.target.value } : x))} placeholder="Unit" className="h-9 text-sm col-span-2" />
-                    <button
-                      onClick={() => setOrderItems((arr) => arr.length > 1 ? arr.filter((_, i) => i !== idx) : arr)}
-                      className="col-span-1 h-9 flex items-center justify-center text-gray-400 hover:text-red-500 disabled:opacity-30"
-                      disabled={orderItems.length === 1}
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Items <span className="text-gray-300">({totalItemCount})</span></p>
+                <div className="flex items-center gap-3">
+                  <Popover open={productPickerOpen} onOpenChange={setProductPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        disabled={!selectedSubHubId}
+                        className="text-xs font-semibold text-[#1A56DB] hover:underline inline-flex items-center gap-1 disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
+                      >
+                        <Plus className="w-3 h-3" /> Add product
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="p-0 shadow-xl border border-gray-100 rounded-2xl overflow-hidden w-[420px]"
+                      align="end"
+                      sideOffset={6}
+                      style={{ maxHeight: "min(420px, var(--radix-popover-content-available-height))" }}
                     >
-                      <Trash className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
+                      <div className="p-2 border-b border-gray-100 bg-gray-50/80">
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                          <Input
+                            autoFocus
+                            value={productSearch}
+                            onChange={(e) => setProductSearch(e.target.value)}
+                            placeholder="Search products..."
+                            className="pl-7 h-8 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div
+                        className="max-h-[320px] overflow-y-auto overscroll-contain py-1"
+                        onWheel={(e) => e.stopPropagation()}
+                        onTouchMove={(e) => e.stopPropagation()}
+                      >
+                        {loadingProducts ? (
+                          <p className="p-4 text-xs text-gray-400 text-center">Loading products...</p>
+                        ) : filteredProducts.length === 0 ? (
+                          <p className="p-4 text-xs text-gray-400 text-center">No products match.</p>
+                        ) : (
+                          filteredProducts.map((p) => {
+                            const pid = String(p._id);
+                            const already = selectedProducts.find((sp) => sp.productId === pid);
+                            return (
+                              <button
+                                key={pid}
+                                onClick={() => {
+                                  setSelectedProducts((prev) => {
+                                    const exists = prev.find((sp) => sp.productId === pid);
+                                    if (exists) {
+                                      return prev.map((sp) => sp.productId === pid ? { ...sp, quantity: sp.quantity + 1 } : sp);
+                                    }
+                                    return [...prev, {
+                                      productId: pid,
+                                      name: p.name,
+                                      price: Number(p.price) || 0,
+                                      unit: p.unit ?? "",
+                                      quantity: 1,
+                                    }];
+                                  });
+                                }}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 transition-colors text-left ${already ? "bg-blue-50/40" : ""}`}
+                              >
+                                {p.imageUrl ? (
+                                  <img src={p.imageUrl} alt="" className="w-9 h-9 rounded-lg object-cover bg-gray-100 flex-shrink-0" />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                                    <Package className="w-4 h-4 text-gray-300" />
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold text-[#162B4D] truncate">{p.name}</p>
+                                  <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                                    <span className="font-semibold text-[#1A56DB]">{formatRupees(p.price)}</span>
+                                    {p.unit && <span>/ {p.unit}</span>}
+                                    {p.category && <span className="truncate">· {p.category}</span>}
+                                  </div>
+                                </div>
+                                {already ? (
+                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">×{already.quantity}</span>
+                                ) : (
+                                  <Plus className="w-3.5 h-3.5 text-[#1A56DB] flex-shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                      {selectedProducts.length > 0 && (
+                        <div className="p-2 border-t border-gray-100 bg-gray-50/80 text-[11px] text-gray-500 flex items-center justify-between">
+                          <span>{selectedProducts.length} selected</span>
+                          <button onClick={() => setProductPickerOpen(false)} className="font-semibold text-[#1A56DB] hover:underline">Done</button>
+                        </div>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                  <button
+                    onClick={() => setOrderItems((arr) => [...arr, { name: "", price: "", quantity: "1", unit: "" }])}
+                    className="text-xs font-semibold text-gray-500 hover:underline inline-flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" /> Custom item
+                  </button>
+                </div>
               </div>
+
+              {!selectedSubHubId && selectedProducts.length === 0 && orderItems.length === 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-[11px] text-amber-700 inline-flex items-start gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>Select a sub-hub above to choose products from its catalog, or add a custom item.</span>
+                </div>
+              )}
+
+              {/* Selected catalog products */}
+              {selectedProducts.length > 0 && (
+                <div className="space-y-1.5">
+                  {selectedProducts.map((p, idx) => (
+                    <div key={p.productId} className="flex items-center gap-2 p-2 rounded-xl border border-blue-100 bg-blue-50/50">
+                      <ShoppingBag className="w-3.5 h-3.5 text-[#1A56DB] flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[#162B4D] truncate">{p.name}</p>
+                        <p className="text-[11px] text-gray-500">{formatRupees(p.price)}{p.unit ? ` / ${p.unit}` : ""}</p>
+                      </div>
+                      <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg">
+                        <button
+                          onClick={() => setSelectedProducts((arr) => arr.map((x, i) => i === idx ? { ...x, quantity: Math.max(1, x.quantity - 1) } : x))}
+                          className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-[#1A56DB]"
+                        >−</button>
+                        <Input
+                          type="number"
+                          value={p.quantity}
+                          onChange={(e) => setSelectedProducts((arr) => arr.map((x, i) => i === idx ? { ...x, quantity: Math.max(1, Number(e.target.value) || 1) } : x))}
+                          className="h-7 w-12 text-center text-sm border-0 px-0 focus-visible:ring-0"
+                        />
+                        <button
+                          onClick={() => setSelectedProducts((arr) => arr.map((x, i) => i === idx ? { ...x, quantity: x.quantity + 1 } : x))}
+                          className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-[#1A56DB]"
+                        >+</button>
+                      </div>
+                      <span className="text-sm font-bold text-[#162B4D] w-16 text-right">{formatRupees(p.price * p.quantity)}</span>
+                      <button
+                        onClick={() => setSelectedProducts((arr) => arr.filter((_, i) => i !== idx))}
+                        className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                      >
+                        <Trash className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Custom items */}
+              {orderItems.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase">Custom items</p>
+                  {orderItems.map((it, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                      <Input value={it.name} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} placeholder="Item name" className="h-9 text-sm col-span-5" />
+                      <Input value={it.price} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, price: e.target.value } : x))} placeholder="Price" type="number" className="h-9 text-sm col-span-2" />
+                      <Input value={it.quantity} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x))} placeholder="Qty" type="number" className="h-9 text-sm col-span-2" />
+                      <Input value={it.unit} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, unit: e.target.value } : x))} placeholder="Unit" className="h-9 text-sm col-span-2" />
+                      <button
+                        onClick={() => setOrderItems((arr) => arr.filter((_, i) => i !== idx))}
+                        className="col-span-1 h-9 flex items-center justify-center text-gray-400 hover:text-red-500"
+                      >
+                        <Trash className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="flex items-center justify-between mt-2 px-3 py-2 bg-[#162B4D]/5 rounded-xl">
                 <span className="text-xs font-semibold text-gray-600">Order Total</span>
                 <span className="font-bold text-[#162B4D] text-base">{formatRupees(newOrderTotal)}</span>
