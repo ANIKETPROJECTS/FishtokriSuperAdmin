@@ -120,6 +120,7 @@ interface PurchaseItem {
   // new-product rich fields (mirrors sub-hub modal)
   newProductRecipes: any[];
   newProductIsArchived: boolean;
+  taxPct?: string;
 }
 
 interface PurchaseDisplayBatch {
@@ -197,8 +198,18 @@ const PRODUCT_UNITS = ["per kg", "per piece", "per dozen", "per box", "per litre
 const emptyPurchase = () => ({
   invoiceNumber: "",
   purchaseDate: new Date().toISOString().split("T")[0],
+  dueDate: "",
   items: [emptyItem()],
   notes: "",
+  billingAddress: "",
+  shippingAddress: "",
+  placeOfSupply: "",
+  referenceNumber: "",
+  deliveryDate: "",
+  additionalNote: "",
+  discount: "",
+  extraCharge: "",
+  roundOff: "",
 });
 
 function getDocId(doc: any) {
@@ -1462,6 +1473,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
   const [vendorItemCategories, setVendorItemCategories] = useState<VendorItemCategory[]>([]);
   const [vendorItems, setVendorItems] = useState<VendorCatalogItem[]>([]);
   const [vendorItemsLoading, setVendorItemsLoading] = useState(true);
+  const [additionalOpen, setAdditionalOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -1538,10 +1550,24 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     });
   };
 
-  const totalAmount = useMemo(() =>
+  const subtotal = useMemo(() =>
     form.items.reduce((s, i) => s + (Number(i.quantity) * Number(i.pricePerUnit)), 0),
     [form.items]
   );
+
+  const taxAmount = useMemo(() =>
+    form.items.reduce((s, i) => {
+      const line = Number(i.quantity) * Number(i.pricePerUnit);
+      const tax = Number(i.taxPct || 0);
+      return s + (line * tax / 100);
+    }, 0),
+    [form.items]
+  );
+
+  const discountAmount = Number(form.discount) || 0;
+  const extraChargeAmount = Number(form.extraCharge) || 0;
+  const roundOffAmount = Number(form.roundOff) || 0;
+  const totalAmount = Math.max(0, subtotal - discountAmount + extraChargeAmount + taxAmount + roundOffAmount);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1638,7 +1664,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
               />
             </div>
             <div>
-              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Purchase Date</label>
+              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Date</label>
               <Input
                 type="date"
                 value={form.purchaseDate}
@@ -1647,26 +1673,74 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
               />
             </div>
             <div>
-              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Notes</label>
+              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Due Date</label>
               <Input
-                value={form.notes}
-                onChange={e => setField("notes", e.target.value)}
-                placeholder="Optional note..."
+                type="date"
+                value={form.dueDate}
+                onChange={e => setField("dueDate", e.target.value)}
                 className="h-9 text-sm border-gray-200"
               />
             </div>
           </div>
 
+          {/* ─── Additional Fields (collapsible) ───────────────── */}
+          <div className="border-b border-gray-100">
+            <button
+              type="button"
+              onClick={() => setAdditionalOpen(o => !o)}
+              className="w-full px-6 py-3 flex items-center justify-between hover:bg-gray-50/60 transition-colors"
+            >
+              <span className="text-sm font-semibold text-[#162B4D] flex items-center gap-2">
+                Additional Fields
+                <span className="text-[10px] font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">optional</span>
+              </span>
+              <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${additionalOpen ? "rotate-90" : ""}`} />
+            </button>
+            {additionalOpen && (
+              <div className="px-6 pb-5 grid grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Billing Address</label>
+                  <Input value={form.billingAddress} onChange={e => setField("billingAddress", e.target.value)} placeholder="Choose Address" className="h-9 text-sm border-gray-200" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Shipping Address</label>
+                  <Input value={form.shippingAddress} onChange={e => setField("shippingAddress", e.target.value)} placeholder="Choose Address" className="h-9 text-sm border-gray-200" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Place of Supply</label>
+                  <Input value={form.placeOfSupply} onChange={e => setField("placeOfSupply", e.target.value)} placeholder="Choose State" className="h-9 text-sm border-gray-200" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Reference No.</label>
+                  <Input value={form.referenceNumber} onChange={e => setField("referenceNumber", e.target.value)} placeholder="Reference" className="h-9 text-sm border-gray-200" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Delivery Date</label>
+                  <Input type="date" value={form.deliveryDate} onChange={e => setField("deliveryDate", e.target.value)} className="h-9 text-sm border-gray-200" />
+                </div>
+                <div className="col-span-3">
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Note</label>
+                  <Input value={form.additionalNote} onChange={e => setField("additionalNote", e.target.value)} placeholder="Enter Value" className="h-9 text-sm border-gray-200" />
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* ─── Items Table ───────────────────────────────────── */}
           <div className="px-6 py-4">
             {/* Table header */}
-            <div className="grid gap-2 mb-2 px-2" style={{ gridTemplateColumns: "2rem 1fr 1fr 5rem 5rem 6rem 6rem 2rem" }}>
+            <div
+              className="grid gap-2 mb-2 px-2"
+              style={{ gridTemplateColumns: "2rem 1fr 1fr 1.2fr 4.5rem 4.5rem 5.5rem 4.5rem 5.5rem 2rem" }}
+            >
               <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">#</span>
               <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Category</span>
               <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Item</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Description</span>
               <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Qty</span>
               <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Unit</span>
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Cost/Unit (₹)</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Cost/Unit</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Tax %</span>
               <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider text-right">Total</span>
               <span />
             </div>
@@ -1674,13 +1748,15 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
             {/* Table rows */}
             <div className="space-y-2">
               {form.items.map((item, idx) => {
-                const rowTotal = Number(item.quantity) * Number(item.pricePerUnit);
+                const lineSubtotal = Number(item.quantity) * Number(item.pricePerUnit);
+                const lineTax = lineSubtotal * (Number(item.taxPct || 0) / 100);
+                const rowTotal = lineSubtotal + lineTax;
                 const filteredItems = vendorItems.filter(p => p.categoryId === item.existingCategory);
                 return (
                   <div
                     key={idx}
                     className="grid gap-2 items-center bg-gray-50 border border-gray-100 rounded-xl px-2 py-2.5 hover:border-[#162B4D]/20 transition-colors"
-                    style={{ gridTemplateColumns: "2rem 1fr 1fr 5rem 5rem 6rem 6rem 2rem" }}
+                    style={{ gridTemplateColumns: "2rem 1fr 1fr 1.2fr 4.5rem 4.5rem 5.5rem 4.5rem 5.5rem 2rem" }}
                   >
                     {/* Row number */}
                     <div className="flex items-center justify-center">
@@ -1719,6 +1795,14 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                       ))}
                     </select>
 
+                    {/* Description */}
+                    <Input
+                      value={item.description}
+                      onChange={e => setItem(idx, "description", e.target.value)}
+                      placeholder="Description"
+                      className="h-9 text-sm border-gray-200"
+                    />
+
                     {/* Qty */}
                     <Input
                       type="text"
@@ -1733,7 +1817,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                     <select
                       value={item.unit}
                       onChange={e => setItem(idx, "unit", e.target.value)}
-                      className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20"
+                      className="h-9 w-full rounded-lg border border-gray-200 bg-white px-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20"
                     >
                       {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                     </select>
@@ -1750,6 +1834,16 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
                         className="h-9 text-sm pl-5 border-gray-200"
                       />
                     </div>
+
+                    {/* Tax % */}
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={item.taxPct || ""}
+                      onChange={e => setItem(idx, "taxPct", numOnly(e.target.value))}
+                      placeholder="0"
+                      className="h-9 text-sm text-center border-gray-200"
+                    />
 
                     {/* Row total */}
                     <div className="text-right">
@@ -1785,29 +1879,105 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
             </button>
           </div>
 
-          {/* ─── Summary + Actions ────────────────────────────── */}
-          <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between bg-gray-50/60">
-            <div className="text-sm text-gray-500">
+          {/* ─── Notes + Summary panel ────────────────────────── */}
+          <div className="border-t border-gray-100 px-6 py-5 grid grid-cols-2 gap-6 bg-gray-50/40">
+            {/* Left: Notes */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                  Notes for Vendor
+                </label>
+                <textarea
+                  value={form.notes}
+                  onChange={e => setField("notes", e.target.value)}
+                  placeholder="Enter any notes..."
+                  rows={4}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Right: Summary */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+                <span className="text-xs font-bold text-[#162B4D] uppercase tracking-wider">Summary</span>
+              </div>
+              <div className="px-4 py-3 space-y-2.5 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Subtotal</span>
+                  <span className="font-medium text-gray-700">{formatRupees(subtotal)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-gray-500 shrink-0">Discount</span>
+                  <div className="relative w-28">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={form.discount}
+                      onChange={e => setField("discount", numOnly(e.target.value))}
+                      placeholder="0"
+                      className="h-8 text-sm pl-5 text-right border-gray-200"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-gray-500 shrink-0">Extra Charge</span>
+                  <div className="relative w-28">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={form.extraCharge}
+                      onChange={e => setField("extraCharge", numOnly(e.target.value))}
+                      placeholder="0"
+                      className="h-8 text-sm pl-5 text-right border-gray-200"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Tax</span>
+                  <span className="font-medium text-gray-700">{formatRupees(taxAmount)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-gray-500 shrink-0">Round Off</span>
+                  <div className="relative w-28">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={form.roundOff}
+                      onChange={e => setField("roundOff", e.target.value.replace(/[^0-9.\-]/g, ""))}
+                      placeholder="0"
+                      className="h-8 text-sm pl-5 text-right border-gray-200"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="bg-[#162B4D] px-4 py-3 flex items-center justify-between">
+                <span className="text-white font-semibold">Total</span>
+                <span className="text-white font-bold text-lg">{formatRupees(totalAmount)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ─── Actions ──────────────────────────────────────── */}
+          <div className="border-t border-gray-100 px-6 py-3 flex items-center justify-between bg-white">
+            <div className="text-xs text-gray-500">
               {form.items.filter(i => i.existingProductId && Number(i.quantity) > 0).length} item(s) ready
             </div>
-            <div className="flex items-center gap-6">
-              <div className="text-right">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Grand Total</p>
-                <p className="text-xl font-bold text-[#162B4D]">{formatRupees(totalAmount)}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" onClick={onBack} className="h-9">
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={saving}
-                  className="h-9 bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5"
-                >
-                  <ShoppingCart className="w-4 h-4" />
-                  {saving ? "Saving..." : "Save Purchase"}
-                </Button>
-              </div>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" onClick={onBack} className="h-9">
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={saving}
+                className="h-9 bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                {saving ? "Saving..." : "Save Purchase"}
+              </Button>
             </div>
           </div>
         </div>
