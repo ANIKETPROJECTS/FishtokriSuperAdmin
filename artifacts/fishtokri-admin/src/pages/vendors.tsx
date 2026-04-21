@@ -5,8 +5,9 @@ import {
   ShoppingCart, X, ChevronLeft, ChevronRight, RefreshCw, Tag,
   IndianRupee, TrendingUp, Calendar, FileText, ChevronDown, Check,
   Boxes, Hash, History, Filter, LayoutList, AlertTriangle,
-  User, Clock, Layers, Printer,
+  User, Clock, Layers, Printer, BookOpen,
 } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -399,6 +400,11 @@ function VendorCard({ vendor, onEdit, onDelete, onView, onAddPurchase, onViewHis
         <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => onViewHistory(vendor)}>
           <History className="w-3 h-3 mr-1" /> History
         </Button>
+        <Link href={`/vendor-statement/${vendor.id}`}>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+            <BookOpen className="w-3 h-3 mr-1" /> Statement
+          </Button>
+        </Link>
         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600" onClick={() => onEdit(vendor)}>
           <Edit2 className="w-3.5 h-3.5" />
         </Button>
@@ -452,6 +458,11 @@ function VendorRow({ vendor, onEdit, onDelete, onView, onAddPurchase, onViewHist
           <Button size="sm" variant="outline" className="h-7 text-xs px-2 text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => onViewHistory(vendor)}>
             <History className="w-3 h-3 mr-1" /> History
           </Button>
+          <Link href={`/vendor-statement/${vendor.id}`}>
+            <Button size="sm" variant="outline" className="h-7 text-xs px-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+              <BookOpen className="w-3 h-3 mr-1" /> Statement
+            </Button>
+          </Link>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600" onClick={() => onEdit(vendor)}>
             <Edit2 className="w-3.5 h-3.5" />
           </Button>

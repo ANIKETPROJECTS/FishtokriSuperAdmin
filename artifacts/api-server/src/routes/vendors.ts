@@ -871,4 +871,49 @@ router.delete("/receipts/:id", async (req, res) => {
   }
 });
 
+// ─── VENDOR STATEMENT ─────────────────────────────────────────────────────────
+
+router.get("/:vendorId/statement", async (req, res) => {
+  try {
+    const Vendor = getVendorModel();
+    const Purchase = getPurchaseModel();
+    const Receipt = getReceiptModel();
+    const { dateFrom, dateTo } = req.query as Record<string, string>;
+
+    const vendor = await Vendor.findById(req.params.vendorId);
+    if (!vendor) return res.status(404).json({ error: "NotFound", message: "Vendor not found" });
+
+    const dateFilter: Record<string, any> = {};
+    if (dateFrom) dateFilter.$gte = new Date(dateFrom);
+    if (dateTo) { const d = new Date(dateTo); d.setHours(23, 59, 59, 999); dateFilter.$lte = d; }
+
+    const purchaseFilter: Record<string, any> = { vendorId: req.params.vendorId };
+    if (Object.keys(dateFilter).length) purchaseFilter.purchaseDate = dateFilter;
+    const receiptFilter: Record<string, any> = { vendorId: req.params.vendorId };
+    if (Object.keys(dateFilter).length) receiptFilter.date = dateFilter;
+
+    const [purchases, receipts] = await Promise.all([
+      Purchase.find(purchaseFilter).sort({ purchaseDate: 1, createdAt: 1 }),
+      Receipt.find(receiptFilter).sort({ date: 1, createdAt: 1 }),
+    ]);
+
+    const totalInvoiced = purchases.reduce((s: number, p: any) => s + Number(p.totalAmount || 0), 0);
+    const totalReceived = receipts.reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+
+    res.json({
+      vendor: serializeVendor(vendor),
+      invoices: purchases.map(serializePurchase),
+      receipts: receipts.map(serializeReceipt),
+      totals: {
+        invoiced: totalInvoiced,
+        received: totalReceived,
+        outstanding: totalInvoiced - totalReceived,
+      },
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch vendor statement");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch vendor statement" });
+  }
+});
+
 export default router;
