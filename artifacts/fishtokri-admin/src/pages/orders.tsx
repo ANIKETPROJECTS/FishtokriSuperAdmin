@@ -5,6 +5,7 @@ import {
   Phone, User, SlidersHorizontal, ArrowUpDown, UserCheck,
   ShoppingBag, Building2, AlertCircle, ChevronDown, Check,
   Pencil, Trash2, Plus, Store, Home, Trash, Mail, Calendar, Tag, Ticket, Zap,
+  Wallet, CreditCard, Banknote, Smartphone, Landmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -390,6 +391,11 @@ export default function Orders() {
   const [orderScheduleType, setOrderScheduleType] = useState<"instant" | "slot">("slot");
   const [orderDate, setOrderDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
+  // Payment
+  type PaymentEntry = { mode: string; amount: string; reference: string };
+  const [paymentStatus, setPaymentStatus] = useState<"unpaid" | "partial" | "paid">("unpaid");
+  const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
+
   const resetCreateForm = useCallback(() => {
     setCustomerMode("existing");
     setCustomerSearch(""); setChosenCustomer(null); setCustomerDropdownOpen(false);
@@ -410,6 +416,8 @@ export default function Orders() {
     setTimeslots([]); setSelectedTimeslotId("");
     setOrderScheduleType("slot");
     setOrderDate(new Date().toISOString().slice(0, 10));
+    setPaymentStatus("unpaid");
+    setPaymentEntries([]);
   }, []);
 
   // Load all customers when create-order modal opens
@@ -572,6 +580,39 @@ export default function Orders() {
     [itemsSubtotal, couponDiscount, slotExtraCharge]
   );
 
+  const paidTotal = useMemo(
+    () => paymentEntries.reduce((s, p) => s + (Number(p.amount) || 0), 0),
+    [paymentEntries]
+  );
+  const dueAmount = Math.max(0, newOrderTotal - paidTotal);
+
+  const PAYMENT_MODES = [
+    { value: "cash", label: "Cash", Icon: Banknote },
+    { value: "upi", label: "UPI", Icon: Smartphone },
+    { value: "card", label: "Card", Icon: CreditCard },
+    { value: "bank_transfer", label: "Bank Transfer", Icon: Landmark },
+    { value: "wallet", label: "Wallet", Icon: Wallet },
+    { value: "other", label: "Other", Icon: Tag },
+  ];
+
+  // Auto-populate / clear entries on status change
+  useEffect(() => {
+    if (paymentStatus === "unpaid") {
+      if (paymentEntries.length > 0) setPaymentEntries([]);
+      return;
+    }
+    if (paymentEntries.length === 0) {
+      setPaymentEntries([
+        {
+          mode: "cash",
+          amount: paymentStatus === "paid" ? String(newOrderTotal || 0) : "",
+          reference: "",
+        },
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentStatus]);
+
   const toggleCoupon = (id: string) => {
     setAppliedCouponIds((ids) =>
       ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
@@ -696,6 +737,23 @@ export default function Orders() {
       return;
     }
 
+    // Validate payment
+    if (paymentStatus !== "unpaid") {
+      const validEntries = paymentEntries.filter((p) => p.mode && Number(p.amount) > 0);
+      if (validEntries.length === 0) {
+        toast({ title: "Add payment details", description: "Enter at least one payment with mode and amount.", variant: "destructive" });
+        return;
+      }
+      if (paymentStatus === "paid" && paidTotal !== newOrderTotal) {
+        toast({ title: "Payment mismatch", description: `Total paid (${formatRupees(paidTotal)}) must equal order total (${formatRupees(newOrderTotal)}).`, variant: "destructive" });
+        return;
+      }
+      if (paymentStatus === "partial" && (paidTotal <= 0 || paidTotal >= newOrderTotal)) {
+        toast({ title: "Invalid partial payment", description: `Paid amount must be between ₹0 and ${formatRupees(newOrderTotal)}.`, variant: "destructive" });
+        return;
+      }
+    }
+
     setCreatingSaving(true);
     try {
       const payload: any = {
@@ -738,6 +796,17 @@ export default function Orders() {
           discountValue: Number(c.discountValue) || 0,
           minOrderAmount: Number(c.minOrderAmount) || 0,
         })),
+        // Payment
+        paymentStatus,
+        paidAmount: paidTotal,
+        paymentMode: paymentEntries[0]?.mode,
+        payments: paymentEntries
+          .filter((p) => p.mode && Number(p.amount) > 0)
+          .map((p) => ({
+            mode: p.mode,
+            amount: Number(p.amount) || 0,
+            reference: p.reference?.trim() || "",
+          })),
         // Schedule
         scheduleType: orderScheduleType,
         deliveryDate: orderDate,
@@ -2023,6 +2092,18 @@ export default function Orders() {
                   <span className="text-xs font-semibold text-gray-600">Order Total</span>
                   <span className="font-bold text-[#162B4D] text-base">{formatRupees(newOrderTotal)}</span>
                 </div>
+                {paymentStatus !== "unpaid" && paidTotal > 0 && (
+                  <>
+                    <div className="flex items-center justify-between text-[11px] text-emerald-600">
+                      <span>Paid</span>
+                      <span>{formatRupees(paidTotal)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-amber-600">
+                      <span>Due</span>
+                      <span>{formatRupees(dueAmount)}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -2130,6 +2211,144 @@ export default function Orders() {
                 )}
                 {selectedSubHubId && !loadingCoupons && activeCoupons.length === 0 && (
                   <p className="text-[11px] text-gray-400">No active coupons for this sub-hub.</p>
+                )}
+              </div>
+            )}
+
+            {/* PAYMENT */}
+            {totalItemCount > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Payment</p>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { v: "unpaid", label: "Unpaid", color: "amber" },
+                    { v: "partial", label: "Partial", color: "blue" },
+                    { v: "paid", label: "Fully Paid", color: "emerald" },
+                  ] as const).map((opt) => {
+                    const active = paymentStatus === opt.v;
+                    const colorMap: Record<string, string> = {
+                      amber: active ? "border-amber-300 bg-amber-50 text-amber-800" : "border-gray-200 text-gray-500 hover:bg-gray-50",
+                      blue: active ? "border-blue-300 bg-blue-50 text-[#1A56DB]" : "border-gray-200 text-gray-500 hover:bg-gray-50",
+                      emerald: active ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-500 hover:bg-gray-50",
+                    };
+                    return (
+                      <button
+                        key={opt.v}
+                        type="button"
+                        onClick={() => setPaymentStatus(opt.v)}
+                        className={`h-9 rounded-xl border text-xs font-semibold transition-colors ${colorMap[opt.color]}`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {paymentStatus !== "unpaid" && (
+                  <div className="space-y-2">
+                    {paymentEntries.map((entry, idx) => {
+                      const ModeIcon = (PAYMENT_MODES.find((m) => m.value === entry.mode)?.Icon) || Tag;
+                      return (
+                        <div
+                          key={idx}
+                          className="grid grid-cols-12 gap-2 items-center p-2 rounded-xl border border-gray-100 bg-gray-50/40"
+                        >
+                          <div className="col-span-5 relative">
+                            <ModeIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                            <select
+                              value={entry.mode}
+                              onChange={(e) =>
+                                setPaymentEntries((arr) =>
+                                  arr.map((p, i) => (i === idx ? { ...p, mode: e.target.value } : p))
+                                )
+                              }
+                              className="w-full h-9 pl-8 pr-2 text-sm border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/30"
+                            >
+                              {PAYMENT_MODES.map((m) => (
+                                <option key={m.value} value={m.value}>{m.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="col-span-4 relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              value={entry.amount}
+                              onChange={(e) =>
+                                setPaymentEntries((arr) =>
+                                  arr.map((p, i) => (i === idx ? { ...p, amount: e.target.value } : p))
+                                )
+                              }
+                              placeholder="Amount"
+                              className="pl-6 h-9 text-sm"
+                            />
+                          </div>
+                          <Input
+                            value={entry.reference}
+                            onChange={(e) =>
+                              setPaymentEntries((arr) =>
+                                arr.map((p, i) => (i === idx ? { ...p, reference: e.target.value } : p))
+                              )
+                            }
+                            placeholder="Ref / Txn (opt)"
+                            className="col-span-2 h-9 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setPaymentEntries((arr) => arr.filter((_, i) => i !== idx))}
+                            disabled={paymentEntries.length === 1}
+                            className="col-span-1 h-9 flex items-center justify-center text-gray-400 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                            aria-label="Remove payment"
+                          >
+                            <Trash className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    <div className="flex items-center justify-between gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setPaymentEntries((arr) => [
+                            ...arr,
+                            {
+                              mode: "cash",
+                              amount: dueAmount > 0 ? String(dueAmount) : "",
+                              reference: "",
+                            },
+                          ])
+                        }
+                        className="h-8 text-xs gap-1"
+                      >
+                        <Plus className="w-3 h-3" /> Add payment
+                      </Button>
+                      <div className="text-[11px] text-gray-500 flex items-center gap-3">
+                        <span>Paid: <span className="font-semibold text-gray-700">{formatRupees(paidTotal)}</span></span>
+                        <span>
+                          Due:{" "}
+                          <span className={`font-semibold ${dueAmount > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                            {formatRupees(dueAmount)}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {paymentStatus === "paid" && paidTotal !== newOrderTotal && (
+                      <p className="text-[11px] text-amber-600">
+                        For "Fully Paid", total payments should equal {formatRupees(newOrderTotal)}.
+                      </p>
+                    )}
+                    {paymentStatus === "partial" && (paidTotal <= 0 || paidTotal >= newOrderTotal) && (
+                      <p className="text-[11px] text-amber-600">
+                        For "Partial", paid amount must be greater than 0 and less than {formatRupees(newOrderTotal)}.
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             )}

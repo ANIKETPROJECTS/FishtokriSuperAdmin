@@ -134,6 +134,13 @@ router.post("/", async (req, res) => {
       couponId,
       couponCode,
       couponTitle,
+      couponIds,
+      couponCodes,
+      coupons,
+      paymentStatus,
+      payments,
+      paidAmount,
+      paymentMode,
       scheduleType,
       deliveryDate,
       timeslotId,
@@ -237,10 +244,30 @@ router.post("/", async (req, res) => {
       subHubName: subHubName ?? undefined,
       superHubId: superHubId ? String(superHubId) : undefined,
       superHubName: superHubName ?? undefined,
-      // Coupon
+      // Coupons (single + multi)
       couponId: couponId ? String(couponId) : undefined,
       couponCode: couponCode ?? undefined,
       couponTitle: couponTitle ?? undefined,
+      couponIds: Array.isArray(couponIds) ? couponIds.map((x: any) => String(x)) : undefined,
+      couponCodes: Array.isArray(couponCodes) ? couponCodes.map((x: any) => String(x)) : undefined,
+      coupons: Array.isArray(coupons) ? coupons : undefined,
+      // Payment
+      paymentStatus: ["paid", "partial", "unpaid"].includes(String(paymentStatus))
+        ? String(paymentStatus)
+        : "unpaid",
+      payments: Array.isArray(payments)
+        ? payments
+            .map((p: any) => ({
+              mode: String(p?.mode ?? "").trim(),
+              amount: Math.max(0, Number(p?.amount) || 0),
+              reference: p?.reference ? String(p.reference).trim() : "",
+              paidAt: p?.paidAt ? new Date(p.paidAt) : new Date(),
+            }))
+            .filter((p: any) => p.mode && p.amount > 0)
+        : [],
+      paidAmount: Math.max(0, Number(paidAmount) || 0),
+      dueAmount: Math.max(0, totalNum - (Number(paidAmount) || 0)),
+      paymentMode: paymentMode ? String(paymentMode) : undefined,
       // Schedule
       scheduleType: scheduleType === "instant" ? "instant" : "slot",
       deliveryDate: deliveryDate ? String(deliveryDate) : undefined,
