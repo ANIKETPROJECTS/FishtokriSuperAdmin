@@ -83,6 +83,7 @@ const receiptSchema = new mongoose.Schema(
     markAllPaid: { type: Boolean, default: false },
     allocations: { type: [receiptAllocationSchema], default: [] },
     createdByName: { type: String, default: "" },
+    bankReceiptId: { type: String, default: "" },
   },
   { timestamps: true }
 );
@@ -131,6 +132,23 @@ function getInventoryModel() {
 function getReceiptModel() {
   if (mongoose.models["VendorReceipt"]) return mongoose.models["VendorReceipt"];
   return mongoose.model("VendorReceipt", receiptSchema, "vendor_receipts");
+}
+
+function getBankReceiptModel() {
+  if (mongoose.models["BankReceipt"]) return mongoose.models["BankReceipt"];
+  // Define a minimal compatible schema in case banking routes haven't loaded first.
+  const s = new mongoose.Schema(
+    {
+      date: { type: Date, required: true },
+      paymentMode: { type: String, required: true, trim: true },
+      depositAccountName: { type: String, required: true, trim: true },
+      oppositeAccountName: { type: String, required: true, trim: true },
+      amount: { type: Number, required: true },
+      notes: { type: String, default: "" },
+    },
+    { timestamps: true }
+  );
+  return mongoose.model("BankReceipt", s, "bank_receipts");
 }
 
 function serializeReceipt(doc: any) {
@@ -742,18 +760,50 @@ router.post("/purchases/:id/receipts", async (req, res) => {
       : [];
     const numberMap = new Map(allocPurchases.map((p: any) => [String(p._id), p.invoiceNumber || ""]));
 
+    const receiptDate = body.date ? new Date(body.date) : new Date();
+    const amount = Number(body.amount) || 0;
+    const depositTo = body.depositTo ?? "";
+    const receivedFrom = body.receivedFrom ?? purchase.vendorName;
+    const paymentMode = body.paymentMode ?? "";
+    const reference = body.reference ?? "";
+    const remarks = body.remarks ?? "";
+
+    // Mirror this receipt into the Banking → Receipts ledger so it appears alongside other receipts.
+    let bankReceiptId = "";
+    if (depositTo && paymentMode && receivedFrom && amount > 0) {
+      try {
+        const BankReceipt = getBankReceiptModel();
+        const noteParts = [
+          purchase.invoiceNumber ? `Invoice ${purchase.invoiceNumber}` : "",
+          reference ? `Ref ${reference}` : "",
+          remarks,
+        ].filter(Boolean);
+        const bankDoc = await BankReceipt.create({
+          date: receiptDate,
+          paymentMode,
+          depositAccountName: depositTo,
+          oppositeAccountName: receivedFrom,
+          amount,
+          notes: noteParts.join(" • "),
+        });
+        bankReceiptId = String(bankDoc._id);
+      } catch (e) {
+        req.log.warn({ err: e }, "Failed to mirror vendor receipt into banking receipts");
+      }
+    }
+
     const receipt = await Receipt.create({
       vendorId: purchase.vendorId,
       vendorName: purchase.vendorName,
       invoiceId: String(purchase._id),
       invoiceNumber: purchase.invoiceNumber,
-      date: body.date ? new Date(body.date) : new Date(),
-      depositTo: body.depositTo ?? "",
-      receivedFrom: body.receivedFrom ?? purchase.vendorName,
-      paymentMode: body.paymentMode ?? "",
-      amount: Number(body.amount) || 0,
-      reference: body.reference ?? "",
-      remarks: body.remarks ?? "",
+      date: receiptDate,
+      depositTo,
+      receivedFrom,
+      paymentMode,
+      amount,
+      reference,
+      remarks,
       lumpSum: !!body.lumpSum,
       markAllPaid: !!body.markAllPaid,
       allocations: allocations.map((a: any) => ({
@@ -762,6 +812,7 @@ router.post("/purchases/:id/receipts", async (req, res) => {
         amount: Number(a.amount) || 0,
       })),
       createdByName: (req as any).user?.name ?? "",
+      bankReceiptId,
     });
 
     res.json({ receipt: serializeReceipt(receipt) });
@@ -805,6 +856,14 @@ router.delete("/receipts/:id", async (req, res) => {
     const Receipt = getReceiptModel();
     const r = await Receipt.findByIdAndDelete(req.params.id);
     if (!r) return res.status(404).json({ error: "NotFound", message: "Receipt not found" });
+    if (r.bankReceiptId) {
+      try {
+        const BankReceipt = getBankReceiptModel();
+        await BankReceipt.findByIdAndDelete(r.bankReceiptId);
+      } catch (e) {
+        req.log.warn({ err: e }, "Failed to delete linked bank receipt");
+      }
+    }
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete receipt");
