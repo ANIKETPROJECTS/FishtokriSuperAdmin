@@ -125,6 +125,20 @@ router.post("/", async (req, res) => {
       superHubId,
       superHubName,
       createCustomerIfMissing,
+      deliveryAddressDetail,
+      subtotal,
+      discount,
+      slotCharge,
+      total: totalIn,
+      couponId,
+      couponCode,
+      couponTitle,
+      scheduleType,
+      deliveryDate,
+      timeslotId,
+      timeslotLabel,
+      timeslotStart,
+      timeslotEnd,
     } = req.body ?? {};
 
     if (!customerName || !String(customerName).trim()) {
@@ -183,7 +197,14 @@ router.post("/", async (req, res) => {
       }
     }
 
-    const total = cleanItems.reduce((s: number, i: any) => s + i.price * i.quantity, 0);
+    const computedSubtotal = cleanItems.reduce((s: number, i: any) => s + i.price * i.quantity, 0);
+    const sub = Number(subtotal);
+    const subTotalNum = Number.isFinite(sub) && sub > 0 ? sub : computedSubtotal;
+    const discountNum = Math.max(0, Number(discount) || 0);
+    const slotChargeNum = Math.max(0, Number(slotCharge) || 0);
+    const totalNum = Number.isFinite(Number(totalIn)) && Number(totalIn) > 0
+      ? Number(totalIn)
+      : Math.max(0, subTotalNum - discountNum + slotChargeNum);
 
     const orderDoc: any = {
       customerId: resolvedCustomerId ?? undefined,
@@ -191,10 +212,14 @@ router.post("/", async (req, res) => {
       phone: phone ? String(phone).trim() : "",
       email: email ? String(email).trim() : "",
       items: cleanItems,
-      total,
+      subtotal: subTotalNum,
+      discount: discountNum,
+      slotCharge: slotChargeNum,
+      total: totalNum,
       deliveryType: dt,
       address: dt === "delivery" ? String(address ?? "").trim() : "",
       deliveryArea: dt === "delivery" ? String(deliveryArea ?? "").trim() : "",
+      deliveryAddressDetail: dt === "delivery" && deliveryAddressDetail ? deliveryAddressDetail : undefined,
       pickupLocation: dt === "takeaway" ? (subHubName || "FishTokri Store") : "",
       notes: notes ? String(notes).trim() : "",
       status: status || "pending",
@@ -203,6 +228,17 @@ router.post("/", async (req, res) => {
       subHubName: subHubName ?? undefined,
       superHubId: superHubId ? String(superHubId) : undefined,
       superHubName: superHubName ?? undefined,
+      // Coupon
+      couponId: couponId ? String(couponId) : undefined,
+      couponCode: couponCode ?? undefined,
+      couponTitle: couponTitle ?? undefined,
+      // Schedule
+      scheduleType: scheduleType === "instant" ? "instant" : "slot",
+      deliveryDate: deliveryDate ? String(deliveryDate) : undefined,
+      timeslotId: timeslotId ? String(timeslotId) : undefined,
+      timeslotLabel: timeslotLabel ?? undefined,
+      timeslotStart: timeslotStart ?? undefined,
+      timeslotEnd: timeslotEnd ?? undefined,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

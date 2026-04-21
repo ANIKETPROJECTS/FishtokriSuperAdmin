@@ -4,7 +4,7 @@ import {
   Truck, Package, ChevronLeft, ChevronRight, Eye, MapPin,
   Phone, User, SlidersHorizontal, ArrowUpDown, UserCheck,
   ShoppingBag, Building2, AlertCircle, ChevronDown, Check,
-  Pencil, Trash2, Plus, Store, Home, Trash, Mail,
+  Pencil, Trash2, Plus, Store, Home, Trash, Mail, Calendar, Tag, Ticket, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -377,6 +377,18 @@ export default function Orders() {
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<{ productId: string; name: string; price: number; unit: string; quantity: number }[]>([]);
 
+  // Coupons / timeslots / scheduling
+  const [coupons, setCoupons] = useState<any[]>([]);
+  const [loadingCoupons, setLoadingCoupons] = useState(false);
+  const [appliedCouponId, setAppliedCouponId] = useState<string>("");
+  const [couponCode, setCouponCode] = useState<string>("");
+  const [couponError, setCouponError] = useState<string>("");
+  const [timeslots, setTimeslots] = useState<any[]>([]);
+  const [loadingTimeslots, setLoadingTimeslots] = useState(false);
+  const [selectedTimeslotId, setSelectedTimeslotId] = useState<string>("");
+  const [orderScheduleType, setOrderScheduleType] = useState<"instant" | "slot">("slot");
+  const [orderDate, setOrderDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+
   const resetCreateForm = useCallback(() => {
     setCustomerMode("existing");
     setCustomerSearch(""); setChosenCustomer(null); setCustomerDropdownOpen(false);
@@ -393,6 +405,10 @@ export default function Orders() {
     setSelectedSuperHubId(""); setSelectedSubHubId("");
     setSubHubs([]); setSubHubProducts([]); setSelectedProducts([]);
     setProductSearch(""); setProductPickerOpen(false);
+    setCoupons([]); setAppliedCouponId(""); setCouponCode(""); setCouponError("");
+    setTimeslots([]); setSelectedTimeslotId("");
+    setOrderScheduleType("slot");
+    setOrderDate(new Date().toISOString().slice(0, 10));
   }, []);
 
   // Load all customers when create-order modal opens
@@ -427,16 +443,46 @@ export default function Orders() {
     setSelectedProducts([]);
   }, [selectedSuperHubId]);
 
-  // Load products when sub-hub changes
+  // Load products, coupons, timeslots when sub-hub changes
   useEffect(() => {
-    if (!selectedSubHubId) { setSubHubProducts([]); return; }
+    if (!selectedSubHubId) {
+      setSubHubProducts([]); setCoupons([]); setTimeslots([]);
+      setAppliedCouponId(""); setSelectedTimeslotId("");
+      return;
+    }
     setLoadingProducts(true);
     apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/products`)
       .then((d) => setSubHubProducts(d.products ?? []))
       .catch(() => setSubHubProducts([]))
       .finally(() => setLoadingProducts(false));
+
+    setLoadingCoupons(true);
+    apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/coupons`)
+      .then((d) => setCoupons(d.coupons ?? []))
+      .catch(() => setCoupons([]))
+      .finally(() => setLoadingCoupons(false));
+
+    setLoadingTimeslots(true);
+    apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/timeslots`)
+      .then((d) => setTimeslots(d.timeslots ?? []))
+      .catch(() => setTimeslots([]))
+      .finally(() => setLoadingTimeslots(false));
+
     setSelectedProducts([]);
+    setAppliedCouponId(""); setCouponCode(""); setCouponError("");
+    setSelectedTimeslotId("");
   }, [selectedSubHubId]);
+
+  const activeCoupons = useMemo(() => {
+    const now = Date.now();
+    return coupons.filter((c) => {
+      if (c.isActive === false) return false;
+      if (c.expiresAt && new Date(c.expiresAt).getTime() < now) return false;
+      return true;
+    });
+  }, [coupons]);
+
+  const activeTimeslots = useMemo(() => timeslots.filter((t) => t.isActive !== false), [timeslots]);
 
   const filteredProducts = useMemo(() => {
     const q = productSearch.trim().toLowerCase();
@@ -454,7 +500,7 @@ export default function Orders() {
     );
   }, [allCustomers, customerSearch]);
 
-  const newOrderTotal = useMemo(() => {
+  const itemsSubtotal = useMemo(() => {
     const customSum = orderItems.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
     const productSum = selectedProducts.reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.quantity) || 0), 0);
     return customSum + productSum;
@@ -464,6 +510,45 @@ export default function Orders() {
     const cust = orderItems.filter((it) => it.name.trim() && Number(it.quantity) > 0).length;
     return cust + selectedProducts.length;
   }, [orderItems, selectedProducts]);
+
+  const appliedCoupon = useMemo(
+    () => activeCoupons.find((c) => String(c._id) === appliedCouponId) || null,
+    [activeCoupons, appliedCouponId]
+  );
+
+  const couponDiscount = useMemo(() => {
+    if (!appliedCoupon) return 0;
+    const min = Number(appliedCoupon.minOrderAmount) || 0;
+    if (itemsSubtotal < min) return 0;
+    const v = Number(appliedCoupon.discountValue) || 0;
+    if (appliedCoupon.type === "percentage") {
+      return Math.min(itemsSubtotal, Math.round((itemsSubtotal * v) / 100));
+    }
+    return Math.min(itemsSubtotal, v);
+  }, [appliedCoupon, itemsSubtotal]);
+
+  const selectedTimeslot = useMemo(
+    () => activeTimeslots.find((t) => String(t._id) === selectedTimeslotId) || null,
+    [activeTimeslots, selectedTimeslotId]
+  );
+
+  const slotExtraCharge = useMemo(() => Number(selectedTimeslot?.extraCharge) || 0, [selectedTimeslot]);
+
+  const newOrderTotal = useMemo(
+    () => Math.max(0, itemsSubtotal - couponDiscount + slotExtraCharge),
+    [itemsSubtotal, couponDiscount, slotExtraCharge]
+  );
+
+  const applyCouponByCode = () => {
+    const code = couponCode.trim().toUpperCase();
+    if (!code) { setCouponError("Enter a coupon code"); return; }
+    const match = activeCoupons.find((c) => String(c.code).toUpperCase() === code);
+    if (!match) { setCouponError("Invalid or inactive coupon"); return; }
+    const min = Number(match.minOrderAmount) || 0;
+    if (itemsSubtotal < min) { setCouponError(`Min order ₹${min} required`); return; }
+    setAppliedCouponId(String(match._id));
+    setCouponError("");
+  };
 
   const handleCreateOrder = async () => {
     // Validate customer
@@ -553,6 +638,16 @@ export default function Orders() {
     const superHub = superHubs.find((h) => h.id === selectedSuperHubId);
     const subHub = subHubs.find((h) => h.id === selectedSubHubId);
 
+    // Validate scheduling
+    if (orderScheduleType === "slot" && activeTimeslots.length > 0 && !selectedTimeslotId) {
+      toast({ title: "Pick a delivery slot", description: "Select a time slot or switch to instant delivery.", variant: "destructive" });
+      return;
+    }
+    if (!orderDate) {
+      toast({ title: "Pick a delivery date", variant: "destructive" });
+      return;
+    }
+
     setCreatingSaving(true);
     try {
       const payload: any = {
@@ -570,6 +665,22 @@ export default function Orders() {
         notes: orderNotes.trim(),
         status: "pending",
         createCustomerIfMissing: customerMode === "new",
+        // Pricing breakdown
+        subtotal: itemsSubtotal,
+        discount: couponDiscount,
+        slotCharge: slotExtraCharge,
+        total: newOrderTotal,
+        // Coupon
+        couponId: appliedCoupon ? String(appliedCoupon._id) : undefined,
+        couponCode: appliedCoupon?.code,
+        couponTitle: appliedCoupon?.title,
+        // Schedule
+        scheduleType: orderScheduleType,
+        deliveryDate: orderDate,
+        timeslotId: selectedTimeslot ? String(selectedTimeslot._id) : undefined,
+        timeslotLabel: selectedTimeslot?.label,
+        timeslotStart: selectedTimeslot?.startTime,
+        timeslotEnd: selectedTimeslot?.endTime,
       };
       await apiFetch("/api/orders", { method: "POST", body: JSON.stringify(payload) });
       toast({ title: "Order created", description: `${customerName} · ${formatRupees(cleanItems.reduce((s, i) => s + i.price * i.quantity, 0))}` });
@@ -1734,10 +1845,185 @@ export default function Orders() {
                 </div>
               )}
 
-              <div className="flex items-center justify-between mt-2 px-3 py-2 bg-[#162B4D]/5 rounded-xl">
-                <span className="text-xs font-semibold text-gray-600">Order Total</span>
-                <span className="font-bold text-[#162B4D] text-base">{formatRupees(newOrderTotal)}</span>
+              <div className="mt-2 px-3 py-2 bg-[#162B4D]/5 rounded-xl space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-gray-500">
+                  <span>Subtotal</span>
+                  <span>{formatRupees(itemsSubtotal)}</span>
+                </div>
+                {couponDiscount > 0 && (
+                  <div className="flex items-center justify-between text-[11px] text-emerald-600">
+                    <span className="inline-flex items-center gap-1"><Ticket className="w-3 h-3" /> Coupon {appliedCoupon?.code}</span>
+                    <span>− {formatRupees(couponDiscount)}</span>
+                  </div>
+                )}
+                {slotExtraCharge > 0 && (
+                  <div className="flex items-center justify-between text-[11px] text-gray-500">
+                    <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> Slot charge</span>
+                    <span>+ {formatRupees(slotExtraCharge)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-1 border-t border-[#162B4D]/10">
+                  <span className="text-xs font-semibold text-gray-600">Order Total</span>
+                  <span className="font-bold text-[#162B4D] text-base">{formatRupees(newOrderTotal)}</span>
+                </div>
               </div>
+            </div>
+
+            {/* COUPON */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Coupon</p>
+              {appliedCoupon ? (
+                <div className="flex items-center gap-2 p-3 rounded-xl border border-emerald-200 bg-emerald-50">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white">
+                    <Ticket className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-emerald-800">{appliedCoupon.code} <span className="text-[11px] font-normal text-emerald-600">· saved {formatRupees(couponDiscount)}</span></p>
+                    {appliedCoupon.title && <p className="text-[11px] text-emerald-700 truncate">{appliedCoupon.title}</p>}
+                  </div>
+                  <button
+                    onClick={() => { setAppliedCouponId(""); setCouponCode(""); setCouponError(""); }}
+                    className="text-emerald-700 hover:text-red-500"
+                    aria-label="Remove coupon"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                      <Input
+                        value={couponCode}
+                        onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(""); }}
+                        placeholder={selectedSubHubId ? "Enter coupon code" : "Select sub-hub first"}
+                        disabled={!selectedSubHubId}
+                        className="pl-7 h-9 text-sm"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={applyCouponByCode}
+                      disabled={!selectedSubHubId || !couponCode.trim()}
+                      className="h-9 text-sm"
+                    >Apply</Button>
+                  </div>
+                  {couponError && <p className="text-[11px] text-red-500">{couponError}</p>}
+                  {selectedSubHubId && activeCoupons.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-gray-400 uppercase font-semibold">Available coupons</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeCoupons.slice(0, 8).map((c) => {
+                          const min = Number(c.minOrderAmount) || 0;
+                          const eligible = itemsSubtotal >= min;
+                          return (
+                            <button
+                              key={String(c._id)}
+                              type="button"
+                              disabled={!eligible}
+                              onClick={() => { setAppliedCouponId(String(c._id)); setCouponCode(String(c.code)); setCouponError(""); }}
+                              className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors inline-flex items-center gap-1 ${
+                                eligible
+                                  ? "border-blue-200 bg-blue-50 text-[#1A56DB] hover:bg-blue-100"
+                                  : "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
+                              }`}
+                              title={c.title || c.description || ""}
+                            >
+                              <Ticket className="w-3 h-3" />
+                              {c.code}
+                              <span className="text-[10px] font-normal opacity-70">
+                                {c.type === "percentage" ? `${c.discountValue}% off` : `₹${c.discountValue} off`}
+                                {min > 0 ? ` · min ₹${min}` : ""}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {selectedSubHubId && !loadingCoupons && activeCoupons.length === 0 && (
+                    <p className="text-[11px] text-gray-400">No active coupons for this sub-hub.</p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* SCHEDULE */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Delivery Schedule</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-gray-500 inline-flex items-center gap-1">
+                    <Calendar className="w-3 h-3 text-gray-400" /> Delivery Date
+                  </Label>
+                  <Input
+                    type="date"
+                    value={orderDate}
+                    onChange={(e) => setOrderDate(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-gray-500">Delivery Type</Label>
+                  <div className="inline-flex w-full rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setOrderScheduleType("slot")}
+                      className={`flex-1 px-2 py-1.5 text-[11px] font-semibold rounded-md inline-flex items-center justify-center gap-1 ${orderScheduleType === "slot" ? "bg-white text-[#1A56DB] shadow-sm" : "text-gray-500"}`}
+                    ><Clock className="w-3 h-3" /> Time Slot</button>
+                    <button
+                      type="button"
+                      onClick={() => { setOrderScheduleType("instant"); setSelectedTimeslotId(""); }}
+                      className={`flex-1 px-2 py-1.5 text-[11px] font-semibold rounded-md inline-flex items-center justify-center gap-1 ${orderScheduleType === "instant" ? "bg-white text-amber-600 shadow-sm" : "text-gray-500"}`}
+                    ><Zap className="w-3 h-3" /> Instant</button>
+                  </div>
+                </div>
+              </div>
+              {orderScheduleType === "slot" && (
+                <div className="space-y-1">
+                  {!selectedSubHubId ? (
+                    <p className="text-[11px] text-gray-400">Select a sub-hub to see available time slots.</p>
+                  ) : loadingTimeslots ? (
+                    <p className="text-[11px] text-gray-400">Loading time slots...</p>
+                  ) : activeTimeslots.length === 0 ? (
+                    <p className="text-[11px] text-gray-400">No time slots configured for this sub-hub.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {activeTimeslots.map((t) => {
+                        const id = String(t._id);
+                        const isSelected = selectedTimeslotId === id;
+                        const extra = Number(t.extraCharge) || 0;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => setSelectedTimeslotId(id)}
+                            className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${isSelected ? "border-[#1A56DB] bg-blue-50" : "border-gray-100 bg-white hover:border-gray-200"}`}
+                          >
+                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isSelected ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-gray-400"}`}>
+                              {t.isInstant ? <Zap className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-[#162B4D] truncate">{t.label}</p>
+                              <p className="text-[10px] text-gray-400">{t.startTime} – {t.endTime}{extra > 0 ? ` · +₹${extra}` : ""}</p>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-[#1A56DB] flex-shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+              {orderScheduleType === "instant" && (
+                <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-100 rounded-xl">
+                  <Zap className="w-3.5 h-3.5 text-amber-600 mt-0.5" />
+                  <p className="text-[11px] text-amber-700">Order will be sent for delivery as soon as possible.</p>
+                </div>
+              )}
             </div>
 
             {/* NOTES */}
