@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { FolderOpen, FolderPlus, Pencil, Trash2, Search, Boxes, ArrowUpDown, LayoutGrid, LayoutList, Store } from "lucide-react";
+import { FolderOpen, FolderPlus, Pencil, Trash2, Search, Boxes, ArrowUpDown, LayoutGrid, LayoutList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,18 +14,8 @@ type VendorCategory = {
   status: "active" | "inactive";
   createdAt?: string;
   source: "master" | "subhub";
-  linkedSubHubCategoryName?: string;
-  linkedSubHubCategoryNames?: string[];
-  linkedProductCount?: number;
   subHubs: string[];
   subHubCount: number;
-};
-
-type SubHubCategory = {
-  name: string;
-  subHubs: string[];
-  subHubCount: number;
-  productCount: number;
 };
 
 function getToken() {
@@ -47,47 +37,14 @@ async function apiFetch(path: string, options: RequestInit = {}) {
   return data;
 }
 
-function HubsBadge({ subHubs, subHubCount }: { subHubs: string[]; subHubCount: number }) {
-  if (subHubCount === 0) return <span className="text-gray-300 text-xs">—</span>;
-  const label = subHubCount === 1 ? subHubs[0] : `${subHubCount} hubs`;
-  const title = subHubs.join(", ");
-  return (
-    <span
-      title={title}
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium cursor-default"
-    >
-      <Store className="w-3 h-3" />
-      {label}
-    </span>
-  );
-}
-
-function getLinkedSubHubCategoryNames(category: Pick<VendorCategory, "linkedSubHubCategoryName" | "linkedSubHubCategoryNames">) {
-  const names = category.linkedSubHubCategoryNames?.length
-    ? category.linkedSubHubCategoryNames
-    : category.linkedSubHubCategoryName
-      ? [category.linkedSubHubCategoryName]
-      : [];
-  return Array.from(new Set(names.map((name) => String(name).trim()).filter(Boolean)));
-}
-
-function formatLinkedSubHubCategoryNames(category: Pick<VendorCategory, "linkedSubHubCategoryName" | "linkedSubHubCategoryNames">) {
-  const names = getLinkedSubHubCategoryNames(category);
-  if (names.length === 0) return "";
-  if (names.length <= 2) return names.join(", ");
-  return `${names.slice(0, 2).join(", ")} +${names.length - 2} more`;
-}
-
 export default function VendorCategories() {
   const { toast } = useToast();
   const [categories, setCategories] = useState<VendorCategory[]>([]);
-  const [subHubCategories, setSubHubCategories] = useState<SubHubCategory[]>([]);
   const [itemCounts, setItemCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [linkFilter, setLinkFilter] = useState<"all" | "linked" | "unlinked">("all");
-  const [sortBy, setSortBy] = useState<"name_asc" | "name_desc" | "newest" | "oldest" | "items_high" | "items_low" | "hubs_high">("name_asc");
+  const [sortBy, setSortBy] = useState<"name_asc" | "name_desc" | "newest" | "oldest" | "items_high" | "items_low">("name_asc");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<VendorCategory | null>(null);
@@ -95,16 +52,14 @@ export default function VendorCategories() {
   const load = async () => {
     setLoading(true);
     try {
-      const [catData, itemData, subHubData] = await Promise.all([
+      const [catData, itemData] = await Promise.all([
         apiFetch("/api/vendor-items/categories"),
         apiFetch("/api/vendor-items/items"),
-        apiFetch("/api/vendor-items/sub-hub-categories"),
       ]);
-      const cats: VendorCategory[] = catData.categories ?? [];
+      const cats: VendorCategory[] = (catData.categories ?? []).filter((c: VendorCategory) => c.source === "master");
       setCategories(cats);
-      setSubHubCategories(subHubData.categories ?? []);
       const counts: Record<string, number> = {};
-      for (const cat of cats) counts[cat.id] = getLinkedSubHubCategoryNames(cat).length > 0 ? Number(cat.linkedProductCount) || 0 : 0;
+      for (const cat of cats) counts[cat.id] = 0;
       for (const item of itemData.items ?? []) {
         if (counts[item.categoryId] !== undefined) counts[item.categoryId]++;
       }
@@ -122,9 +77,7 @@ export default function VendorCategories() {
     let result = categories.filter((c) => {
       const matchSearch = !search.trim() || c.name.toLowerCase().includes(search.toLowerCase()) || c.description.toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === "all" || c.status === statusFilter;
-      const isLinked = getLinkedSubHubCategoryNames(c).length > 0;
-      const matchLink = linkFilter === "all" || (linkFilter === "linked" ? isLinked : !isLinked);
-      return matchSearch && matchStatus && matchLink;
+      return matchSearch && matchStatus;
     });
     result = [...result].sort((a, b) => {
       switch (sortBy) {
@@ -134,19 +87,13 @@ export default function VendorCategories() {
         case "name_desc": return b.name.localeCompare(a.name);
         case "items_high": return (itemCounts[b.id] ?? 0) - (itemCounts[a.id] ?? 0);
         case "items_low": return (itemCounts[a.id] ?? 0) - (itemCounts[b.id] ?? 0);
-        case "hubs_high": return b.subHubCount - a.subHubCount;
         default: return 0;
       }
     });
     return result;
-  }, [categories, search, statusFilter, linkFilter, sortBy, itemCounts]);
-
-  const linkedCount = categories.filter((c) => getLinkedSubHubCategoryNames(c).length > 0).length;
-  const unlinkedCount = categories.length - linkedCount;
-  const uniqueSubHubs = new Set(categories.flatMap((c) => c.subHubs)).size;
+  }, [categories, search, statusFilter, sortBy, itemCounts]);
 
   const handleDelete = async (cat: VendorCategory) => {
-    if (cat.source === "subhub") return;
     const count = itemCounts[cat.id] ?? 0;
     if (count > 0) {
       toast({ title: "Cannot delete", description: `Move or delete the ${count} item(s) in "${cat.name}" first.`, variant: "destructive" });
@@ -162,40 +109,30 @@ export default function VendorCategories() {
     }
   };
 
-  const hasActiveFilters = search || statusFilter !== "all" || linkFilter !== "all" || sortBy !== "name_asc";
+  const hasActiveFilters = search || statusFilter !== "all" || sortBy !== "name_asc";
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[#162B4D]">Vendor Item Categories</h1>
-          <p className="text-sm text-gray-500 mt-1">Only categories created in Vendor Management. Optionally link each one to one or more sub-hub menu categories.</p>
+          <p className="text-sm text-gray-500 mt-1">Manage categories for vendor items in Vendor Management.</p>
         </div>
         <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="gap-2 bg-[#1A56DB] hover:bg-[#1447B4]">
           <FolderPlus className="w-4 h-4" /> Add Category
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
           <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Total Categories</p>
           <p className="text-2xl font-bold text-[#162B4D] mt-2">{categories.length}</p>
           <p className="text-xs text-gray-500 mt-1">Created here</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Linked Categories</p>
-          <p className="text-2xl font-bold text-[#162B4D] mt-2">{linkedCount}</p>
-          <p className="text-xs text-gray-500 mt-1">Connected to sub-hub menus</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Vendor Only</p>
-          <p className="text-2xl font-bold text-blue-600 mt-2">{unlinkedCount}</p>
-          <p className="text-xs text-gray-500 mt-1">Normal vendor item columns</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Sub Hubs</p>
-          <p className="text-2xl font-bold text-green-600 mt-2">{uniqueSubHubs}</p>
-          <p className="text-xs text-gray-500 mt-1">Contributing hubs</p>
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Total Items</p>
+          <p className="text-2xl font-bold text-blue-600 mt-2">{Object.values(itemCounts).reduce((a, b) => a + b, 0)}</p>
+          <p className="text-xs text-gray-500 mt-1">Across all categories</p>
         </div>
       </div>
 
@@ -225,16 +162,6 @@ export default function VendorCategories() {
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={linkFilter} onValueChange={(v: any) => setLinkFilter(v)}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="All Links" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Links</SelectItem>
-                <SelectItem value="linked">Linked</SelectItem>
-                <SelectItem value="unlinked">Vendor Only</SelectItem>
-              </SelectContent>
-            </Select>
             <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
               <SelectTrigger className="w-40">
                 <ArrowUpDown className="w-3.5 h-3.5 mr-1 text-gray-400" />
@@ -247,14 +174,13 @@ export default function VendorCategories() {
                 <SelectItem value="oldest">Oldest First</SelectItem>
                 <SelectItem value="items_high">Most Items</SelectItem>
                 <SelectItem value="items_low">Fewest Items</SelectItem>
-                <SelectItem value="hubs_high">Most Hubs</SelectItem>
               </SelectContent>
             </Select>
             {hasActiveFilters && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setSearch(""); setStatusFilter("all"); setLinkFilter("all"); setSortBy("name_asc"); }}
+                onClick={() => { setSearch(""); setStatusFilter("all"); setSortBy("name_asc"); }}
                 className="text-gray-400 hover:text-gray-600 px-2"
               >
                 Reset
@@ -304,7 +230,6 @@ export default function VendorCategories() {
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Linked Sub-Hub Category</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date Added</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Actions</th>
@@ -312,7 +237,6 @@ export default function VendorCategories() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((cat) => {
-                  const isMaster = cat.source === "master";
                   const dateAdded = cat.createdAt ? new Date(cat.createdAt) : null;
                   const dateLabel = dateAdded ? dateAdded.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
                   const timeLabel = dateAdded ? dateAdded.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -320,35 +244,20 @@ export default function VendorCategories() {
                     <tr key={cat.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
-                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${isMaster ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-500"}`}>
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-amber-50 text-amber-600">
                             <FolderOpen className="w-4 h-4" />
                           </div>
-                          <div>
-                            <p className="font-semibold text-[#162B4D]">{cat.name}</p>
-                            {getLinkedSubHubCategoryNames(cat).length > 0 && <span className="text-[10px] font-medium text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-full">Linked</span>}
-                          </div>
+                          <p className="font-semibold text-[#162B4D]">{cat.name}</p>
                         </div>
                       </td>
                       <td className="px-5 py-3 text-gray-500 max-w-xs">
                         {cat.description || <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-5 py-3">
-                        {isMaster ? (
-                          <div className="flex items-center gap-1.5 text-gray-600">
-                            <Boxes className="w-3.5 h-3.5 text-gray-400" />
-                            <span>{itemCounts[cat.id] ?? 0}</span>
-                          </div>
-                        ) : (
-                          <span className="text-gray-300 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3">
-                        {getLinkedSubHubCategoryNames(cat).length > 0 ? (
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium text-gray-700">{formatLinkedSubHubCategoryNames(cat)}</p>
-                            <HubsBadge subHubs={cat.subHubs} subHubCount={cat.subHubCount} />
-                          </div>
-                        ) : <span className="text-gray-300 text-xs">Vendor only</span>}
+                        <div className="flex items-center gap-1.5 text-gray-600">
+                          <Boxes className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{itemCounts[cat.id] ?? 0}</span>
+                        </div>
                       </td>
                       <td className="px-5 py-3">
                         <p className="text-sm text-gray-700">{dateLabel}</p>
@@ -360,16 +269,14 @@ export default function VendorCategories() {
                         </span>
                       </td>
                       <td className="px-5 py-3">
-                        {isMaster ? (
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="ghost" onClick={() => { setEditing(cat); setModalOpen(true); }} className="h-8 w-8 p-0">
-                              <Pencil className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => handleDelete(cat)} className="h-8 w-8 p-0 text-gray-400 hover:text-red-600">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        ) : null}
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => { setEditing(cat); setModalOpen(true); }} className="h-8 w-8 p-0">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleDelete(cat)} className="h-8 w-8 p-0 text-gray-400 hover:text-red-600">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -380,7 +287,6 @@ export default function VendorCategories() {
         ) : (
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filtered.map((cat) => {
-              const isMaster = cat.source === "master";
               const dateAdded = cat.createdAt ? new Date(cat.createdAt) : null;
               const dateLabel = dateAdded ? dateAdded.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
               const timeLabel = dateAdded ? dateAdded.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -389,13 +295,10 @@ export default function VendorCategories() {
                 <div key={cat.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50 hover:bg-white hover:shadow-md transition-all flex flex-col gap-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isMaster ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-500"}`}>
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-amber-50 text-amber-600">
                         <FolderOpen className="w-5 h-5" />
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-bold text-[#162B4D] text-sm leading-tight truncate">{cat.name}</p>
-                        {getLinkedSubHubCategoryNames(cat).length > 0 && <span className="text-[10px] font-medium text-blue-500">Linked to {formatLinkedSubHubCategoryNames(cat)}</span>}
-                      </div>
+                      <p className="font-bold text-[#162B4D] text-sm leading-tight truncate">{cat.name}</p>
                     </div>
                     <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${cat.status === "active" ? "bg-green-50 text-green-700" : "bg-gray-200 text-gray-500"}`}>
                       {cat.status}
@@ -408,22 +311,10 @@ export default function VendorCategories() {
                     <p className="text-xs text-gray-300 italic">No description</p>
                   )}
 
-                  {getLinkedSubHubCategoryNames(cat).length > 0 && (
-                    <div>
-                      <HubsBadge subHubs={cat.subHubs} subHubCount={cat.subHubCount} />
-                    </div>
-                  )}
-
                   <div className="flex items-center justify-between text-xs text-gray-500 border-t border-gray-100 pt-3 mt-auto">
                     <div className="flex items-center gap-1.5">
-                      {isMaster ? (
-                        <>
-                          <Boxes className="w-3.5 h-3.5 text-gray-400" />
-                          <span>{count} item{count !== 1 ? "s" : ""}</span>
-                        </>
-                      ) : (
-                        <span className="text-gray-400 italic text-[11px]">Hub managed</span>
-                      )}
+                      <Boxes className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{count} item{count !== 1 ? "s" : ""}</span>
                     </div>
                     <div className="text-right">
                       <p className="text-gray-600">{dateLabel}</p>
@@ -431,26 +322,24 @@ export default function VendorCategories() {
                     </div>
                   </div>
 
-                  {isMaster && (
-                    <div className="flex gap-2 border-t border-gray-100 pt-3">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => { setEditing(cat); setModalOpen(true); }}
-                        className="flex-1 h-8 gap-1.5 text-xs"
-                      >
-                        <Pencil className="w-3 h-3" /> Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDelete(cat)}
-                        className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  )}
+                  <div className="flex gap-2 border-t border-gray-100 pt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { setEditing(cat); setModalOpen(true); }}
+                      className="flex-1 h-8 gap-1.5 text-xs"
+                    >
+                      <Pencil className="w-3 h-3" /> Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDelete(cat)}
+                      className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                 </div>
               );
             })}
@@ -461,7 +350,6 @@ export default function VendorCategories() {
       <CategoryModal
         open={modalOpen}
         category={editing}
-        subHubCategories={subHubCategories}
         onClose={() => setModalOpen(false)}
         onSaved={() => { setModalOpen(false); setEditing(null); load(); }}
       />
@@ -469,17 +357,15 @@ export default function VendorCategories() {
   );
 }
 
-function CategoryModal({ open, category, subHubCategories, onClose, onSaved }: {
+function CategoryModal({ open, category, onClose, onSaved }: {
   open: boolean;
   category: VendorCategory | null;
-  subHubCategories: SubHubCategory[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [linkedSubHubCategoryNames, setLinkedSubHubCategoryNames] = useState<string[]>([]);
   const [status, setStatus] = useState<"active" | "inactive">("active");
   const [saving, setSaving] = useState(false);
 
@@ -487,7 +373,6 @@ function CategoryModal({ open, category, subHubCategories, onClose, onSaved }: {
     if (!open) return;
     setName(category?.name ?? "");
     setDescription(category?.description ?? "");
-    setLinkedSubHubCategoryNames(category ? getLinkedSubHubCategoryNames(category) : []);
     setStatus(category?.status ?? "active");
   }, [open, category]);
 
@@ -496,7 +381,7 @@ function CategoryModal({ open, category, subHubCategories, onClose, onSaved }: {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const payload = { name: name.trim(), description: description.trim(), linkedSubHubCategoryNames, status };
+      const payload = { name: name.trim(), description: description.trim(), linkedSubHubCategoryNames: [], status };
       if (category) {
         await apiFetch(`/api/vendor-items/categories/${category.id}`, { method: "PUT", body: JSON.stringify(payload) });
         toast({ title: "Category updated" });
@@ -538,39 +423,6 @@ function CategoryModal({ open, category, subHubCategories, onClose, onSaved }: {
               rows={3}
               placeholder="What type of vendor items belong here?"
             />
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label>Link to Sub-Hub Categories</Label>
-              {linkedSubHubCategoryNames.length > 0 && (
-                <button type="button" onClick={() => setLinkedSubHubCategoryNames([])} className="text-xs text-gray-400 hover:text-gray-700">Clear all</button>
-              )}
-            </div>
-            <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-200 bg-white">
-              {subHubCategories.length === 0 ? (
-                <p className="px-3 py-3 text-xs text-gray-400">No sub-hub categories found.</p>
-              ) : subHubCategories.map((cat) => {
-                const checked = linkedSubHubCategoryNames.includes(cat.name);
-                return (
-                  <label key={cat.name} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(event) => {
-                        setLinkedSubHubCategoryNames((current) => event.target.checked
-                          ? Array.from(new Set([...current, cat.name]))
-                          : current.filter((name) => name !== cat.name)
-                        );
-                      }}
-                      className="h-4 w-4 rounded border-gray-300"
-                    />
-                    <span className="flex-1 text-gray-700">{cat.name}</span>
-                    <span className="text-xs text-gray-400">{cat.subHubCount} hub{cat.subHubCount !== 1 ? "s" : ""}, {cat.productCount} products</span>
-                  </label>
-                );
-              })}
-            </div>
-            <p className="text-xs text-gray-400">Linked categories show matching sub-hub products in Vendor Items. Unlinked categories keep normal vendor item columns.</p>
           </div>
           <div className="space-y-1.5">
             <Label>Status</Label>
