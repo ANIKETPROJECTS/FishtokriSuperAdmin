@@ -735,14 +735,16 @@ export default function Orders() {
     const superHub = superHubs.find((h) => h.id === selectedSuperHubId);
     const subHub = subHubs.find((h) => h.id === selectedSubHubId);
 
-    // Validate scheduling
-    if (orderScheduleType === "slot" && activeTimeslots.length > 0 && !selectedTimeslotId) {
-      toast({ title: "Pick a delivery slot", description: "Select a time slot or switch to instant delivery.", variant: "destructive" });
-      return;
-    }
-    if (!orderDate) {
-      toast({ title: "Pick a delivery date", variant: "destructive" });
-      return;
+    // Validate scheduling (only for delivery orders — takeaway is instant for today)
+    if (orderDeliveryType === "delivery") {
+      if (orderScheduleType === "slot" && activeTimeslots.length > 0 && !selectedTimeslotId) {
+        toast({ title: "Pick a delivery slot", description: "Select a time slot or switch to instant delivery.", variant: "destructive" });
+        return;
+      }
+      if (!orderDate) {
+        toast({ title: "Pick a delivery date", variant: "destructive" });
+        return;
+      }
     }
 
     // Validate payment
@@ -815,13 +817,17 @@ export default function Orders() {
             amount: Number(p.amount) || 0,
             reference: p.reference?.trim() || "",
           })),
-        // Schedule
-        scheduleType: orderScheduleType,
-        deliveryDate: orderDate,
-        timeslotId: selectedTimeslot ? String(selectedTimeslot._id) : undefined,
-        timeslotLabel: selectedTimeslot?.label,
-        timeslotStart: selectedTimeslot?.startTime,
-        timeslotEnd: selectedTimeslot?.endTime,
+        // Schedule (takeaway is forced to instant fulfillment for today)
+        scheduleType: orderDeliveryType === "takeaway" ? "instant" : orderScheduleType,
+        deliveryDate: orderDeliveryType === "takeaway"
+          ? new Date().toISOString().slice(0, 10)
+          : orderDate,
+        timeslotId: orderDeliveryType === "takeaway"
+          ? undefined
+          : (selectedTimeslot ? String(selectedTimeslot._id) : undefined),
+        timeslotLabel: orderDeliveryType === "takeaway" ? undefined : selectedTimeslot?.label,
+        timeslotStart: orderDeliveryType === "takeaway" ? undefined : selectedTimeslot?.startTime,
+        timeslotEnd: orderDeliveryType === "takeaway" ? undefined : selectedTimeslot?.endTime,
       };
       await apiFetch("/api/orders", { method: "POST", body: JSON.stringify(payload) });
       toast({ title: "Order created", description: `${customerName} · ${formatRupees(cleanItems.reduce((s, i) => s + i.price * i.quantity, 0))}` });
@@ -2490,7 +2496,8 @@ export default function Orders() {
               </div>
             )}
 
-            {/* SCHEDULE */}
+            {/* SCHEDULE (delivery only — takeaway uses today's date and instant fulfillment) */}
+            {orderDeliveryType === "delivery" && (
             <div className="space-y-2">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Delivery Schedule</p>
               <div className="grid grid-cols-2 gap-2">
@@ -2565,6 +2572,7 @@ export default function Orders() {
                 </div>
               )}
             </div>
+            )}
 
             {/* NOTES */}
             <div className="space-y-1.5">
