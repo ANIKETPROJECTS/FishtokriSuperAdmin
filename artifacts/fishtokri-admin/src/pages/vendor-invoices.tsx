@@ -488,7 +488,6 @@ export default function VendorInvoices() {
       {/* Add Receipt dialog */}
       <AddReceiptDialog
         invoice={receiptTarget}
-        allInvoices={invoices}
         onClose={() => setReceiptTarget(null)}
         onSaved={() => { setReceiptTarget(null); load(); }}
       />
@@ -650,10 +649,9 @@ const PAYMENT_MODES = ["Cash", "UPI", "Bank Transfer", "Cheque", "Card", "Other"
 const DEPOSIT_OPTIONS = ["IndusInd Bank", "HDFC Bank", "ICICI Bank", "SBI", "Cash on Hand"];
 
 function AddReceiptDialog({
-  invoice, allInvoices, onClose, onSaved,
+  invoice, onClose, onSaved,
 }: {
   invoice: Invoice | null;
-  allInvoices: Invoice[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -669,13 +667,8 @@ function AddReceiptDialog({
   const [markAllPaid, setMarkAllPaid] = useState(false);
   const [allocations, setAllocations] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-
-  const vendorInvoices = useMemo(() => {
-    if (!invoice) return [];
-    return allInvoices
-      .filter(i => i.vendorId === invoice.vendorId && (i.status || "saved") !== "draft")
-      .sort((a, b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
-  }, [invoice, allInvoices]);
+  const [vendorInvoices, setVendorInvoices] = useState<Invoice[]>([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
 
   const totalDue = useMemo(
     () => vendorInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0),
@@ -688,16 +681,40 @@ function AddReceiptDialog({
   );
 
   useEffect(() => {
-    if (invoice) {
-      setDate(new Date().toISOString().slice(0, 10));
-      setReceivedFrom(invoice.vendorName || "");
-      setAmount(String(invoice.totalAmount || ""));
-      setPaymentMode("");
-      setReference(""); setRemarks("");
-      setLumpSum(false); setMarkAllPaid(false);
-      setAllocations({ [invoice.id]: String(invoice.totalAmount || 0) });
-      setDepositTo(DEPOSIT_OPTIONS[0]);
-    }
+    if (!invoice) return;
+    setDate(new Date().toISOString().slice(0, 10));
+    setReceivedFrom(invoice.vendorName || "");
+    setAmount(String(invoice.totalAmount || ""));
+    setPaymentMode("");
+    setReference(""); setRemarks("");
+    setLumpSum(false); setMarkAllPaid(false);
+    setDepositTo(DEPOSIT_OPTIONS[0]);
+    setAllocations({});
+    setVendorInvoices([]);
+    setLoadingInvoices(true);
+
+    (async () => {
+      try {
+        const params = new URLSearchParams({
+          vendorId: invoice.vendorId,
+          page: "1",
+          limit: "100",
+          sort: "date_asc",
+        });
+        const data = await apiFetch(`/api/vendors/all-purchases?${params}`);
+        const list: Invoice[] = (data.purchases || []).filter(
+          (i: Invoice) => (i.status || "saved") !== "draft"
+        );
+        setVendorInvoices(list);
+        const initAlloc: Record<string, string> = {};
+        list.forEach(i => { initAlloc[i.id] = i.id === invoice.id ? String(i.totalAmount || 0) : "0"; });
+        setAllocations(initAlloc);
+      } catch (e: any) {
+        toast({ title: "Failed to load vendor invoices", description: e.message, variant: "destructive" });
+      } finally {
+        setLoadingInvoices(false);
+      }
+    })();
   }, [invoice]);
 
   useEffect(() => {
@@ -823,7 +840,9 @@ function AddReceiptDialog({
                 </tr>
               </thead>
               <tbody>
-                {vendorInvoices.length === 0 ? (
+                {loadingInvoices ? (
+                  <tr><td colSpan={5} className="py-6 text-center text-gray-400 text-sm">Loading vendor invoices…</td></tr>
+                ) : vendorInvoices.length === 0 ? (
                   <tr><td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No invoices for this vendor</td></tr>
                 ) : vendorInvoices.map(i => (
                   <tr key={i.id} className="border-t border-gray-100">
