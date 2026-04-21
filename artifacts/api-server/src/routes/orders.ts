@@ -343,10 +343,20 @@ router.put("/:id", async (req, res) => {
     if (paidAmount !== undefined) {
       const paidNum = Math.max(0, Number(paidAmount) || 0);
       update.paidAmount = paidNum;
-      // recompute due against existing total
+      // recompute due against existing total (fall back to items sum for legacy orders)
       const conn0 = await getOrdersDb();
-      const existing = await conn0.db.collection(COLLECTION).findOne({ _id: oid }, { projection: { total: 1 } });
-      const totalNum = Number(existing?.total) || 0;
+      const existing = await conn0.db.collection(COLLECTION).findOne(
+        { _id: oid },
+        { projection: { total: 1, items: 1 } }
+      );
+      let totalNum = Number(existing?.total) || 0;
+      if (totalNum <= 0 && Array.isArray(existing?.items)) {
+        totalNum = existing.items.reduce(
+          (s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1),
+          0
+        );
+        update.total = totalNum;
+      }
       update.dueAmount = Math.max(0, totalNum - paidNum);
     }
     const conn = await getOrdersDb();

@@ -912,7 +912,9 @@ export default function Orders() {
 
     // When marking as delivered, prompt for payment collection unless already fully paid.
     if (editStatus === "delivered" && selectedOrder.paymentStatus !== "paid") {
-      const total = Number(selectedOrder.total) || 0;
+      const total = Number(selectedOrder.total) > 0
+        ? Number(selectedOrder.total)
+        : orderTotal(selectedOrder.items);
       const alreadyPaid = Number(selectedOrder.paidAmount) || 0;
       const due = Math.max(0, total - alreadyPaid);
       setDeliverPayStatus(due > 0 ? "paid" : "paid");
@@ -942,7 +944,9 @@ export default function Orders() {
 
   const handleDeliverWithPayment = async () => {
     if (!selectedOrder) return;
-    const orderTotal = Number(selectedOrder.total) || 0;
+    const orderTotalAmount = Number(selectedOrder.total) > 0
+      ? Number(selectedOrder.total)
+      : orderTotal(selectedOrder.items);
     const existingPaid = Number(selectedOrder.paidAmount) || 0;
     const existingPayments: any[] = Array.isArray(selectedOrder.payments) ? selectedOrder.payments : [];
 
@@ -955,12 +959,12 @@ export default function Orders() {
     }
 
     const newPaidTotal = existingPaid + (deliverPayStatus === "unpaid" ? 0 : deliverPayPaidTotal);
-    if (deliverPayStatus === "paid" && newPaidTotal !== orderTotal) {
-      toast({ title: "Payment mismatch", description: `Total paid (${formatRupees(newPaidTotal)}) must equal order total (${formatRupees(orderTotal)}).`, variant: "destructive" });
+    if (deliverPayStatus === "paid" && newPaidTotal !== orderTotalAmount) {
+      toast({ title: "Payment mismatch", description: `Total paid (${formatRupees(newPaidTotal)}) must equal order total (${formatRupees(orderTotalAmount)}).`, variant: "destructive" });
       return;
     }
-    if (deliverPayStatus === "partial" && (newPaidTotal <= 0 || newPaidTotal >= orderTotal)) {
-      toast({ title: "Invalid partial payment", description: `Paid amount must be between ₹0 and ${formatRupees(orderTotal)}.`, variant: "destructive" });
+    if (deliverPayStatus === "partial" && (newPaidTotal <= 0 || newPaidTotal >= orderTotalAmount)) {
+      toast({ title: "Invalid partial payment", description: `Paid amount must be between ₹0 and ${formatRupees(orderTotalAmount)}.`, variant: "destructive" });
       return;
     }
 
@@ -993,7 +997,7 @@ export default function Orders() {
         status: "delivered",
         paymentStatus: deliverPayStatus,
         paidAmount: newPaidTotal,
-        dueAmount: Math.max(0, orderTotal - newPaidTotal),
+        dueAmount: Math.max(0, orderTotalAmount - newPaidTotal),
         payments: mergedPayments,
       }));
       setDeliverPayOpen(false);
@@ -2790,18 +2794,20 @@ export default function Orders() {
           </DialogHeader>
 
           {selectedOrder && (() => {
-            const orderTotal = Number(selectedOrder.total) || 0;
+            const orderTotalValue = Number(selectedOrder.total) > 0
+              ? Number(selectedOrder.total)
+              : orderTotal(selectedOrder.items);
             const existingPaid = Number(selectedOrder.paidAmount) || 0;
-            const remainingDue = Math.max(0, orderTotal - existingPaid);
+            const remainingDue = Math.max(0, orderTotalValue - existingPaid);
             const newPaidTotal = existingPaid + (deliverPayStatus === "unpaid" ? 0 : deliverPayPaidTotal);
-            const newDue = Math.max(0, orderTotal - newPaidTotal);
+            const newDue = Math.max(0, orderTotalValue - newPaidTotal);
 
             return (
               <div className="space-y-4">
                 <div className="px-3 py-2 bg-gray-50 rounded-xl space-y-1">
                   <div className="flex items-center justify-between text-[12px] text-gray-500">
                     <span>Order Total</span>
-                    <span className="font-semibold text-gray-700">{formatRupees(orderTotal)}</span>
+                    <span className="font-semibold text-gray-700">{formatRupees(orderTotalValue)}</span>
                   </div>
                   {existingPaid > 0 && (
                     <div className="flex items-center justify-between text-[12px] text-emerald-600">
