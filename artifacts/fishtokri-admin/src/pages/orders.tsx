@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 function getToken() {
   return localStorage.getItem("fishtokri_token") || "";
@@ -299,6 +300,8 @@ function InlineDeliverySelect({
 // ─── MAIN PAGE ─────────────────────────────────────────────────────────────────
 export default function Orders() {
   const { toast } = useToast();
+  const [location, setLocation] = useLocation();
+  const isCreatePage = location === "/orders/new" || location.endsWith("/orders/new");
 
   const [activeTab, setActiveTab] = useState<"current" | "history" | "all">("current");
 
@@ -350,7 +353,7 @@ export default function Orders() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Create order
-  const [creatingOrder, setCreatingOrder] = useState(false);
+  // Create-order open state is driven by URL (/orders/new)
   const [creatingSaving, setCreatingSaving] = useState(false);
   const [customerMode, setCustomerMode] = useState<"existing" | "new">("existing");
   const [allCustomers, setAllCustomers] = useState<any[]>([]);
@@ -427,7 +430,7 @@ export default function Orders() {
 
   // Load all customers when create-order modal opens
   useEffect(() => {
-    if (!creatingOrder) return;
+    if (!isCreatePage) return;
     if (allCustomers.length === 0) {
       setLoadingCustomers(true);
       apiFetch(`/api/customers?limit=100&sort=name_asc`)
@@ -442,7 +445,7 @@ export default function Orders() {
         .catch(() => setSuperHubs([]))
         .finally(() => setLoadingSuperHubs(false));
     }
-  }, [creatingOrder, allCustomers.length, superHubs.length]);
+  }, [isCreatePage, allCustomers.length, superHubs.length]);
 
   // Load sub-hubs when super-hub changes
   useEffect(() => {
@@ -822,8 +825,8 @@ export default function Orders() {
       };
       await apiFetch("/api/orders", { method: "POST", body: JSON.stringify(payload) });
       toast({ title: "Order created", description: `${customerName} · ${formatRupees(cleanItems.reduce((s, i) => s + i.price * i.quantity, 0))}` });
-      setCreatingOrder(false);
       resetCreateForm();
+      setLocation("/orders");
       load();
       loadStats();
     } catch (err: any) {
@@ -1119,7 +1122,7 @@ export default function Orders() {
           <Button variant="outline" size="sm" onClick={() => { load(); loadStats(); }} className="h-8 gap-1.5 text-gray-500">
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </Button>
-          <Button size="sm" onClick={() => { resetCreateForm(); setCreatingOrder(true); }} className="h-8 gap-1.5 bg-[#1A56DB] hover:bg-[#1447B4] text-white">
+          <Button size="sm" onClick={() => { resetCreateForm(); setLocation("/orders/new"); }} className="h-8 gap-1.5 bg-[#1A56DB] hover:bg-[#1447B4] text-white">
             <Plus className="w-3.5 h-3.5" /> New Order
           </Button>
         </div>
@@ -1546,16 +1549,44 @@ export default function Orders() {
         </DialogContent>
       </Dialog>
 
-      {/* Create Order Modal */}
-      <Dialog open={creatingOrder} onOpenChange={(o) => { if (!o && !creatingSaving) { setCreatingOrder(false); resetCreateForm(); } }}>
-        <DialogContent className="sm:max-w-[640px] max-h-[92vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-[#162B4D] flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Create New Order
-            </DialogTitle>
-          </DialogHeader>
+      {/* Create Order Page */}
+      {isCreatePage && (
+      <div className="fixed inset-0 z-40 bg-gray-50 overflow-y-auto">
+        <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { if (!creatingSaving) { setLocation("/orders"); resetCreateForm(); } }}
+                disabled={creatingSaving}
+                className="h-8 w-8 p-0"
+                aria-label="Back to orders"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <div>
+                <h1 className="text-lg font-bold text-[#162B4D] flex items-center gap-2">
+                  <Plus className="w-4 h-4" />
+                  Create New Order
+                </h1>
+                <p className="text-[11px] text-gray-400">Fill in the details and create the order</p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { if (!creatingSaving) { setLocation("/orders"); resetCreateForm(); } }}
+              disabled={creatingSaving}
+              className="h-8 w-8 p-0"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
 
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 pb-28">
           <div className="space-y-5 pt-1">
             {/* HUB SELECTION (must be picked first) */}
             <div className="space-y-2 p-3 rounded-2xl border border-blue-100 bg-blue-50/40">
@@ -2540,14 +2571,18 @@ export default function Orders() {
             </div>
           </div>
 
-          <DialogFooter className="gap-2 pt-3">
-            <Button variant="outline" onClick={() => { setCreatingOrder(false); resetCreateForm(); }} disabled={creatingSaving} className="h-9">Cancel</Button>
+        </div>
+
+        <div className="fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-gray-200">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => { setLocation("/orders"); resetCreateForm(); }} disabled={creatingSaving} className="h-9">Cancel</Button>
             <Button onClick={handleCreateOrder} disabled={creatingSaving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 text-white gap-1.5">
               {creatingSaving ? "Creating..." : (<><Plus className="w-3.5 h-3.5" /> Create Order</>)}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </div>
+      </div>
+      )}
 
       {/* Order Detail Modal */}
       <Dialog open={!!selectedOrder} onOpenChange={(o) => { if (!o) { setSelectedOrder(null); setShowAllPersons(false); } }}>
