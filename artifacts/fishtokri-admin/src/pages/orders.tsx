@@ -1123,7 +1123,12 @@ export default function Orders() {
                         <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${customerDropdownOpen ? "rotate-180" : ""}`} />
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent className="p-0 w-[--radix-popover-trigger-width] shadow-xl border border-gray-100 rounded-2xl overflow-hidden" align="start" sideOffset={6}>
+                    <PopoverContent
+                      className="p-0 shadow-xl border border-gray-100 rounded-2xl overflow-hidden"
+                      align="start"
+                      sideOffset={6}
+                      style={{ width: "var(--radix-popover-trigger-width)", maxHeight: "min(420px, var(--radix-popover-content-available-height))" }}
+                    >
                       <div className="p-2 border-b border-gray-100 bg-gray-50/80">
                         <div className="relative">
                           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
