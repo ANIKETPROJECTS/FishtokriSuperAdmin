@@ -170,17 +170,14 @@ export default function VendorInvoices() {
 
   const shareWhatsApp = (inv: Invoice) => {
     const text = encodeURIComponent(buildShareText(inv));
-    const phone = (inv.vendorPhone || "").replace(/\D/g, "");
-    const url = phone
-      ? `https://wa.me/${phone.length === 10 ? "91" + phone : phone}?text=${text}`
-      : `https://wa.me/?text=${text}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.open(`https://web.whatsapp.com/send?text=${text}`, "_blank", "noopener,noreferrer");
   };
 
   const shareMail = (inv: Invoice) => {
     const subject = encodeURIComponent(`Invoice ${inv.invoiceNumber || ""} - Fishtokri`);
     const body = encodeURIComponent(buildShareText(inv));
-    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`;
+    window.open(gmailUrl, "_blank", "noopener,noreferrer");
   };
 
   const printInvoice = (inv: Invoice) => {
@@ -193,16 +190,75 @@ export default function VendorInvoices() {
     setTimeout(() => { w.print(); }, 250);
   };
 
-  const downloadInvoice = (inv: Invoice) => {
-    const rows = (inv.items || []).map((it: any, i: number) =>
-      `${i + 1},${(it.productName || "").replace(/,/g, " ")},${Number(it.quantity || 0)},${it.unit || ""},${Number(it.pricePerUnit || 0)},${Number(it.totalPrice || 0)}`
-    ).join("\n");
-    const csv = `Invoice,${inv.invoiceNumber || inv.id}\nVendor,${inv.vendorName}\nDate,${formatDateDDMMYYYY(inv.purchaseDate)}\nStatus,${inv.status || "saved"}\nTotal,${inv.totalAmount}\n\n#,Item,Qty,Unit,Price,Total\n${rows}`;
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `invoice-${inv.invoiceNumber || inv.id}.csv`;
-    a.click(); URL.revokeObjectURL(url);
+  const downloadInvoice = async (inv: Invoice) => {
+    try {
+      const { jsPDF } = await import("jspdf");
+      const autoTable = (await import("jspdf-autotable")).default;
+      const doc = new jsPDF({ unit: "mm", format: "a5" });
+      const items = inv.items || [];
+      const totalQty = items.reduce((s: number, it: any) => s + Number(it.quantity || 0), 0);
+      const subTotal = items.reduce((s: number, it: any) => s + Number(it.totalPrice || 0), 0);
+      const grandTotal = Number(inv.totalAmount || subTotal);
+      const dateObj = inv.purchaseDate ? new Date(inv.purchaseDate) : null;
+      const timeStr = dateObj ? dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }) : "";
+
+      let y = 10;
+      doc.setFont("helvetica", "bold").setFontSize(13);
+      doc.text("Fishtokri- Atha Foods Private Limited", 74, y, { align: "center" }); y += 5;
+      doc.setLineDashPattern([0.5, 0.5], 0).line(8, y, 140, y); y += 4;
+      doc.setFont("helvetica", "normal").setFontSize(9);
+      doc.text("Mobile No: 9220200100", 74, y, { align: "center" }); y += 5;
+      doc.setFontSize(10);
+      doc.text(`Invoice No: ${inv.invoiceNumber || "-"}`, 8, y);
+      doc.text(`Date: ${formatDateDDMMYYYY(inv.purchaseDate)}`, 140, y, { align: "right" }); y += 5;
+      doc.text(`Payment Mode: ${(inv.status || "saved") === "draft" ? "Due" : "Paid"}`, 8, y);
+      doc.text(`Time: ${timeStr || "-"}`, 140, y, { align: "right" }); y += 4;
+      doc.line(8, y, 140, y); y += 4;
+      doc.setFont("helvetica", "bold").text("Name: ", 8, y);
+      doc.setFont("helvetica", "normal").text(inv.vendorName || "-", 22, y); y += 5;
+      doc.setFont("helvetica", "bold").text("Add : ", 8, y);
+      doc.setFont("helvetica", "normal").text("India", 22, y); y += 4;
+
+      autoTable(doc, {
+        startY: y,
+        margin: { left: 8, right: 8 },
+        head: [["Item", "Qty", "Rate", "Amount"]],
+        body: items.map((it: any) => [
+          String(it.productName || ""),
+          `${it.quantity} ${it.unit || ""}`,
+          Number(it.pricePerUnit || 0).toFixed(2),
+          Number(it.totalPrice || 0).toFixed(2),
+        ]),
+        foot: [
+          [`Total Items: ${items.length}`, String(totalQty), "", subTotal.toFixed(2)],
+          ["Discount :", "", "", "- 0.00"],
+        ],
+        styles: { fontSize: 9, cellPadding: 1.5 },
+        headStyles: { fillColor: [22, 43, 77], textColor: 255 },
+        footStyles: { fillColor: [240, 240, 240], textColor: 20, fontStyle: "bold" },
+        columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" } },
+        theme: "grid",
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 4;
+      doc.setLineDashPattern([0.5, 0.5], 0).line(8, y, 140, y); y += 5;
+      doc.setFont("helvetica", "bold").setFontSize(12);
+      doc.text("Grand Total:", 8, y);
+      doc.text(grandTotal.toFixed(2), 140, y, { align: "right" }); y += 5;
+      doc.setFont("helvetica", "italic").setFontSize(9);
+      doc.text(`( ${numberToWordsINR(grandTotal)} )`, 74, y, { align: "center", maxWidth: 130 }); y += 6;
+      if (inv.notes) {
+        doc.setFont("helvetica", "bold").setFontSize(9).text("Note: ", 8, y);
+        doc.setFont("helvetica", "normal").text(String(inv.notes), 22, y, { maxWidth: 118 }); y += 6;
+      }
+      doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(80);
+      doc.text("Thank you for your business! We appreciate your prompt payment.", 74, y, { align: "center" }); y += 4;
+      doc.text("Please feel free to contact us if you have any questions regarding this invoice.", 74, y, { align: "center" });
+
+      doc.save(`invoice-${inv.invoiceNumber || inv.id}.pdf`);
+    } catch (e: any) {
+      toast({ title: "PDF download failed", description: e.message, variant: "destructive" });
+    }
   };
 
   return (
