@@ -1450,23 +1450,6 @@ function DeleteModal({ open, onClose, vendor, onConfirm }: {
 
 // ─── ADD PURCHASE PAGE ────────────────────────────────────────────────────────
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 mb-4">
-      <span className="text-xs font-bold text-[#162B4D] uppercase tracking-wider">{children}</span>
-      <div className="flex-1 h-px bg-gray-200" />
-    </div>
-  );
-}
-
-function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
-  return (
-    <label className="block text-xs font-semibold text-gray-500 mb-1">
-      {children}{required && <span className="text-red-400 ml-0.5">*</span>}
-    </label>
-  );
-}
-
 function AddPurchasePage({ vendor, onBack, onSaved }: {
   vendor: Vendor;
   onBack: () => void;
@@ -1476,40 +1459,9 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
-  const [superHubs, setSuperHubs] = useState<any[]>([]);
-  const [subHubs, setSubHubs] = useState<any[]>([]);
-  const [superHubId, setSuperHubId] = useState("");
-  const [subHubId, setSubHubId] = useState("");
-  const [hubsLoading, setHubsLoading] = useState(true);
   const [vendorItemCategories, setVendorItemCategories] = useState<VendorItemCategory[]>([]);
   const [vendorItems, setVendorItems] = useState<VendorCatalogItem[]>([]);
   const [vendorItemsLoading, setVendorItemsLoading] = useState(true);
-
-  const [vendorHistory, setVendorHistory] = useState<Purchase[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyPage, setHistoryPage] = useState(1);
-  const [historyTotal, setHistoryTotal] = useState(0);
-  const [historyExpanded, setHistoryExpanded] = useState(true);
-  const HISTORY_LIMIT = 10;
-
-  const loadVendorHistory = useCallback(async (pg: number) => {
-    setHistoryLoading(true);
-    try {
-      const data = await apiFetch(`/api/vendors/${vendor.id}/purchases?page=${pg}&limit=${HISTORY_LIMIT}`);
-      setVendorHistory(data.purchases);
-      setHistoryTotal(data.total);
-    } catch { setVendorHistory([]); }
-    finally { setHistoryLoading(false); }
-  }, [vendor.id]);
-
-  useEffect(() => { loadVendorHistory(historyPage); }, [vendor.id, historyPage]);
-
-  useEffect(() => {
-    apiFetch("/api/super-hubs")
-      .then(d => setSuperHubs(d.superHubs || []))
-      .catch(() => setSuperHubs([]))
-      .finally(() => setHubsLoading(false));
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1529,21 +1481,9 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
         setVendorItems([]);
         toast({ title: "Failed to load vendor items", variant: "destructive" });
       })
-      .finally(() => {
-        if (active) setVendorItemsLoading(false);
-      });
+      .finally(() => { if (active) setVendorItemsLoading(false); });
     return () => { active = false; };
   }, []);
-
-  const handleSuperHubChange = (id: string) => {
-    setSuperHubId(id);
-    setSubHubId("");
-    setSubHubs([]);
-    if (!id) return;
-    apiFetch(`/api/super-hubs/${id}`)
-      .then(d => setSubHubs(d.subHubs || []))
-      .catch(() => setSubHubs([]));
-  };
 
   const setField = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
@@ -1551,21 +1491,6 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     setForm(f => {
       const items = [...f.items];
       items[idx] = { ...items[idx], [k]: v };
-      if (k === "productMode") {
-        const previous = items[idx];
-        items[idx] = {
-          ...emptyItem(),
-          productMode: v,
-          quantity: previous.quantity,
-          unit: previous.unit,
-          pricePerUnit: previous.pricePerUnit,
-          totalPrice: previous.totalPrice,
-          expiryDate: previous.expiryDate,
-          shelfLifeDays: previous.shelfLifeDays,
-          batches: [emptyBatch()],
-          existingCategory: "",
-        };
-      }
       if (k === "existingCategory") {
         items[idx].existingProductId = "";
         items[idx].productName = "";
@@ -1579,41 +1504,8 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     });
   };
 
-  const setBatch = (itemIdx: number, batchIdx: number, k: keyof BatchEntry, v: string) => {
-    setForm(f => {
-      const items = [...f.items];
-      const batches = [...items[itemIdx].batches];
-      batches[batchIdx] = { ...batches[batchIdx], [k]: v };
-      items[itemIdx] = { ...items[itemIdx], batches };
-      return { ...f, items };
-    });
-  };
-
-  const addBatch = (itemIdx: number) => {
-    setForm(f => {
-      const items = [...f.items];
-      items[itemIdx] = { ...items[itemIdx], batches: [...items[itemIdx].batches, emptyBatch()] };
-      return { ...f, items };
-    });
-  };
-
-  const removeBatch = (itemIdx: number, batchIdx: number) => {
-    setForm(f => {
-      const items = [...f.items];
-      items[itemIdx] = { ...items[itemIdx], batches: items[itemIdx].batches.filter((_, i) => i !== batchIdx) };
-      return { ...f, items };
-    });
-  };
-
   const addItem = () => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }));
   const removeItem = (idx: number) => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
-
-  const getItemPurchaseQuantity = (item: PurchaseItem) => {
-    const batchQty = item.batches
-      .filter(batch => Number(batch.quantity) > 0)
-      .reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0);
-    return batchQty || Number(item.quantity) || 0;
-  };
 
   const vendorItemCategoryOptions = useMemo(() =>
     vendorItemCategories
@@ -1627,7 +1519,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     setForm(f => {
       const items = [...f.items];
       const pricePerUnit = product?.purchasePrice !== undefined ? String(product.purchasePrice) : items[idx].pricePerUnit;
-      const quantity = getItemPurchaseQuantity(items[idx]);
+      const qty = Number(items[idx].quantity) || 0;
       items[idx] = product
         ? {
             ...items[idx],
@@ -1637,7 +1529,7 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
             existingCategory: product.categoryId,
             unit: product.unit || items[idx].unit || "kg",
             pricePerUnit,
-            totalPrice: quantity * Number(pricePerUnit),
+            totalPrice: qty * Number(pricePerUnit),
             description: product.description || "",
             productMode: "existing",
           }
@@ -1647,46 +1539,44 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
   };
 
   const totalAmount = useMemo(() =>
-    form.items.reduce((s, i) => s + (getItemPurchaseQuantity(i) * Number(i.pricePerUnit)), 0),
+    form.items.reduce((s, i) => s + (Number(i.quantity) * Number(i.pricePerUnit)), 0),
     [form.items]
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!superHubId) { toast({ title: "Please select a Super Hub", variant: "destructive" }); return; }
-    if (!subHubId) { toast({ title: "Please select a Sub Hub", variant: "destructive" }); return; }
-    const validItems = form.items.filter(i => i.existingCategory && i.existingProductId && i.productName.trim() && i.batches.some(b => Number(b.quantity) > 0));
-    if (validItems.length === 0) { toast({ title: "Select a vendor category/item and add at least one batch quantity", variant: "destructive" }); return; }
+    const validItems = form.items.filter(i => i.existingCategory && i.existingProductId && i.productName.trim() && Number(i.quantity) > 0);
+    if (validItems.length === 0) {
+      toast({ title: "Please add at least one item with a quantity", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       const admin = getCurrentAdmin();
-      const selectedSHub = subHubs.find((s: any) => s.id === subHubId);
-      const selectedSuperH = superHubs.find((h: any) => h.id === superHubId);
       const itemsWithMeta = validItems.map(item => ({
         ...item,
-        quantity: getItemPurchaseQuantity(item),
+        quantity: Number(item.quantity),
         categoryName: item.category || "",
         vendorItemId: item.existingProductId,
         vendorItemCategoryId: item.existingCategory,
+        batches: [{ quantity: String(item.quantity), shelfLifeDays: "" }],
       }));
       await apiFetch(`/api/vendors/${vendor.id}/purchases`, {
         method: "POST",
         body: JSON.stringify({
           ...form,
           items: itemsWithMeta,
-          subHubId,
-          subHubName: selectedSHub?.name || "",
-          superHubId,
-          superHubName: selectedSuperH?.name || "",
+          subHubId: "",
+          subHubName: "",
+          superHubId: "",
+          superHubName: "",
           createdByName: admin.name,
           createdByEmail: admin.email,
         }),
       });
-      toast({ title: "Purchase saved!", description: `${validItems.length} vendor item(s) recorded.` });
+      toast({ title: "Purchase saved!", description: `${validItems.length} item(s) recorded.` });
       onSaved();
       setForm(emptyPurchase());
-      setHistoryPage(1);
-      loadVendorHistory(1);
     } catch (err: any) {
       toast({ title: "Failed to save purchase", description: err.message, variant: "destructive" });
     } finally {
@@ -1694,15 +1584,15 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
     }
   };
 
-  const selectedSuperHub = superHubs.find(h => h.id === superHubId);
-  const selectedSubHub = subHubs.find(s => s.id === subHubId);
-
   return (
-    <div className="space-y-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between">
+    <div className="max-w-5xl mx-auto space-y-0">
+      {/* ─── Page Header ─────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#162B4D] transition-colors">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#162B4D] transition-colors"
+          >
             <ChevronLeft className="w-4 h-4" /> Back to Vendors
           </button>
           <span className="text-gray-300">|</span>
@@ -1711,277 +1601,217 @@ function AddPurchasePage({ vendor, onBack, onSaved }: {
               ? <img src={vendor.profileImageUrl} alt={vendor.name} className="w-7 h-7 rounded-full object-cover border border-gray-200" />
               : <div className="w-7 h-7 rounded-full bg-[#162B4D]/10 flex items-center justify-center"><Building2 className="w-3.5 h-3.5 text-[#162B4D]" /></div>}
             <div>
-              <h1 className="text-lg font-bold text-[#162B4D] leading-none">Add Purchase</h1>
+              <h1 className="text-base font-bold text-[#162B4D] leading-none">New Purchase</h1>
               <p className="text-xs text-gray-400 mt-0.5">{vendor.name}</p>
             </div>
           </div>
         </div>
-        <Button onClick={handleSubmit as any} disabled={saving} className="bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5">
-          <ShoppingCart className="w-4 h-4" />
-          {saving ? "Saving..." : "Save Purchase"}
-        </Button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* ─── Destination Hub ─────────────────────────────────── */}
-        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-          <SectionHeading>Destination Hub</SectionHeading>
-          <div className="grid grid-cols-2 gap-5">
-            <div>
-              <FieldLabel required>Super Hub</FieldLabel>
-              {hubsLoading ? (
-                <div className="h-10 bg-gray-100 rounded-md animate-pulse" />
-              ) : (
-                <select
-                  value={superHubId}
-                  onChange={e => handleSuperHubChange(e.target.value)}
-                  required
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="">Select super hub...</option>
-                  {superHubs.map((h: any) => (
-                    <option key={h.id} value={h.id}>{h.name}</option>
-                  ))}
-                </select>
-              )}
-              {selectedSuperHub && (
-                <p className="text-[11px] text-green-600 mt-1">✓ {selectedSuperHub.name} selected</p>
-              )}
-            </div>
-            <div>
-              <FieldLabel required>Sub Hub</FieldLabel>
-              <select
-                value={subHubId}
-                onChange={e => setSubHubId(e.target.value)}
-                required
-                disabled={!superHubId || subHubs.length === 0}
-                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="">{!superHubId ? "Select super hub first" : subHubs.length === 0 ? "No sub hubs found" : "Select sub hub..."}</option>
-                {subHubs.map((s: any) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              {selectedSubHub && (
-                <p className="text-[11px] text-green-600 mt-1">✓ Purchase destination: {selectedSubHub.name}</p>
-              )}
-            </div>
-          </div>
-          <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-            Vendor purchases now use only the dedicated Vendor Items catalog. They do not create or update sub-hub menu products.
-          </div>
-        </div>
+      {/* ─── Invoice Card ─────────────────────────────────────── */}
+      <form onSubmit={handleSubmit}>
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
 
-        {/* ─── Purchase Info ──────────────────────────────────── */}
-        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-          <SectionHeading>Purchase Info</SectionHeading>
-          <div className="grid grid-cols-2 gap-5">
-            <div>
-              <FieldLabel>Invoice / Bill No.</FieldLabel>
-              <Input value={form.invoiceNumber} onChange={e => setField("invoiceNumber", e.target.value)} placeholder="INV-001 (optional)" />
-            </div>
-            <div>
-              <FieldLabel>Purchase Date</FieldLabel>
-              <Input type="date" value={form.purchaseDate} onChange={e => setField("purchaseDate", e.target.value)} />
-            </div>
-          </div>
-        </div>
-
-        {/* ─── Items ──────────────────────────────────────────── */}
-        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+          {/* Invoice top bar */}
+          <div className="bg-[#162B4D] px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-[#162B4D] uppercase tracking-wider">Items Purchased</span>
-              <div className="flex-1 h-px bg-gray-200 w-8" />
+              <ShoppingCart className="w-4 h-4 text-white/70" />
+              <span className="text-white font-semibold text-sm">Purchase Invoice</span>
+              <span className="text-white/40 mx-1">·</span>
+              <span className="text-white/70 text-sm">{vendor.name}</span>
             </div>
-            <Button type="button" size="sm" variant="outline" onClick={addItem} className="gap-1">
-              <Plus className="w-3.5 h-3.5" /> Add Item
-            </Button>
+            <div className="flex items-center gap-2">
+              <span className="text-white/60 text-xs">Total</span>
+              <span className="text-white font-bold text-lg">{formatRupees(totalAmount)}</span>
+            </div>
           </div>
 
-          <div className="space-y-5">
-            {form.items.map((item, idx) => (
-              <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
-                {/* Item header */}
-                <div className="flex items-center justify-between bg-gray-50 px-4 py-2.5 border-b border-gray-200">
-                  <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 rounded-full bg-[#162B4D] text-white text-[11px] font-bold flex items-center justify-center">{idx + 1}</div>
-                    <span className="text-sm font-semibold text-gray-600">Item #{idx + 1}</span>
-                  </div>
-                  {form.items.length > 1 && (
-                    <button type="button" onClick={() => removeItem(idx)} className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1">
-                      <X className="w-3.5 h-3.5" /> Remove
-                    </button>
-                  )}
-                </div>
+          {/* Invoice meta row */}
+          <div className="border-b border-gray-100 px-6 py-4 grid grid-cols-3 gap-6">
+            <div>
+              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Invoice / Bill No.</label>
+              <Input
+                value={form.invoiceNumber}
+                onChange={e => setField("invoiceNumber", e.target.value)}
+                placeholder="INV-001 (optional)"
+                className="h-9 text-sm border-gray-200"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Purchase Date</label>
+              <Input
+                type="date"
+                value={form.purchaseDate}
+                onChange={e => setField("purchaseDate", e.target.value)}
+                className="h-9 text-sm border-gray-200"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Notes</label>
+              <Input
+                value={form.notes}
+                onChange={e => setField("notes", e.target.value)}
+                placeholder="Optional note..."
+                className="h-9 text-sm border-gray-200"
+              />
+            </div>
+          </div>
 
-                <div className="p-4 space-y-5">
-                  {/* ── Product Information ── */}
-                  <div>
-                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                      <span className="w-4 h-px bg-indigo-300 inline-block" />Product Information
-                    </p>
-                    <div className="space-y-4">
-                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 space-y-3">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <FieldLabel required>Vendor Item Category</FieldLabel>
-                            <select
-                              value={item.existingCategory}
-                              onChange={e => setItem(idx, "existingCategory", e.target.value)}
-                              disabled={vendorItemsLoading || vendorItemCategoryOptions.length === 0}
-                              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                            >
-                              <option value="">{vendorItemsLoading ? "Loading categories..." : vendorItemCategoryOptions.length === 0 ? "No vendor item categories found" : "Choose category..."}</option>
-                              {vendorItemCategoryOptions.map(category => (
-                                <option key={category.id} value={category.id}>{category.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <FieldLabel required>Vendor Item</FieldLabel>
-                            <select
-                              value={item.existingProductId}
-                              onChange={e => applyVendorItem(idx, e.target.value)}
-                              disabled={!item.existingCategory || vendorItemsLoading}
-                              required
-                              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                            >
-                              <option value="">{!item.existingCategory ? "Select category first" : vendorItemsLoading ? "Loading items..." : "Choose item..."}</option>
-                              {vendorItems
-                                .filter(product => product.categoryId === item.existingCategory)
-                                .map(product => (
-                                  <option key={product.id} value={product.id}>{product.name}</option>
-                                ))}
-                            </select>
-                          </div>
-                        </div>
-                        {item.existingProductId && (
-                          <p className="text-xs text-gray-500">
-                            Buying {item.productName} from Vendor Items catalog. This purchase will not create a sub-hub menu product.
-                          </p>
-                        )}
-                      </div>
-                      {item.existingProductId && (
-                        <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 p-3 space-y-4">
-                          <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <FieldLabel>Batches</FieldLabel>
-                              <button
-                                type="button"
-                                onClick={() => addBatch(idx)}
-                                className="flex items-center gap-1 text-xs font-semibold text-[#162B4D] hover:text-[#162B4D]/70 transition-colors"
-                              >
-                                <Plus className="w-3.5 h-3.5" /> Add Batch
-                              </button>
-                            </div>
-                            <div className="space-y-2">
-                              {item.batches.map((batch, bIdx) => (
-                                <div key={bIdx} className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
-                                  <span className="text-xs text-gray-400 font-medium w-14 shrink-0">Batch {bIdx + 1}</span>
-                                  <div className="flex-1">
-                                    <label className="block text-[10px] text-gray-400 mb-0.5">Quantity</label>
-                                    <Input
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={batch.quantity}
-                                      onChange={e => setBatch(idx, bIdx, "quantity", numOnly(e.target.value))}
-                                      placeholder="0"
-                                      className="h-8 text-sm"
-                                    />
-                                  </div>
-                                  <div className="flex-1">
-                                    <label className="block text-[10px] text-gray-400 mb-0.5">Shelf Life (days)</label>
-                                    <Input
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={batch.shelfLifeDays}
-                                      onChange={e => setBatch(idx, bIdx, "shelfLifeDays", numOnly(e.target.value))}
-                                      placeholder="e.g. 3"
-                                      className="h-8 text-sm"
-                                    />
-                                  </div>
-                                  {item.batches.length > 1 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => removeBatch(idx, bIdx)}
-                                      className="text-red-400 hover:text-red-600 transition-colors mt-4"
-                                    >
-                                      <X className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-4 gap-3">
-                            <div>
-                              <FieldLabel required>Unit</FieldLabel>
-                              <select
-                                value={item.unit}
-                                onChange={e => setItem(idx, "unit", e.target.value)}
-                                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                              >
-                                {UNITS.map(unit => <option key={unit} value={unit}>{unit}</option>)}
-                              </select>
-                            </div>
-                            <div>
-                              <FieldLabel required>Cost / Unit</FieldLabel>
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                value={item.pricePerUnit}
-                                onChange={e => setItem(idx, "pricePerUnit", numOnly(e.target.value))}
-                                placeholder="0"
-                                className="h-9 text-sm"
-                              />
-                            </div>
-                            <div>
-                              <FieldLabel>Expiry Date</FieldLabel>
-                              <Input
-                                type="date"
-                                value={item.expiryDate}
-                                onChange={e => setItem(idx, "expiryDate", e.target.value)}
-                                className="h-9 text-sm"
-                              />
-                            </div>
-                            <div className="rounded-lg bg-white border border-gray-200 px-3 py-2">
-                              <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Item Total</p>
-                              <p className="text-sm font-bold text-[#162B4D]">{formatRupees(getItemPurchaseQuantity(item) * Number(item.pricePerUnit))}</p>
-                            </div>
-                          </div>
-                        </div>
+          {/* ─── Items Table ───────────────────────────────────── */}
+          <div className="px-6 py-4">
+            {/* Table header */}
+            <div className="grid gap-2 mb-2 px-2" style={{ gridTemplateColumns: "2rem 1fr 1fr 5rem 5rem 6rem 6rem 2rem" }}>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">#</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Category</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Item</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Qty</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Unit</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Cost/Unit (₹)</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider text-right">Total</span>
+              <span />
+            </div>
+
+            {/* Table rows */}
+            <div className="space-y-2">
+              {form.items.map((item, idx) => {
+                const rowTotal = Number(item.quantity) * Number(item.pricePerUnit);
+                const filteredItems = vendorItems.filter(p => p.categoryId === item.existingCategory);
+                return (
+                  <div
+                    key={idx}
+                    className="grid gap-2 items-center bg-gray-50 border border-gray-100 rounded-xl px-2 py-2.5 hover:border-[#162B4D]/20 transition-colors"
+                    style={{ gridTemplateColumns: "2rem 1fr 1fr 5rem 5rem 6rem 6rem 2rem" }}
+                  >
+                    {/* Row number */}
+                    <div className="flex items-center justify-center">
+                      <span className="w-5 h-5 rounded-full bg-[#162B4D]/10 text-[#162B4D] text-[10px] font-bold flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                    </div>
+
+                    {/* Category */}
+                    <select
+                      value={item.existingCategory}
+                      onChange={e => setItem(idx, "existingCategory", e.target.value)}
+                      disabled={vendorItemsLoading}
+                      className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20 disabled:opacity-50"
+                    >
+                      <option value="">
+                        {vendorItemsLoading ? "Loading..." : vendorItemCategoryOptions.length === 0 ? "No categories" : "Category..."}
+                      </option>
+                      {vendorItemCategoryOptions.map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
+                    </select>
+
+                    {/* Item */}
+                    <select
+                      value={item.existingProductId}
+                      onChange={e => applyVendorItem(idx, e.target.value)}
+                      disabled={!item.existingCategory || vendorItemsLoading}
+                      className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20 disabled:opacity-50"
+                    >
+                      <option value="">
+                        {!item.existingCategory ? "Select category" : filteredItems.length === 0 ? "No items" : "Item..."}
+                      </option>
+                      {filteredItems.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+
+                    {/* Qty */}
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={item.quantity}
+                      onChange={e => setItem(idx, "quantity", numOnly(e.target.value))}
+                      placeholder="0"
+                      className="h-9 text-sm text-center border-gray-200"
+                    />
+
+                    {/* Unit */}
+                    <select
+                      value={item.unit}
+                      onChange={e => setItem(idx, "unit", e.target.value)}
+                      className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20"
+                    >
+                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+
+                    {/* Cost/Unit */}
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={item.pricePerUnit}
+                        onChange={e => setItem(idx, "pricePerUnit", numOnly(e.target.value))}
+                        placeholder="0"
+                        className="h-9 text-sm pl-5 border-gray-200"
+                      />
+                    </div>
+
+                    {/* Row total */}
+                    <div className="text-right">
+                      <span className="text-sm font-semibold text-[#162B4D]">
+                        {rowTotal > 0 ? formatRupees(rowTotal) : <span className="text-gray-300">—</span>}
+                      </span>
+                    </div>
+
+                    {/* Delete */}
+                    <div className="flex items-center justify-center">
+                      {form.items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeItem(idx)}
+                          className="text-gray-300 hover:text-red-400 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       )}
                     </div>
                   </div>
-                </div>
+                );
+              })}
+            </div>
+
+            {/* Add row button */}
+            <button
+              type="button"
+              onClick={addItem}
+              className="mt-3 flex items-center gap-2 text-sm text-[#1A56DB] hover:text-[#1A56DB]/80 font-medium transition-colors px-2 py-1.5 rounded-lg hover:bg-blue-50"
+            >
+              <Plus className="w-4 h-4" /> Add Row
+            </button>
+          </div>
+
+          {/* ─── Summary + Actions ────────────────────────────── */}
+          <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between bg-gray-50/60">
+            <div className="text-sm text-gray-500">
+              {form.items.filter(i => i.existingProductId && Number(i.quantity) > 0).length} item(s) ready
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="text-right">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Grand Total</p>
+                <p className="text-xl font-bold text-[#162B4D]">{formatRupees(totalAmount)}</p>
               </div>
-            ))}
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={onBack} className="h-9">
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={saving}
+                  className="h-9 bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5"
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  {saving ? "Saving..." : "Save Purchase"}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* ─── Total ──────────────────────────────────────────── */}
-        <div className="bg-[#162B4D] text-white rounded-xl px-6 py-4 flex items-center justify-between">
-          <span className="font-semibold">Total Purchase Amount</span>
-          <span className="text-2xl font-bold">{formatRupees(totalAmount)}</span>
-        </div>
-
-        {/* ─── Notes ──────────────────────────────────────────── */}
-        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-          <FieldLabel>Notes</FieldLabel>
-          <Input value={form.notes} onChange={e => setField("notes", e.target.value)} placeholder="Any notes for this purchase..." />
-        </div>
-
-        {/* ─── Footer Actions ─────────────────────────────────── */}
-        <div className="flex items-center justify-between pb-4">
-          <Button type="button" variant="outline" onClick={onBack}>Back to Vendors</Button>
-          <Button type="submit" disabled={saving} className="bg-[#162B4D] hover:bg-[#1e3a6e] text-white gap-1.5">
-            <ShoppingCart className="w-4 h-4" />
-            {saving ? "Saving..." : "Save Purchase"}
-          </Button>
-        </div>
       </form>
-
     </div>
   );
 }
