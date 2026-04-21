@@ -125,6 +125,7 @@ function serializePurchase(doc: any) {
     id: String(doc._id),
     vendorId: String(doc.vendorId),
     vendorName: doc.vendorName ?? "",
+    vendorPhone: doc.vendorPhone ?? "",
     invoiceNumber: doc.invoiceNumber ?? "",
     status: doc.status ?? "saved",
     purchaseDate: doc.purchaseDate,
@@ -346,7 +347,19 @@ router.get("/all-purchases", async (req, res) => {
       Purchase.countDocuments(filter),
     ]);
 
-    res.json({ purchases: purchases.map(serializePurchase), total, page: pageNum, limit: limitNum });
+    const Vendor = getVendorModel();
+    const vendorIds = [...new Set(purchases.map((p: any) => String(p.vendorId)).filter(Boolean))];
+    const vendors = vendorIds.length
+      ? await Vendor.find({ _id: { $in: vendorIds } }).select("_id phone")
+      : [];
+    const phoneMap = new Map(vendors.map((v: any) => [String(v._id), v.phone || ""]));
+
+    const enriched = purchases.map((p) => {
+      const s = serializePurchase(p);
+      return { ...s, vendorPhone: s.vendorPhone || phoneMap.get(s.vendorId) || "" };
+    });
+
+    res.json({ purchases: enriched, total, page: pageNum, limit: limitNum });
   } catch (err) {
     req.log.error({ err }, "Failed to get all purchases");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch all purchases" });

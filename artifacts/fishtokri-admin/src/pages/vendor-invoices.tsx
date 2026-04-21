@@ -23,6 +23,7 @@ interface Invoice {
   purchaseDate: string;
   vendorId: string;
   vendorName: string;
+  vendorPhone?: string;
   totalAmount: number;
   status?: "draft" | "saved";
   notes?: string;
@@ -145,6 +146,51 @@ export default function VendorInvoices() {
     } catch (e: any) {
       toast({ title: "Delete failed", description: e.message, variant: "destructive" });
     } finally { setDeleteSaving(false); }
+  };
+
+  const buildShareText = (inv: Invoice) => {
+    const items = inv.items || [];
+    const totalQty = items.reduce((s: number, it: any) => s + Number(it.quantity || 0), 0);
+    const lines: string[] = [];
+    lines.push(`*Fishtokri - Invoice ${inv.invoiceNumber || ""}*`);
+    lines.push(`Date: ${formatDateDDMMYYYY(inv.purchaseDate)}`);
+    lines.push(`Vendor: ${inv.vendorName || "—"}`);
+    lines.push(`Status: ${(inv.status || "saved") === "draft" ? "Draft" : "Sent"}`);
+    lines.push("");
+    lines.push("Items:");
+    items.forEach((it: any, i: number) => {
+      lines.push(`${i + 1}. ${it.productName} - ${it.quantity} ${it.unit || ""} x ${formatRupees(it.pricePerUnit)} = ${formatRupees(it.totalPrice)}`);
+    });
+    lines.push("");
+    lines.push(`Total Items: ${items.length}  Qty: ${totalQty}`);
+    lines.push(`Grand Total: ${formatRupees(inv.totalAmount)}`);
+    if (inv.notes) { lines.push(""); lines.push(`Note: ${inv.notes}`); }
+    return lines.join("\n");
+  };
+
+  const shareWhatsApp = (inv: Invoice) => {
+    const text = encodeURIComponent(buildShareText(inv));
+    const phone = (inv.vendorPhone || "").replace(/\D/g, "");
+    const url = phone
+      ? `https://wa.me/${phone.length === 10 ? "91" + phone : phone}?text=${text}`
+      : `https://wa.me/?text=${text}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const shareMail = (inv: Invoice) => {
+    const subject = encodeURIComponent(`Invoice ${inv.invoiceNumber || ""} - Fishtokri`);
+    const body = encodeURIComponent(buildShareText(inv));
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  };
+
+  const printInvoice = (inv: Invoice) => {
+    const html = renderVoucherHTML(inv);
+    const w = window.open("", "_blank", "width=800,height=900");
+    if (!w) { toast({ title: "Allow pop-ups to print", variant: "destructive" }); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); }, 250);
   };
 
   const downloadInvoice = (inv: Invoice) => {
@@ -297,12 +343,21 @@ export default function VendorInvoices() {
                   <td className="px-3 py-3 text-right font-semibold text-gray-800">{formatRupees(inv.totalAmount)}</td>
                   <td className="px-3 py-3 text-right text-gray-500">{formatRupees(0)}</td>
                   <td className="px-3 py-3">
-                    <div className="flex items-center justify-center gap-1">
+                    <div className="flex items-center justify-center gap-0.5">
                       <button title="View" onClick={() => setViewTarget(inv)} className="p-1.5 rounded hover:bg-blue-50 text-blue-600">
                         <Eye className="w-4 h-4" />
                       </button>
                       <button title="Edit" onClick={() => openEdit(inv)} className="p-1.5 rounded hover:bg-amber-50 text-amber-600">
                         <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button title="Share on WhatsApp" onClick={() => shareWhatsApp(inv)} className="p-1.5 rounded hover:bg-emerald-50 text-emerald-600">
+                        <MessageCircle className="w-4 h-4" />
+                      </button>
+                      <button title="Share on Mail" onClick={() => shareMail(inv)} className="p-1.5 rounded hover:bg-sky-50 text-sky-600">
+                        <Mail className="w-4 h-4" />
+                      </button>
+                      <button title="Print" onClick={() => printInvoice(inv)} className="p-1.5 rounded hover:bg-gray-100 text-gray-600">
+                        <Printer className="w-4 h-4" />
                       </button>
                       <button title="Download" onClick={() => downloadInvoice(inv)} className="p-1.5 rounded hover:bg-emerald-50 text-emerald-600">
                         <Download className="w-4 h-4" />
@@ -397,11 +452,6 @@ export default function VendorInvoices() {
 // ---------------- Voucher Preview ----------------
 
 function VoucherPreviewDialog({ invoice, onClose }: { invoice: Invoice | null; onClose: () => void }) {
-  const { toast } = useToast();
-  const [tab, setTab] = useState<"voucher" | "attachments">("voucher");
-
-  useEffect(() => { if (invoice) setTab("voucher"); }, [invoice]);
-
   if (!invoice) return null;
 
   const items = invoice.items || [];
@@ -411,93 +461,15 @@ function VoucherPreviewDialog({ invoice, onClose }: { invoice: Invoice | null; o
   const dateObj = invoice.purchaseDate ? new Date(invoice.purchaseDate) : null;
   const timeStr = dateObj ? dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }) : "";
 
-  const buildShareText = () => {
-    const lines: string[] = [];
-    lines.push(`*Fishtokri - Invoice ${invoice.invoiceNumber || ""}*`);
-    lines.push(`Date: ${formatDateDDMMYYYY(invoice.purchaseDate)}${timeStr ? "  " + timeStr : ""}`);
-    lines.push(`Vendor: ${invoice.vendorName || "—"}`);
-    lines.push(`Status: ${(invoice.status || "saved") === "draft" ? "Draft" : "Sent"}`);
-    lines.push("");
-    lines.push("Items:");
-    items.forEach((it: any, i: number) => {
-      lines.push(`${i + 1}. ${it.productName} - ${it.quantity} ${it.unit || ""} x ${formatRupees(it.pricePerUnit)} = ${formatRupees(it.totalPrice)}`);
-    });
-    lines.push("");
-    lines.push(`Total Items: ${items.length}  Qty: ${totalQty}`);
-    lines.push(`Grand Total: ${formatRupees(grandTotal)}`);
-    if (invoice.notes) { lines.push(""); lines.push(`Note: ${invoice.notes}`); }
-    return lines.join("\n");
-  };
-
-  const shareWhatsApp = () => {
-    const text = encodeURIComponent(buildShareText());
-    window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
-  };
-
-  const shareMail = () => {
-    const subject = encodeURIComponent(`Invoice ${invoice.invoiceNumber || ""} - Fishtokri`);
-    const body = encodeURIComponent(buildShareText());
-    window.location.href = `mailto:?subject=${subject}&body=${body}`;
-  };
-
-  const printVoucher = () => {
-    const node = document.getElementById("voucher-print-area");
-    if (!node) return;
-    const w = window.open("", "_blank", "width=800,height=900");
-    if (!w) { toast({ title: "Allow pop-ups to print", variant: "destructive" }); return; }
-    w.document.write(`<!doctype html><html><head><title>Invoice ${invoice.invoiceNumber || ""}</title>
-      <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; color: #111; }
-        .v-title { text-align: center; font-weight: 700; font-size: 18px; margin: 0 0 4px; }
-        .v-row { display: flex; justify-content: space-between; font-size: 13px; margin: 2px 0; }
-        .v-sep { border-top: 1px dashed #999; margin: 8px 0; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th, td { padding: 4px 6px; text-align: left; }
-        th { border-bottom: 1px solid #333; }
-        .right { text-align: right; }
-        .total { font-weight: 700; font-size: 15px; }
-        .footer { text-align:center; font-size: 12px; margin-top: 12px; color: #444; }
-      </style></head><body>${node.innerHTML}</body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => { w.print(); }, 250);
-  };
-
   return (
     <Dialog open={!!invoice} onOpenChange={open => !open && onClose()}>
       <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
           <h2 className="text-base font-semibold text-gray-800">Voucher Preview</h2>
-          <div className="flex items-center gap-1">
-            <button onClick={shareWhatsApp} title="Share on WhatsApp" className="p-2 rounded-full hover:bg-emerald-50 text-emerald-600">
-              <MessageCircle className="w-4 h-4" />
-            </button>
-            <button onClick={shareMail} title="Share on Mail" className="p-2 rounded-full hover:bg-blue-50 text-blue-600">
-              <Mail className="w-4 h-4" />
-            </button>
-            <button onClick={printVoucher} title="Print Voucher" className="p-2 rounded-full hover:bg-gray-100 text-gray-600">
-              <Printer className="w-4 h-4" />
-            </button>
-          </div>
         </div>
 
-        {/* Tabs */}
-        <div className="px-5 border-b border-gray-200 flex items-center gap-6 text-sm">
-          <button
-            onClick={() => setTab("voucher")}
-            className={`py-2.5 -mb-px border-b-2 ${tab === "voucher" ? "border-[#1A56DB] text-[#1A56DB] font-medium" : "border-transparent text-gray-500"}`}
-          >Voucher</button>
-          <button
-            onClick={() => setTab("attachments")}
-            className={`py-2.5 -mb-px border-b-2 ${tab === "attachments" ? "border-[#1A56DB] text-[#1A56DB] font-medium" : "border-transparent text-gray-500"}`}
-          >Attachments</button>
-        </div>
-
-        {/* Body */}
         <div className="max-h-[70vh] overflow-y-auto p-5 bg-gray-50">
-          {tab === "voucher" ? (
-            <div id="voucher-print-area" className="bg-white max-w-md mx-auto p-5 text-[13px] text-gray-800 shadow-sm border border-gray-200 rounded">
+            <div className="bg-white max-w-md mx-auto p-5 text-[13px] text-gray-800 shadow-sm border border-gray-200 rounded">
               <h3 className="v-title text-center font-bold text-[15px] mb-1">Fishtokri- Atha Foods Private Limited</h3>
               <div className="v-sep border-t border-dashed border-gray-400 my-2" />
               <div className="text-center text-[12px]">Mobile No: 9220200100</div>
@@ -567,9 +539,6 @@ function VoucherPreviewDialog({ invoice, onClose }: { invoice: Invoice | null; o
                 regarding this invoice.
               </div>
             </div>
-          ) : (
-            <div className="text-center text-gray-400 text-sm py-12">No attachments</div>
-          )}
         </div>
 
         <div className="flex justify-end px-5 py-3 border-t border-gray-200 bg-white">
@@ -578,6 +547,62 @@ function VoucherPreviewDialog({ invoice, onClose }: { invoice: Invoice | null; o
       </DialogContent>
     </Dialog>
   );
+}
+
+function renderVoucherHTML(inv: Invoice): string {
+  const items = inv.items || [];
+  const totalQty = items.reduce((s: number, it: any) => s + Number(it.quantity || 0), 0);
+  const subTotal = items.reduce((s: number, it: any) => s + Number(it.totalPrice || 0), 0);
+  const grandTotal = Number(inv.totalAmount || subTotal);
+  const dateObj = inv.purchaseDate ? new Date(inv.purchaseDate) : null;
+  const timeStr = dateObj ? dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }) : "";
+  const rowsHTML = items.map((it: any) => `
+    <tr>
+      <td>${escapeHtml(it.productName || "")}</td>
+      <td class="right">${Number(it.quantity || 0)} ${escapeHtml(it.unit || "")}</td>
+      <td class="right">${Number(it.pricePerUnit || 0).toFixed(2)}</td>
+      <td class="right">${Number(it.totalPrice || 0).toFixed(2)}</td>
+    </tr>`).join("");
+  return `<!doctype html><html><head><title>Invoice ${escapeHtml(inv.invoiceNumber || "")}</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; color: #111; max-width: 480px; margin: 0 auto; }
+      h3 { text-align: center; margin: 0 0 4px; font-size: 16px; }
+      .center { text-align: center; font-size: 12px; }
+      .row { display: flex; justify-content: space-between; font-size: 13px; margin: 2px 0; }
+      .sep { border-top: 1px dashed #999; margin: 8px 0; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+      th, td { padding: 4px 6px; text-align: left; }
+      th { border-bottom: 1px solid #333; }
+      .right { text-align: right; }
+      .total { font-weight: 700; font-size: 16px; display: flex; justify-content: space-between; }
+      .footer { text-align:center; font-size: 12px; margin-top: 12px; color: #444; }
+    </style></head><body>
+    <h3>Fishtokri- Atha Foods Private Limited</h3>
+    <div class="sep"></div>
+    <div class="center">Mobile No: 9220200100</div>
+    <div class="row"><span><b>Invoice No:</b> ${escapeHtml(inv.invoiceNumber || "—")}</span><span><b>Date:</b> ${escapeHtml(formatDateDDMMYYYY(inv.purchaseDate))}</span></div>
+    <div class="row"><span><b>Payment Mode:</b> ${(inv.status || "saved") === "draft" ? "Due" : "Paid"}</span><span><b>Time:</b> ${escapeHtml(timeStr || "—")}</span></div>
+    <div class="sep"></div>
+    <div><b>Name:</b> ${escapeHtml(inv.vendorName || "—")}</div>
+    <div><b>Add :</b> India</div>
+    <div class="sep"></div>
+    <table>
+      <thead><tr><th>Item</th><th class="right">Qty</th><th class="right">Rate</th><th class="right">Amount</th></tr></thead>
+      <tbody>${rowsHTML}
+        <tr style="border-top:1px solid #555;"><td><b>Total Items: ${items.length}</b></td><td class="right"><b>${totalQty}</b></td><td></td><td class="right"><b>${subTotal.toFixed(2)}</b></td></tr>
+        <tr><td colspan="3">Discount :</td><td class="right">- 0.00</td></tr>
+      </tbody>
+    </table>
+    <div class="sep"></div>
+    <div class="total"><span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span></div>
+    <div class="center" style="margin-top:4px;">( ${escapeHtml(numberToWordsINR(grandTotal))} )</div>
+    ${inv.notes ? `<div class="sep"></div><div style="font-size:12px;"><b>Note:</b> ${escapeHtml(inv.notes)}</div>` : ""}
+    <div class="footer">Thank you for your business!<br/>We appreciate your prompt payment.<br/>Please feel free to contact us if you have any questions<br/>regarding this invoice.</div>
+    </body></html>`;
+}
+
+function escapeHtml(s: string): string {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
 
 function numberToWordsINR(num: number): string {
