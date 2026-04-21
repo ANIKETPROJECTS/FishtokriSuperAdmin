@@ -1112,6 +1112,7 @@ export default function Orders() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {!isCreatePage && (<>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -1419,6 +1420,7 @@ export default function Orders() {
           </div>
         )}
       </div>
+      </>)}
 
       {/* Edit Order Modal */}
       <Dialog open={!!editingOrder} onOpenChange={(o) => { if (!o) setEditingOrder(null); }}>
@@ -1551,9 +1553,9 @@ export default function Orders() {
 
       {/* Create Order Page */}
       {isCreatePage && (
-      <div className="fixed inset-0 z-40 bg-gray-50 overflow-y-auto">
-        <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
-          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        <div className="bg-white border-b border-gray-200">
+          <div className="px-4 sm:px-6 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
@@ -1586,7 +1588,7 @@ export default function Orders() {
           </div>
         </div>
 
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 pb-28">
+        <div className="px-4 sm:px-6 py-5">
           <div className="space-y-5 pt-1">
             {/* HUB SELECTION (must be picked first) */}
             <div className="space-y-2 p-3 rounded-2xl border border-blue-100 bg-blue-50/40">
@@ -2573,8 +2575,8 @@ export default function Orders() {
 
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-gray-200">
-          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex justify-end gap-2">
+        <div className="bg-white border-t border-gray-200">
+          <div className="px-4 sm:px-6 py-3 flex justify-end gap-2">
             <Button variant="outline" onClick={() => { setLocation("/orders"); resetCreateForm(); }} disabled={creatingSaving} className="h-9">Cancel</Button>
             <Button onClick={handleCreateOrder} disabled={creatingSaving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 text-white gap-1.5">
               {creatingSaving ? "Creating..." : (<><Plus className="w-3.5 h-3.5" /> Create Order</>)}
