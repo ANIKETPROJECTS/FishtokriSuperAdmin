@@ -14,12 +14,15 @@ const customerSchema = new mongoose.Schema(
     name: String,
     email: String,
     phone: String,
+    alternatePhone: String,
     dateOfBirth: String,
+    gender: String,
+    notes: String,
     addresses: { type: Array, default: [] },
     orders: { type: Array, default: [] },
     usedCoupons: { type: Array, default: [] },
   },
-  { timestamps: true }
+  { timestamps: true, strict: false }
 );
 
 async function getCustomerModel() {
@@ -34,13 +37,38 @@ function serializeCustomer(doc: any) {
     name: doc.name ?? "",
     email: doc.email ?? "",
     phone: doc.phone ?? "",
+    alternatePhone: doc.alternatePhone ?? "",
     dateOfBirth: doc.dateOfBirth ?? "",
+    gender: doc.gender ?? "",
+    notes: doc.notes ?? "",
     addresses: doc.addresses ?? [],
     orders: doc.orders ?? [],
     usedCoupons: doc.usedCoupons ?? [],
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
+}
+
+function sanitizeAddresses(addresses: any): any[] {
+  if (!Array.isArray(addresses)) return [];
+  return addresses
+    .map((a) => {
+      if (!a || typeof a !== "object") return null;
+      const cleaned: Record<string, any> = {};
+      const keep = [
+        "label", "type", "name", "phone",
+        "houseNo", "flatNo", "building", "society", "apartment",
+        "street", "addressLine1", "addressLine2", "area", "locality",
+        "landmark", "city", "state", "pincode", "zipCode",
+        "instructions", "deliveryInstructions",
+        "latitude", "longitude", "isDefault",
+      ];
+      for (const k of keep) {
+        if (a[k] !== undefined && a[k] !== null && a[k] !== "") cleaned[k] = a[k];
+      }
+      return Object.keys(cleaned).length ? cleaned : null;
+    })
+    .filter(Boolean);
 }
 
 function normalize(value: any) {
@@ -212,32 +240,49 @@ router.get("/:id", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const Customer = await getCustomerModel();
-    const { name, email, phone, dateOfBirth, addresses } = req.body;
+    const { name, email, phone, alternatePhone, dateOfBirth, gender, notes, addresses } = req.body;
 
-    if (!name || !email) {
-      res.status(400).json({ error: "ValidationError", message: "Name and email are required" });
+    if (!name || !String(name).trim()) {
+      res.status(400).json({ error: "ValidationError", message: "Name is required" });
+      return;
+    }
+    if (!phone || !/^\d{10}$/.test(String(phone).trim())) {
+      res.status(400).json({ error: "ValidationError", message: "A valid 10-digit phone number is required" });
       return;
     }
 
-    const existing = await Customer.findOne({ email: email.toLowerCase().trim() });
-    if (existing) {
-      res.status(400).json({ error: "DuplicateEmail", message: "A customer with this email already exists" });
+    const phoneTrim = String(phone).trim();
+    const emailTrim = email ? String(email).toLowerCase().trim() : "";
+
+    const phoneClash = await Customer.findOne({ phone: phoneTrim });
+    if (phoneClash) {
+      res.status(400).json({ error: "DuplicatePhone", message: "A customer with this phone number already exists" });
       return;
+    }
+    if (emailTrim) {
+      const existing = await Customer.findOne({ email: emailTrim });
+      if (existing) {
+        res.status(400).json({ error: "DuplicateEmail", message: "A customer with this email already exists" });
+        return;
+      }
     }
 
     const customer = await Customer.create({
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
-      phone: phone?.trim() ?? "",
-      dateOfBirth: dateOfBirth ?? "",
-      addresses: addresses ?? [],
+      name: String(name).trim(),
+      email: emailTrim || null,
+      phone: phoneTrim,
+      alternatePhone: alternatePhone ? String(alternatePhone).trim() : "",
+      dateOfBirth: dateOfBirth ?? null,
+      gender: gender ?? "",
+      notes: notes ?? "",
+      addresses: sanitizeAddresses(addresses),
       orders: [],
     });
 
     res.status(201).json({ customer: serializeCustomer(customer) });
   } catch (err: any) {
     if (err.code === 11000) {
-      res.status(400).json({ error: "DuplicateEmail", message: "A customer with this email already exists" });
+      res.status(400).json({ error: "DuplicateField", message: "A customer with this email or phone already exists" });
       return;
     }
     req.log.error({ err }, "Failed to create customer");
@@ -251,21 +296,35 @@ router.put("/:id", async (req, res) => {
     const customer = await Customer.findById(req.params.id);
     if (!customer) { res.status(404).json({ error: "NotFound", message: "Customer not found" }); return; }
 
-    const { name, email, phone, dateOfBirth, addresses } = req.body;
+    const { name, email, phone, alternatePhone, dateOfBirth, gender, notes, addresses } = req.body;
 
-    if (email && email.toLowerCase().trim() !== String(customer.email)) {
-      const existing = await Customer.findOne({ email: email.toLowerCase().trim(), _id: { $ne: customer._id } });
+    if (email !== undefined && email && String(email).toLowerCase().trim() !== String(customer.email ?? "")) {
+      const existing = await Customer.findOne({ email: String(email).toLowerCase().trim(), _id: { $ne: customer._id } });
       if (existing) {
         res.status(400).json({ error: "DuplicateEmail", message: "A customer with this email already exists" });
         return;
       }
     }
+    if (phone !== undefined && phone && String(phone).trim() !== String((customer as any).phone ?? "")) {
+      if (!/^\d{10}$/.test(String(phone).trim())) {
+        res.status(400).json({ error: "ValidationError", message: "Phone must be exactly 10 digits" });
+        return;
+      }
+      const existing = await Customer.findOne({ phone: String(phone).trim(), _id: { $ne: customer._id } });
+      if (existing) {
+        res.status(400).json({ error: "DuplicatePhone", message: "A customer with this phone number already exists" });
+        return;
+      }
+    }
 
-    if (name !== undefined) customer.name = name.trim();
-    if (email !== undefined) customer.email = email.toLowerCase().trim();
-    if (phone !== undefined) (customer as any).phone = phone.trim();
+    if (name !== undefined) customer.name = String(name).trim();
+    if (email !== undefined) (customer as any).email = email ? String(email).toLowerCase().trim() : null;
+    if (phone !== undefined) (customer as any).phone = String(phone).trim();
+    if (alternatePhone !== undefined) (customer as any).alternatePhone = String(alternatePhone).trim();
     if (dateOfBirth !== undefined) (customer as any).dateOfBirth = dateOfBirth;
-    if (addresses !== undefined) (customer as any).addresses = addresses;
+    if (gender !== undefined) (customer as any).gender = gender;
+    if (notes !== undefined) (customer as any).notes = notes;
+    if (addresses !== undefined) (customer as any).addresses = sanitizeAddresses(addresses);
 
     await customer.save();
     res.json({ customer: serializeCustomer(customer) });

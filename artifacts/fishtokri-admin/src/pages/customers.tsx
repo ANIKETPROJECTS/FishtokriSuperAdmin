@@ -39,7 +39,10 @@ interface Customer {
   name: string;
   email: string;
   phone: string;
+  alternatePhone?: string;
   dateOfBirth: string;
+  gender?: string;
+  notes?: string;
   addresses: any[];
   orders: any[];
   usedCoupons?: any[];
@@ -1131,6 +1134,50 @@ function OrderMeta({ icon: Icon, label, value }: { icon: any; label: string; val
   );
 }
 
+type AddressDraft = {
+  label: string;
+  type: string;
+  name: string;
+  phone: string;
+  houseNo: string;
+  building: string;
+  street: string;
+  area: string;
+  landmark: string;
+  city: string;
+  state: string;
+  pincode: string;
+  instructions: string;
+  isDefault: boolean;
+};
+
+function emptyAddress(): AddressDraft {
+  return {
+    label: "Home", type: "house", name: "", phone: "",
+    houseNo: "", building: "", street: "", area: "", landmark: "",
+    city: "", state: "", pincode: "", instructions: "", isDefault: false,
+  };
+}
+
+function addressFromExisting(a: any): AddressDraft {
+  return {
+    label: a?.label ?? a?.type ?? "Home",
+    type: a?.type ?? "house",
+    name: a?.name ?? a?.contactName ?? "",
+    phone: a?.phone ?? a?.contactPhone ?? a?.mobile ?? "",
+    houseNo: a?.houseNo ?? a?.flatNo ?? a?.house ?? a?.apartment ?? "",
+    building: a?.building ?? a?.buildingName ?? a?.society ?? "",
+    street: a?.street ?? a?.streetName ?? a?.road ?? a?.addressLine1 ?? "",
+    area: a?.area ?? a?.locality ?? a?.neighbourhood ?? "",
+    landmark: a?.landmark ?? "",
+    city: a?.city ?? "",
+    state: a?.state ?? "",
+    pincode: a?.pincode ?? a?.zipCode ?? a?.zip ?? "",
+    instructions: a?.instructions ?? a?.deliveryInstructions ?? "",
+    isDefault: !!a?.isDefault,
+  };
+}
+
 function CustomerModal({
   isOpen, onClose, customer, onSuccess,
 }: {
@@ -1142,17 +1189,29 @@ function CustomerModal({
   const isEditing = !!customer;
   const { toast } = useToast();
 
-  const [name, setName] = useState(customer?.name ?? "");
-  const [email, setEmail] = useState(customer?.email ?? "");
-  const [phone, setPhone] = useState(customer?.phone ?? "");
-  const [dob, setDob] = useState(customer?.dateOfBirth ?? "");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [altPhone, setAltPhone] = useState("");
+  const [dob, setDob] = useState("");
+  const [gender, setGender] = useState("");
+  const [notes, setNotes] = useState("");
+  const [addresses, setAddresses] = useState<AddressDraft[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const reset = useCallback(() => {
     setName(customer?.name ?? "");
     setEmail(customer?.email ?? "");
     setPhone(customer?.phone ?? "");
+    setAltPhone(customer?.alternatePhone ?? "");
     setDob(customer?.dateOfBirth ?? "");
+    setGender(customer?.gender ?? "");
+    setNotes(customer?.notes ?? "");
+    setAddresses(
+      Array.isArray(customer?.addresses) && customer!.addresses.length
+        ? customer!.addresses.map(addressFromExisting)
+        : []
+    );
     setErrors({});
   }, [customer]);
 
@@ -1184,20 +1243,62 @@ function CustomerModal({
     },
   });
 
+  const updateAddress = (idx: number, patch: Partial<AddressDraft>) => {
+    setAddresses((prev) => prev.map((a, i) => (i === idx ? { ...a, ...patch } : a)));
+  };
+
+  const setDefaultAddress = (idx: number) => {
+    setAddresses((prev) => prev.map((a, i) => ({ ...a, isDefault: i === idx })));
+  };
+
   const validate = () => {
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = "Name is required";
-    if (!email.trim()) e.email = "Email is required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "Invalid email format";
-    if (phone && !/^\d{10}$/.test(phone.trim())) e.phone = "Phone must be exactly 10 digits";
+    if (!phone.trim()) e.phone = "Phone is required";
+    else if (!/^\d{10}$/.test(phone.trim())) e.phone = "Phone must be exactly 10 digits";
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) e.email = "Invalid email format";
+    if (altPhone.trim() && !/^\d{10}$/.test(altPhone.trim())) e.altPhone = "Alternate phone must be 10 digits";
+    if (dob.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(dob.trim())) e.dob = "Use YYYY-MM-DD format";
+    addresses.forEach((a, i) => {
+      const hasAny = a.houseNo || a.building || a.street || a.area || a.city || a.state || a.pincode;
+      if (hasAny) {
+        if (!a.pincode.trim()) e[`addr_${i}_pincode`] = "Pincode required";
+        else if (!/^\d{6}$/.test(a.pincode.trim())) e[`addr_${i}_pincode`] = "Pincode must be 6 digits";
+        if (a.phone.trim() && !/^\d{10}$/.test(a.phone.trim())) e[`addr_${i}_phone`] = "Phone must be 10 digits";
+      }
+    });
     return e;
   };
 
   const handleSubmit = () => {
     const e = validate();
     setErrors(e);
-    if (Object.keys(e).length > 0) return;
-    const payload = { name: name.trim(), email: email.trim(), phone: phone.trim(), dateOfBirth: dob.trim() };
+    if (Object.keys(e).length > 0) {
+      toast({ title: "Please fix the highlighted errors", variant: "destructive" });
+      return;
+    }
+    const cleanAddresses = addresses
+      .map((a) => {
+        const out: Record<string, any> = {};
+        (Object.keys(a) as (keyof AddressDraft)[]).forEach((k) => {
+          const v = a[k];
+          if (typeof v === "string") { if (v.trim()) out[k] = v.trim(); }
+          else if (v) out[k] = v;
+        });
+        return out;
+      })
+      .filter((a) => Object.keys(a).filter((k) => k !== "label" && k !== "type").length > 0);
+
+    const payload: any = {
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      alternatePhone: altPhone.trim(),
+      dateOfBirth: dob.trim(),
+      gender: gender.trim(),
+      notes: notes.trim(),
+      addresses: cleanAddresses,
+    };
     if (isEditing) updateMutation.mutate(payload);
     else createMutation.mutate(payload);
   };
@@ -1206,32 +1307,177 @@ function CustomerModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(v) => { if (!v) { onClose(); reset(); } }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Customer" : "Add Customer"}</DialogTitle>
-          <DialogDescription>{isEditing ? "Update the customer's details below." : "Fill in the details to add a new customer."}</DialogDescription>
+          <DialogDescription>
+            {isEditing ? "Update the customer's profile, contact info and saved addresses." : "Capture the customer's full profile, contact info and one or more delivery addresses."}
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-gray-700">Name <span className="text-red-500">*</span></Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className={errors.name ? "border-red-400" : ""} />
-            {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-gray-700">Email <span className="text-red-500">*</span></Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" className={errors.email ? "border-red-400" : ""} />
-            {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-gray-700">Phone</Label>
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit number" className={errors.phone ? "border-red-400" : ""} />
-            {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-gray-700">Date of Birth</Label>
-            <Input value={dob} onChange={(e) => setDob(e.target.value)} placeholder="YYYY-MM-DD" />
-          </div>
+
+        <div className="space-y-5 py-2">
+          <section className="rounded-xl border border-gray-100 bg-gray-50/40 p-4">
+            <h4 className="text-sm font-bold text-[#162B4D] mb-3 flex items-center gap-2">
+              <UserRound className="w-4 h-4 text-[#1A56DB]" />Personal details
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Field label="Full name" required error={errors.name}>
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className={errors.name ? "border-red-400" : ""} />
+              </Field>
+              <Field label="Phone" required error={errors.phone}>
+                <Input value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="10-digit number" className={errors.phone ? "border-red-400" : ""} />
+              </Field>
+              <Field label="Email" error={errors.email}>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" className={errors.email ? "border-red-400" : ""} />
+              </Field>
+              <Field label="Alternate phone" error={errors.altPhone}>
+                <Input value={altPhone} onChange={(e) => setAltPhone(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="Optional 10-digit number" className={errors.altPhone ? "border-red-400" : ""} />
+              </Field>
+              <Field label="Date of birth" error={errors.dob}>
+                <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className={errors.dob ? "border-red-400" : ""} />
+              </Field>
+              <Field label="Gender">
+                <Select value={gender || "unspecified"} onValueChange={(v) => setGender(v === "unspecified" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unspecified">Prefer not to say</SelectItem>
+                    <SelectItem value="male">Male</SelectItem>
+                    <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <div className="md:col-span-2">
+                <Field label="Internal notes">
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Anything the team should know about this customer (preferences, allergies, VIP, etc.)"
+                    className="w-full text-sm rounded-md border border-gray-200 bg-white px-3 py-2 outline-none focus:ring-1 focus:ring-[#1A56DB] focus:border-[#1A56DB]"
+                  />
+                </Field>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-gray-100 bg-gray-50/40 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-bold text-[#162B4D] flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-[#1A56DB]" />
+                Addresses ({addresses.length})
+              </h4>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setAddresses((prev) => [...prev, emptyAddress()])}
+                className="h-8 gap-1.5 text-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add address
+              </Button>
+            </div>
+
+            {addresses.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-200 bg-white py-6 text-center text-xs text-gray-400">
+                No addresses yet. Click "Add address" to add one or more delivery locations.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {addresses.map((a, i) => (
+                  <div key={i} className="rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Address {i + 1}</span>
+                        {a.isDefault && (
+                          <span className="text-[10px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">Default</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!a.isDefault && (
+                          <button
+                            type="button"
+                            onClick={() => setDefaultAddress(i)}
+                            className="text-[11px] text-[#1A56DB] hover:underline font-medium"
+                          >
+                            Make default
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setAddresses((prev) => prev.filter((_, j) => j !== i))}
+                          className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"
+                          title="Remove address"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <Field label="Label">
+                        <Select value={a.label || "Home"} onValueChange={(v) => updateAddress(i, { label: v, type: v.toLowerCase() })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Home">Home</SelectItem>
+                            <SelectItem value="Work">Work</SelectItem>
+                            <SelectItem value="Other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field label="Contact name at this address">
+                        <Input value={a.name} onChange={(e) => updateAddress(i, { name: e.target.value })} placeholder="Recipient name" />
+                      </Field>
+                      <Field label="Contact phone" error={errors[`addr_${i}_phone`]}>
+                        <Input
+                          value={a.phone}
+                          onChange={(e) => updateAddress(i, { phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
+                          placeholder="10-digit number"
+                          className={errors[`addr_${i}_phone`] ? "border-red-400" : ""}
+                        />
+                      </Field>
+                      <Field label="House / Flat no.">
+                        <Input value={a.houseNo} onChange={(e) => updateAddress(i, { houseNo: e.target.value })} placeholder="A-101" />
+                      </Field>
+                      <Field label="Building / Society">
+                        <Input value={a.building} onChange={(e) => updateAddress(i, { building: e.target.value })} placeholder="Building or society name" />
+                      </Field>
+                      <Field label="Street / Road">
+                        <Input value={a.street} onChange={(e) => updateAddress(i, { street: e.target.value })} placeholder="Street name" />
+                      </Field>
+                      <Field label="Area / Locality">
+                        <Input value={a.area} onChange={(e) => updateAddress(i, { area: e.target.value })} placeholder="Locality" />
+                      </Field>
+                      <Field label="Landmark">
+                        <Input value={a.landmark} onChange={(e) => updateAddress(i, { landmark: e.target.value })} placeholder="Near..." />
+                      </Field>
+                      <Field label="City">
+                        <Input value={a.city} onChange={(e) => updateAddress(i, { city: e.target.value })} placeholder="City" />
+                      </Field>
+                      <Field label="State">
+                        <Input value={a.state} onChange={(e) => updateAddress(i, { state: e.target.value })} placeholder="State" />
+                      </Field>
+                      <Field label="Pincode" required={!!(a.houseNo || a.building || a.street || a.area || a.city || a.state)} error={errors[`addr_${i}_pincode`]}>
+                        <Input
+                          value={a.pincode}
+                          onChange={(e) => updateAddress(i, { pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                          placeholder="6-digit pincode"
+                          className={errors[`addr_${i}_pincode`] ? "border-red-400" : ""}
+                        />
+                      </Field>
+                      <div className="md:col-span-2">
+                        <Field label="Delivery instructions">
+                          <Input value={a.instructions} onChange={(e) => updateAddress(i, { instructions: e.target.value })} placeholder="e.g. Ring the bell twice, leave at the door, etc." />
+                        </Field>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
+
         <DialogFooter>
           <Button variant="outline" onClick={() => { onClose(); reset(); }} disabled={isPending}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={isPending} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white">
@@ -1240,6 +1486,18 @@ function CustomerModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function Field({ label, required, error, children }: { label: string; required?: boolean; error?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-medium text-gray-700">
+        {label} {required && <span className="text-red-500">*</span>}
+      </Label>
+      {children}
+      {error && <p className="text-xs text-red-500">{error}</p>}
+    </div>
   );
 }
 
