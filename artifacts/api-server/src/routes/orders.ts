@@ -1,8 +1,14 @@
 import { Router } from "express";
 import mongoose from "mongoose";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
+import { getCustomersConnection } from "../db/customers-connection.js";
 
 const router = Router();
+
+async function getCustomersCollection() {
+  const conn = await getCustomersConnection();
+  return conn.db.collection("customers");
+}
 
 const ORDERS_DB = "orders";
 const COLLECTION = "orders";
@@ -97,6 +103,118 @@ router.get("/stats", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to get order stats");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch order stats" });
+  }
+});
+
+// POST /api/orders — create new order manually (admin)
+router.post("/", async (req, res) => {
+  try {
+    const {
+      customerId,
+      customerName,
+      phone,
+      email,
+      items,
+      deliveryType,
+      address,
+      deliveryArea,
+      notes,
+      status,
+      subHubId,
+      subHubName,
+      superHubId,
+      superHubName,
+      createCustomerIfMissing,
+    } = req.body ?? {};
+
+    if (!customerName || !String(customerName).trim()) {
+      res.status(400).json({ error: "ValidationError", message: "Customer name is required" });
+      return;
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: "ValidationError", message: "At least one item is required" });
+      return;
+    }
+    const dt = deliveryType === "takeaway" ? "takeaway" : "delivery";
+    if (dt === "delivery" && !String(address ?? "").trim()) {
+      res.status(400).json({ error: "ValidationError", message: "Delivery address is required" });
+      return;
+    }
+
+    const cleanItems = items.map((it: any) => ({
+      productId: it.productId ? String(it.productId) : undefined,
+      name: String(it.name ?? "").trim(),
+      price: Number(it.price) || 0,
+      quantity: Number(it.quantity) || 1,
+      unit: it.unit ?? "",
+    })).filter((it: any) => it.name);
+
+    if (cleanItems.length === 0) {
+      res.status(400).json({ error: "ValidationError", message: "Items must have a name" });
+      return;
+    }
+
+    let resolvedCustomerId: string | undefined = customerId ? String(customerId) : undefined;
+
+    // Optionally create customer if missing
+    if (!resolvedCustomerId && createCustomerIfMissing && (email || phone)) {
+      const cCol = await getCustomersCollection();
+      const existing = email
+        ? await cCol.findOne({ email: String(email).toLowerCase().trim() })
+        : await cCol.findOne({ phone: String(phone).trim() });
+      if (existing) {
+        resolvedCustomerId = String(existing._id);
+      } else {
+        const newCustomer = {
+          name: String(customerName).trim(),
+          email: email ? String(email).toLowerCase().trim() : "",
+          phone: phone ? String(phone).trim() : "",
+          dateOfBirth: "",
+          addresses: dt === "delivery" && address
+            ? [{ label: "Home", address: String(address).trim(), area: deliveryArea ?? "" }]
+            : [],
+          orders: [],
+          usedCoupons: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        const insert = await cCol.insertOne(newCustomer as any);
+        resolvedCustomerId = String(insert.insertedId);
+      }
+    }
+
+    const total = cleanItems.reduce((s: number, i: any) => s + i.price * i.quantity, 0);
+
+    const orderDoc: any = {
+      customerId: resolvedCustomerId ?? undefined,
+      customerName: String(customerName).trim(),
+      phone: phone ? String(phone).trim() : "",
+      email: email ? String(email).trim() : "",
+      items: cleanItems,
+      total,
+      deliveryType: dt,
+      address: dt === "delivery" ? String(address ?? "").trim() : "",
+      deliveryArea: dt === "delivery" ? String(deliveryArea ?? "").trim() : "",
+      pickupLocation: dt === "takeaway" ? (subHubName || "FishTokri Store") : "",
+      notes: notes ? String(notes).trim() : "",
+      status: status || "pending",
+      source: "admin_manual",
+      subHubId: subHubId ? String(subHubId) : undefined,
+      subHubName: subHubName ?? undefined,
+      superHubId: superHubId ? String(superHubId) : undefined,
+      superHubName: superHubName ?? undefined,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    Object.keys(orderDoc).forEach((k) => orderDoc[k] === undefined && delete orderDoc[k]);
+
+    const conn = await getOrdersDb();
+    const result = await conn.db.collection(COLLECTION).insertOne(orderDoc);
+    res.status(201).json({ order: { ...orderDoc, _id: result.insertedId } });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create order");
+    res.status(500).json({ error: "InternalError", message: "Failed to create order" });
   }
 });
 

@@ -4,11 +4,12 @@ import {
   Truck, Package, ChevronLeft, ChevronRight, Eye, MapPin,
   Phone, User, SlidersHorizontal, ArrowUpDown, UserCheck,
   ShoppingBag, Building2, AlertCircle, ChevronDown, Check,
-  Pencil, Trash2,
+  Pencil, Trash2, Plus, Store, Home, Trash, Mail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -300,6 +301,143 @@ export default function Orders() {
   const [deletingOrder, setDeletingOrder] = useState<any>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
+  // Create order
+  const [creatingOrder, setCreatingOrder] = useState(false);
+  const [creatingSaving, setCreatingSaving] = useState(false);
+  const [customerMode, setCustomerMode] = useState<"existing" | "new">("existing");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerResults, setCustomerResults] = useState<any[]>([]);
+  const [customerSearching, setCustomerSearching] = useState(false);
+  const [chosenCustomer, setChosenCustomer] = useState<any>(null);
+  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "" });
+  const [orderItems, setOrderItems] = useState<{ name: string; price: string; quantity: string; unit: string }[]>([
+    { name: "", price: "", quantity: "1", unit: "" },
+  ]);
+  const [orderDeliveryType, setOrderDeliveryType] = useState<"delivery" | "takeaway">("delivery");
+  const [orderAddress, setOrderAddress] = useState("");
+  const [orderArea, setOrderArea] = useState("");
+  const [orderAddressMode, setOrderAddressMode] = useState<"saved" | "new">("saved");
+  const [selectedAddressIdx, setSelectedAddressIdx] = useState<number | null>(null);
+  const [orderNotes, setOrderNotes] = useState("");
+
+  const resetCreateForm = useCallback(() => {
+    setCustomerMode("existing");
+    setCustomerSearch(""); setCustomerResults([]); setChosenCustomer(null);
+    setNewCustomer({ name: "", phone: "", email: "" });
+    setOrderItems([{ name: "", price: "", quantity: "1", unit: "" }]);
+    setOrderDeliveryType("delivery");
+    setOrderAddress(""); setOrderArea("");
+    setOrderAddressMode("saved"); setSelectedAddressIdx(null);
+    setOrderNotes("");
+  }, []);
+
+  // Search customers (debounced)
+  useEffect(() => {
+    if (!creatingOrder || customerMode !== "existing") return;
+    const q = customerSearch.trim();
+    if (!q) { setCustomerResults([]); return; }
+    setCustomerSearching(true);
+    const t = setTimeout(() => {
+      apiFetch(`/api/customers?search=${encodeURIComponent(q)}&limit=10`)
+        .then((d) => setCustomerResults(d.customers ?? []))
+        .catch(() => setCustomerResults([]))
+        .finally(() => setCustomerSearching(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [customerSearch, customerMode, creatingOrder]);
+
+  const newOrderTotal = useMemo(() => {
+    return orderItems.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
+  }, [orderItems]);
+
+  const handleCreateOrder = async () => {
+    // Validate customer
+    let customerName = "";
+    let phone = "";
+    let email = "";
+    let customerId: string | undefined;
+
+    if (customerMode === "existing") {
+      if (!chosenCustomer) {
+        toast({ title: "Select a customer", description: "Pick an existing customer or switch to 'New Customer'.", variant: "destructive" });
+        return;
+      }
+      customerName = chosenCustomer.name;
+      phone = chosenCustomer.phone;
+      email = chosenCustomer.email;
+      customerId = chosenCustomer.id;
+    } else {
+      if (!newCustomer.name.trim()) {
+        toast({ title: "Customer name required", variant: "destructive" });
+        return;
+      }
+      if (!newCustomer.phone.trim() && !newCustomer.email.trim()) {
+        toast({ title: "Phone or email required", description: "Provide at least one contact.", variant: "destructive" });
+        return;
+      }
+      customerName = newCustomer.name.trim();
+      phone = newCustomer.phone.trim();
+      email = newCustomer.email.trim();
+    }
+
+    // Validate items
+    const cleanItems = orderItems
+      .map((it) => ({
+        name: it.name.trim(),
+        price: Number(it.price) || 0,
+        quantity: Number(it.quantity) || 0,
+        unit: it.unit.trim(),
+      }))
+      .filter((it) => it.name && it.quantity > 0);
+    if (cleanItems.length === 0) {
+      toast({ title: "Add at least one item", description: "Each item needs a name and quantity.", variant: "destructive" });
+      return;
+    }
+
+    // Resolve address for delivery
+    let address = "";
+    let deliveryArea = "";
+    if (orderDeliveryType === "delivery") {
+      if (chosenCustomer && orderAddressMode === "saved" && selectedAddressIdx !== null) {
+        const a = (chosenCustomer.addresses ?? [])[selectedAddressIdx];
+        address = a?.address ?? a?.line1 ?? a?.fullAddress ?? "";
+        deliveryArea = a?.area ?? a?.locality ?? a?.city ?? "";
+      } else {
+        address = orderAddress.trim();
+        deliveryArea = orderArea.trim();
+      }
+      if (!address) {
+        toast({ title: "Delivery address required", variant: "destructive" });
+        return;
+      }
+    }
+
+    setCreatingSaving(true);
+    try {
+      const payload: any = {
+        customerId,
+        customerName, phone, email,
+        items: cleanItems,
+        deliveryType: orderDeliveryType,
+        address,
+        deliveryArea,
+        notes: orderNotes.trim(),
+        status: "pending",
+        createCustomerIfMissing: customerMode === "new",
+      };
+      await apiFetch("/api/orders", { method: "POST", body: JSON.stringify(payload) });
+      toast({ title: "Order created", description: `${customerName} · ${formatRupees(cleanItems.reduce((s, i) => s + i.price * i.quantity, 0))}` });
+      setCreatingOrder(false);
+      resetCreateForm();
+      load();
+      loadStats();
+    } catch (err: any) {
+      toast({ title: "Failed to create order", description: err.message, variant: "destructive" });
+    } finally {
+      setCreatingSaving(false);
+    }
+  };
+
   useEffect(() => {
     apiFetch("/api/users?role=delivery_person&limit=100")
       .then((d) => setDeliveryPersons(d.users ?? []))
@@ -493,9 +631,14 @@ export default function Orders() {
           <h1 className="text-2xl font-bold text-[#162B4D]">Orders</h1>
           <p className="text-gray-400 text-sm mt-0.5">Track and manage all customer orders</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { load(); loadStats(); }} className="h-8 gap-1.5 text-gray-500">
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => { load(); loadStats(); }} className="h-8 gap-1.5 text-gray-500">
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </Button>
+          <Button size="sm" onClick={() => { resetCreateForm(); setCreatingOrder(true); }} className="h-8 gap-1.5 bg-[#1A56DB] hover:bg-[#1447B4] text-white">
+            <Plus className="w-3.5 h-3.5" /> New Order
+          </Button>
+        </div>
       </div>
 
       {/* Stat Cards */}
@@ -916,6 +1059,254 @@ export default function Orders() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Order Modal */}
+      <Dialog open={creatingOrder} onOpenChange={(o) => { if (!o && !creatingSaving) { setCreatingOrder(false); resetCreateForm(); } }}>
+        <DialogContent className="sm:max-w-[640px] max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-[#162B4D] flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Create New Order
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 pt-1">
+            {/* CUSTOMER SECTION */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Customer</p>
+                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                  <button
+                    onClick={() => { setCustomerMode("existing"); setChosenCustomer(null); }}
+                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${customerMode === "existing" ? "bg-white text-[#1A56DB] shadow-sm" : "text-gray-500"}`}
+                  >Existing</button>
+                  <button
+                    onClick={() => { setCustomerMode("new"); setChosenCustomer(null); }}
+                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${customerMode === "new" ? "bg-white text-[#1A56DB] shadow-sm" : "text-gray-500"}`}
+                  >New Customer</button>
+                </div>
+              </div>
+
+              {customerMode === "existing" ? (
+                <div className="space-y-2">
+                  {chosenCustomer ? (
+                    <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-[#1A56DB] flex items-center justify-center text-white font-bold text-sm">
+                          {chosenCustomer.name?.charAt(0).toUpperCase() || "?"}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-[#162B4D] text-sm">{chosenCustomer.name}</p>
+                          <p className="text-xs text-gray-500 flex items-center gap-2">
+                            {chosenCustomer.phone && <span className="inline-flex items-center gap-0.5"><Phone className="w-3 h-3" />{chosenCustomer.phone}</span>}
+                            {chosenCustomer.email && <span className="inline-flex items-center gap-0.5"><Mail className="w-3 h-3" />{chosenCustomer.email}</span>}
+                          </p>
+                        </div>
+                      </div>
+                      <button onClick={() => { setChosenCustomer(null); setSelectedAddressIdx(null); }} className="text-gray-400 hover:text-red-500">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                        <Input
+                          autoFocus
+                          value={customerSearch}
+                          onChange={(e) => setCustomerSearch(e.target.value)}
+                          placeholder="Search by name, phone or email..."
+                          className="pl-8 h-9 text-sm"
+                        />
+                      </div>
+                      {customerSearch.trim() && (
+                        <div className="border border-gray-100 rounded-xl max-h-56 overflow-y-auto bg-white">
+                          {customerSearching ? (
+                            <p className="p-3 text-xs text-gray-400 text-center">Searching...</p>
+                          ) : customerResults.length === 0 ? (
+                            <div className="p-4 text-center">
+                              <p className="text-xs text-gray-400">No customers found.</p>
+                              <button onClick={() => { setCustomerMode("new"); setNewCustomer((n) => ({ ...n, name: customerSearch.trim() })); }} className="mt-1 text-xs text-[#1A56DB] font-semibold hover:underline">
+                                Create new customer
+                              </button>
+                            </div>
+                          ) : (
+                            customerResults.map((c) => (
+                              <button
+                                key={c.id}
+                                onClick={() => { setChosenCustomer(c); setSelectedAddressIdx(c.addresses?.length ? 0 : null); setOrderAddressMode(c.addresses?.length ? "saved" : "new"); }}
+                                className="w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 text-left border-b border-gray-50 last:border-b-0"
+                              >
+                                <div className="w-8 h-8 rounded-full bg-[#162B4D]/10 flex items-center justify-center text-[#162B4D] font-bold text-xs">
+                                  {c.name?.charAt(0).toUpperCase() || "?"}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-[#162B4D] text-sm truncate">{c.name}</p>
+                                  <p className="text-xs text-gray-400 truncate">{c.phone || c.email || "—"}</p>
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2 space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-500">Name *</Label>
+                    <Input value={newCustomer.name} onChange={(e) => setNewCustomer((n) => ({ ...n, name: e.target.value }))} className="h-9 text-sm" placeholder="Customer name" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-500">Phone</Label>
+                    <Input value={newCustomer.phone} onChange={(e) => setNewCustomer((n) => ({ ...n, phone: e.target.value }))} className="h-9 text-sm" placeholder="10-digit phone" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-500">Email</Label>
+                    <Input value={newCustomer.email} onChange={(e) => setNewCustomer((n) => ({ ...n, email: e.target.value }))} className="h-9 text-sm" placeholder="email@example.com" />
+                  </div>
+                  <p className="col-span-2 text-[11px] text-gray-400">Provide phone or email — customer will be saved automatically.</p>
+                </div>
+              )}
+            </div>
+
+            {/* DELIVERY TYPE */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Order Type</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setOrderDeliveryType("delivery")}
+                  className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${orderDeliveryType === "delivery" ? "border-[#1A56DB] bg-blue-50" : "border-gray-100 bg-white hover:border-gray-200"}`}
+                >
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${orderDeliveryType === "delivery" ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-gray-400"}`}>
+                    <Truck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm text-[#162B4D]">Delivery</p>
+                    <p className="text-[11px] text-gray-400">Send to customer's address</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setOrderDeliveryType("takeaway")}
+                  className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${orderDeliveryType === "takeaway" ? "border-emerald-500 bg-emerald-50" : "border-gray-100 bg-white hover:border-gray-200"}`}
+                >
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${orderDeliveryType === "takeaway" ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-400"}`}>
+                    <Store className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm text-[#162B4D]">Takeaway</p>
+                    <p className="text-[11px] text-gray-400">Customer picks up at store</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* ADDRESS (only for delivery) */}
+            {orderDeliveryType === "delivery" && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Delivery Address</p>
+                  {chosenCustomer && Array.isArray(chosenCustomer.addresses) && chosenCustomer.addresses.length > 0 && (
+                    <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                      <button
+                        onClick={() => setOrderAddressMode("saved")}
+                        className={`px-2.5 py-0.5 text-[11px] font-semibold rounded-md ${orderAddressMode === "saved" ? "bg-white text-[#1A56DB] shadow-sm" : "text-gray-500"}`}
+                      >Saved</button>
+                      <button
+                        onClick={() => setOrderAddressMode("new")}
+                        className={`px-2.5 py-0.5 text-[11px] font-semibold rounded-md ${orderAddressMode === "new" ? "bg-white text-[#1A56DB] shadow-sm" : "text-gray-500"}`}
+                      >New</button>
+                    </div>
+                  )}
+                </div>
+                {chosenCustomer && orderAddressMode === "saved" && Array.isArray(chosenCustomer.addresses) && chosenCustomer.addresses.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {chosenCustomer.addresses.map((a: any, i: number) => {
+                      const addrText = a?.address ?? a?.line1 ?? a?.fullAddress ?? "";
+                      const areaText = a?.area ?? a?.locality ?? a?.city ?? "";
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => setSelectedAddressIdx(i)}
+                          className={`w-full flex items-start gap-2 p-2.5 rounded-xl border text-left transition-all ${selectedAddressIdx === i ? "border-[#1A56DB] bg-blue-50" : "border-gray-100 bg-white hover:border-gray-200"}`}
+                        >
+                          <Home className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${selectedAddressIdx === i ? "text-[#1A56DB]" : "text-gray-400"}`} />
+                          <div className="flex-1 min-w-0">
+                            {a?.label && <p className="text-xs font-bold text-[#162B4D]">{a.label}</p>}
+                            <p className="text-xs text-gray-600">{addrText}</p>
+                            {areaText && <p className="text-[11px] text-gray-400">{areaText}</p>}
+                          </div>
+                          {selectedAddressIdx === i && <Check className="w-3.5 h-3.5 text-[#1A56DB] flex-shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Input value={orderAddress} onChange={(e) => setOrderAddress(e.target.value)} placeholder="Full address" className="h-9 text-sm" />
+                    <Input value={orderArea} onChange={(e) => setOrderArea(e.target.value)} placeholder="Area / locality" className="h-9 text-sm" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {orderDeliveryType === "takeaway" && (
+              <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                <Store className="w-4 h-4 text-emerald-600 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-emerald-800">Takeaway from FishTokri Store</p>
+                  <p className="text-[11px] text-emerald-600">Customer will collect this order directly from the store. No delivery address required.</p>
+                </div>
+              </div>
+            )}
+
+            {/* ITEMS */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Items</p>
+                <button onClick={() => setOrderItems((arr) => [...arr, { name: "", price: "", quantity: "1", unit: "" }])} className="text-xs font-semibold text-[#1A56DB] hover:underline inline-flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Add item
+                </button>
+              </div>
+              <div className="space-y-2">
+                {orderItems.map((it, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                    <Input value={it.name} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} placeholder="Item name" className="h-9 text-sm col-span-5" />
+                    <Input value={it.price} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, price: e.target.value } : x))} placeholder="Price" type="number" className="h-9 text-sm col-span-2" />
+                    <Input value={it.quantity} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x))} placeholder="Qty" type="number" className="h-9 text-sm col-span-2" />
+                    <Input value={it.unit} onChange={(e) => setOrderItems((arr) => arr.map((x, i) => i === idx ? { ...x, unit: e.target.value } : x))} placeholder="Unit" className="h-9 text-sm col-span-2" />
+                    <button
+                      onClick={() => setOrderItems((arr) => arr.length > 1 ? arr.filter((_, i) => i !== idx) : arr)}
+                      className="col-span-1 h-9 flex items-center justify-center text-gray-400 hover:text-red-500 disabled:opacity-30"
+                      disabled={orderItems.length === 1}
+                    >
+                      <Trash className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between mt-2 px-3 py-2 bg-[#162B4D]/5 rounded-xl">
+                <span className="text-xs font-semibold text-gray-600">Order Total</span>
+                <span className="font-bold text-[#162B4D] text-base">{formatRupees(newOrderTotal)}</span>
+              </div>
+            </div>
+
+            {/* NOTES */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-gray-500">Notes (optional)</Label>
+              <Textarea value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} placeholder="Any special instructions..." className="text-sm min-h-[60px]" />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 pt-3">
+            <Button variant="outline" onClick={() => { setCreatingOrder(false); resetCreateForm(); }} disabled={creatingSaving} className="h-9">Cancel</Button>
+            <Button onClick={handleCreateOrder} disabled={creatingSaving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 text-white gap-1.5">
+              {creatingSaving ? "Creating..." : (<><Plus className="w-3.5 h-3.5" /> Create Order</>)}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
