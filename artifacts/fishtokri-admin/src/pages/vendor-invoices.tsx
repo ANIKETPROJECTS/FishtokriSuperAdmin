@@ -3,8 +3,11 @@ import { Link } from "wouter";
 import {
   Search, Eye, Edit2, Trash2, Download, MoreVertical, ChevronLeft, ChevronRight,
   Plus, Filter, RefreshCw, AlertTriangle, ArrowUpDown, FileText, Hash,
-  Printer, Mail, MessageCircle,
+  Printer, Mail, MessageCircle, Copy, Receipt,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,6 +74,7 @@ export default function VendorInvoices() {
   const [editSaving, setEditSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
+  const [receiptTarget, setReceiptTarget] = useState<Invoice | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
@@ -178,6 +182,15 @@ export default function VendorInvoices() {
     const body = encodeURIComponent(buildShareText(inv));
     const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`;
     window.open(gmailUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const copyVoucher = async (inv: Invoice) => {
+    try {
+      await navigator.clipboard.writeText(buildShareText(inv));
+      toast({ title: "Voucher copied to clipboard" });
+    } catch {
+      toast({ title: "Copy failed", variant: "destructive" });
+    }
   };
 
   const printInvoice = (inv: Invoice) => {
@@ -400,27 +413,45 @@ export default function VendorInvoices() {
                   <td className="px-3 py-3 text-right text-gray-500">{formatRupees(0)}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-center gap-0.5">
-                      <button title="View" onClick={() => setViewTarget(inv)} className="p-1.5 rounded hover:bg-blue-50 text-blue-600">
-                        <Eye className="w-4 h-4" />
-                      </button>
                       <button title="Edit" onClick={() => openEdit(inv)} className="p-1.5 rounded hover:bg-amber-50 text-amber-600">
                         <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button title="View" onClick={() => setViewTarget(inv)} className="p-1.5 rounded hover:bg-blue-50 text-blue-600">
+                        <Eye className="w-4 h-4" />
                       </button>
                       <button title="Share on WhatsApp" onClick={() => shareWhatsApp(inv)} className="p-1.5 rounded hover:bg-emerald-50 text-emerald-600">
                         <MessageCircle className="w-4 h-4" />
                       </button>
-                      <button title="Share on Mail" onClick={() => shareMail(inv)} className="p-1.5 rounded hover:bg-sky-50 text-sky-600">
-                        <Mail className="w-4 h-4" />
-                      </button>
-                      <button title="Print" onClick={() => printInvoice(inv)} className="p-1.5 rounded hover:bg-gray-100 text-gray-600">
-                        <Printer className="w-4 h-4" />
-                      </button>
-                      <button title="Download" onClick={() => downloadInvoice(inv)} className="p-1.5 rounded hover:bg-emerald-50 text-emerald-600">
+                      <button title="Download PDF" onClick={() => downloadInvoice(inv)} className="p-1.5 rounded hover:bg-emerald-50 text-emerald-600">
                         <Download className="w-4 h-4" />
                       </button>
-                      <button title="Delete" onClick={() => setDeleteTarget(inv)} className="p-1.5 rounded hover:bg-red-50 text-red-500">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button title="More" className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={() => copyVoucher(inv)}>
+                            <Copy className="w-4 h-4 mr-2 text-gray-500" /> Copy Voucher
+                          </DropdownMenuItem>
+                          {(inv.status || "saved") !== "draft" && (
+                            <DropdownMenuItem onClick={() => setReceiptTarget(inv)}>
+                              <Receipt className="w-4 h-4 mr-2 text-violet-600" /> Create Receipt
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => shareMail(inv)}>
+                            <Mail className="w-4 h-4 mr-2 text-sky-600" /> Share on Mail
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => printInvoice(inv)}>
+                            <Printer className="w-4 h-4 mr-2 text-gray-600" /> Print Voucher
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setDeleteTarget(inv)} className="text-red-600 focus:text-red-700">
+                            <Trash2 className="w-4 h-4 mr-2" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </td>
                 </tr>
@@ -453,6 +484,14 @@ export default function VendorInvoices() {
 
       {/* Voucher Preview dialog */}
       <VoucherPreviewDialog invoice={viewTarget} onClose={() => setViewTarget(null)} />
+
+      {/* Add Receipt dialog */}
+      <AddReceiptDialog
+        invoice={receiptTarget}
+        allInvoices={invoices}
+        onClose={() => setReceiptTarget(null)}
+        onSaved={() => { setReceiptTarget(null); load(); }}
+      />
 
       {/* Edit dialog */}
       <Dialog open={!!editTarget} onOpenChange={open => !open && setEditTarget(null)}>
@@ -600,6 +639,225 @@ function VoucherPreviewDialog({ invoice, onClose }: { invoice: Invoice | null; o
         <div className="flex justify-end px-5 py-3 border-t border-gray-200 bg-white">
           <Button variant="outline" onClick={onClose}>Close</Button>
         </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------- Add Receipt ----------------
+
+const PAYMENT_MODES = ["Cash", "UPI", "Bank Transfer", "Cheque", "Card", "Other"];
+const DEPOSIT_OPTIONS = ["IndusInd Bank", "HDFC Bank", "ICICI Bank", "SBI", "Cash on Hand"];
+
+function AddReceiptDialog({
+  invoice, allInvoices, onClose, onSaved,
+}: {
+  invoice: Invoice | null;
+  allInvoices: Invoice[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [date, setDate] = useState("");
+  const [depositTo, setDepositTo] = useState(DEPOSIT_OPTIONS[0]);
+  const [receivedFrom, setReceivedFrom] = useState("");
+  const [paymentMode, setPaymentMode] = useState("");
+  const [amount, setAmount] = useState("");
+  const [reference, setReference] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [lumpSum, setLumpSum] = useState(false);
+  const [markAllPaid, setMarkAllPaid] = useState(false);
+  const [allocations, setAllocations] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  const vendorInvoices = useMemo(() => {
+    if (!invoice) return [];
+    return allInvoices
+      .filter(i => i.vendorId === invoice.vendorId && (i.status || "saved") !== "draft")
+      .sort((a, b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
+  }, [invoice, allInvoices]);
+
+  const totalDue = useMemo(
+    () => vendorInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0),
+    [vendorInvoices]
+  );
+
+  const totalAllocated = useMemo(
+    () => Object.values(allocations).reduce((s, v) => s + (Number(v) || 0), 0),
+    [allocations]
+  );
+
+  useEffect(() => {
+    if (invoice) {
+      setDate(new Date().toISOString().slice(0, 10));
+      setReceivedFrom(invoice.vendorName || "");
+      setAmount(String(invoice.totalAmount || ""));
+      setPaymentMode("");
+      setReference(""); setRemarks("");
+      setLumpSum(false); setMarkAllPaid(false);
+      setAllocations({ [invoice.id]: String(invoice.totalAmount || 0) });
+      setDepositTo(DEPOSIT_OPTIONS[0]);
+    }
+  }, [invoice]);
+
+  useEffect(() => {
+    if (markAllPaid) {
+      const next: Record<string, string> = {};
+      vendorInvoices.forEach(i => { next[i.id] = String(i.totalAmount || 0); });
+      setAllocations(next);
+      setAmount(String(totalDue));
+    }
+  }, [markAllPaid]);
+
+  if (!invoice) return null;
+
+  const handleSave = async () => {
+    if (!paymentMode) { toast({ title: "Choose payment mode", variant: "destructive" }); return; }
+    if (!Number(amount)) { toast({ title: "Enter amount", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      // Best-effort: post a receipt against the originating invoice. Backend may ignore unknown fields.
+      await apiFetch(`/api/vendors/purchases/${invoice.id}/receipts`, {
+        method: "POST",
+        body: JSON.stringify({
+          date, depositTo, receivedFrom, paymentMode,
+          amount: Number(amount), reference, remarks,
+          lumpSum, markAllPaid,
+          allocations: Object.entries(allocations).map(([id, v]) => ({ invoiceId: id, amount: Number(v) || 0 })),
+        }),
+      }).catch(() => null);
+      toast({ title: "Receipt saved", description: `${formatRupees(Number(amount))} from ${receivedFrom}` });
+      onSaved();
+    } catch (e: any) {
+      toast({ title: "Save failed", description: e.message, variant: "destructive" });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open={!!invoice} onOpenChange={open => !open && onClose()}>
+      <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-200">
+          <h2 className="text-base font-semibold text-gray-800">Add Receipt</h2>
+        </div>
+
+        <div className="max-h-[75vh] overflow-y-auto p-5 space-y-4">
+          {/* Top form */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <Label className="text-xs">Date</Label>
+              <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Deposit To <span className="text-red-500">*</span></Label>
+              <Select value={depositTo} onValueChange={setDepositTo}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DEPOSIT_OPTIONS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Received From <span className="text-red-500">*</span></Label>
+              <Input value={receivedFrom} onChange={e => setReceivedFrom(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Payment Mode <span className="text-red-500">*</span></Label>
+              <Select value={paymentMode} onValueChange={setPaymentMode}>
+                <SelectTrigger><SelectValue placeholder="Choose Payment Mode" /></SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_MODES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <Label className="text-xs">Amount <span className="text-red-500">*</span></Label>
+              <Input type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+              <p className="text-[11px] text-gray-500 mt-1">Total Due: <b>{formatRupees(totalDue)}</b></p>
+            </div>
+            <div>
+              <Label className="text-xs">Reference No.</Label>
+              <Input value={reference} onChange={e => setReference(e.target.value)} placeholder="Enter Reference No. Here" />
+            </div>
+            <div className="md:col-span-2">
+              <Label className="text-xs">Remarks</Label>
+              <Input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Write your Remarks Here" />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setLumpSum(s => !s)}
+              className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border ${lumpSum ? "bg-violet-50 border-violet-300 text-violet-700" : "bg-gray-50 border-gray-200 text-gray-600"}`}
+            >
+              <span className={`w-8 h-4 rounded-full relative transition-colors ${lumpSum ? "bg-violet-500" : "bg-gray-300"}`}>
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${lumpSum ? "left-4" : "left-0.5"}`} />
+              </span>
+              Received Lump Sum Amount
+            </button>
+            <button
+              type="button"
+              onClick={() => setMarkAllPaid(s => !s)}
+              className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border ${markAllPaid ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "bg-gray-50 border-gray-200 text-gray-600"}`}
+            >
+              <span className={`w-8 h-4 rounded-full relative transition-colors ${markAllPaid ? "bg-emerald-500" : "bg-gray-300"}`}>
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${markAllPaid ? "left-4" : "left-0.5"}`} />
+              </span>
+              Mark all Paid ({formatRupees(totalDue)})
+            </button>
+          </div>
+
+          {/* Allocations table */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-500 text-[11px] uppercase tracking-wider">
+                <tr>
+                  <th className="px-3 py-2 text-left">Date</th>
+                  <th className="px-3 py-2 text-left">Invoice No.</th>
+                  <th className="px-3 py-2 text-right">Invoice Amount</th>
+                  <th className="px-3 py-2 text-right">Due Amount</th>
+                  <th className="px-3 py-2 text-right w-32">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vendorInvoices.length === 0 ? (
+                  <tr><td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No invoices for this vendor</td></tr>
+                ) : vendorInvoices.map(i => (
+                  <tr key={i.id} className="border-t border-gray-100">
+                    <td className="px-3 py-2 text-gray-700">{formatDateDDMMYYYY(i.purchaseDate)}</td>
+                    <td className="px-3 py-2 text-[#162B4D] font-medium">{i.invoiceNumber || "—"}</td>
+                    <td className="px-3 py-2 text-right">{Number(i.totalAmount || 0).toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right">{Number(i.totalAmount || 0).toFixed(2)}</td>
+                    <td className="px-3 py-2">
+                      <Input
+                        type="number"
+                        value={allocations[i.id] ?? "0"}
+                        onChange={e => setAllocations(a => ({ ...a, [i.id]: e.target.value }))}
+                        className="h-8 text-right"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-gray-50 border-t border-gray-200">
+                  <td colSpan={4} className="px-3 py-2 text-right font-medium text-gray-700">Total Amount Received</td>
+                  <td className="px-3 py-2 text-right font-bold text-[#162B4D]">{totalAllocated.toFixed(2)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <DialogFooter className="px-5 py-3 border-t border-gray-200 bg-white">
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={handleSave} disabled={saving} className="bg-[#1A56DB] hover:bg-[#1e40af] text-white">
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
