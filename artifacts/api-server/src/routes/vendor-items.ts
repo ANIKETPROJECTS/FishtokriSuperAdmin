@@ -544,22 +544,22 @@ async function resolveStockAdjustmentHubContext(superHubId: string, subHubId: st
   const superHubOid = toId(String(superHubId ?? ""));
   const subHubOid = toId(String(subHubId ?? ""));
   if (!superHubOid || !subHubOid) {
-    throw new Error("Select a valid Super Hub and Sub Hub");
+    return {
+      superHubId: undefined as any,
+      superHubName: "",
+      subHubId: undefined as any,
+      subHubName: "",
+    };
   }
   const [superHub, subHub] = await Promise.all([
     SuperHub.findById(superHubOid).lean() as any,
     SubHub.findById(subHubOid).lean() as any,
   ]);
-  if (!superHub) throw new Error("Selected Super Hub was not found");
-  if (!subHub) throw new Error("Selected Sub Hub was not found");
-  if (String(subHub.superHubId) !== String(superHub._id)) {
-    throw new Error("Selected Sub Hub does not belong to the selected Super Hub");
-  }
   return {
-    superHubId: superHub._id,
-    superHubName: String(superHub.name ?? ""),
-    subHubId: subHub._id,
-    subHubName: String(subHub.name ?? ""),
+    superHubId: superHub?._id,
+    superHubName: String(superHub?.name ?? ""),
+    subHubId: subHub?._id,
+    subHubName: String(subHub?.name ?? ""),
   };
 }
 
