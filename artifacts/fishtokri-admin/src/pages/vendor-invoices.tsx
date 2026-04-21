@@ -76,6 +76,40 @@ export default function VendorInvoices() {
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [receiptTarget, setReceiptTarget] = useState<Invoice | null>(null);
 
+  const [tab, setTab] = useState<"invoices" | "receipts">("invoices");
+  const [receipts, setReceipts] = useState<any[]>([]);
+  const [loadingReceipts, setLoadingReceipts] = useState(false);
+  const [deletingReceiptId, setDeletingReceiptId] = useState<string | null>(null);
+
+  const loadReceipts = useCallback(async () => {
+    setLoadingReceipts(true);
+    try {
+      const params = new URLSearchParams({ page: "1", limit: "100" });
+      if (search) params.set("search", search);
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+      const data = await apiFetch(`/api/vendors/receipts?${params}`);
+      setReceipts(data.receipts || []);
+    } catch (e: any) {
+      toast({ title: "Failed to load receipts", description: e.message, variant: "destructive" });
+      setReceipts([]);
+    } finally { setLoadingReceipts(false); }
+  }, [search, dateFrom, dateTo]);
+
+  useEffect(() => { if (tab === "receipts") loadReceipts(); }, [tab, loadReceipts]);
+
+  const handleDeleteReceipt = async (id: string) => {
+    if (!window.confirm("Delete this receipt?")) return;
+    setDeletingReceiptId(id);
+    try {
+      await apiFetch(`/api/vendors/receipts/${id}`, { method: "DELETE" });
+      toast({ title: "Receipt deleted" });
+      loadReceipts();
+    } catch (e: any) {
+      toast({ title: "Delete failed", description: e.message, variant: "destructive" });
+    } finally { setDeletingReceiptId(null); }
+  };
+
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
   const load = useCallback(async () => {
@@ -288,7 +322,7 @@ export default function VendorInvoices() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500" title="Refresh">
+          <button onClick={() => tab === "invoices" ? load() : loadReceipts()} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500" title="Refresh">
             <RefreshCw className="w-4 h-4" />
           </button>
           <Link href="/vendors">
@@ -299,6 +333,85 @@ export default function VendorInvoices() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex items-center gap-1 border-b border-gray-200">
+        {([
+          { key: "invoices", label: "Invoices" },
+          { key: "receipts", label: "Receipts" },
+        ] as const).map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t.key
+                ? "border-[#1A56DB] text-[#1A56DB]"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t.label}{t.key === "receipts" && receipts.length > 0 ? ` (${receipts.length})` : ""}
+          </button>
+        ))}
+      </div>
+
+      {tab === "receipts" ? (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr className="text-gray-500 text-[11px] uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left">Date</th>
+                  <th className="px-3 py-3 text-left">Vendor</th>
+                  <th className="px-3 py-3 text-left">Invoice No.</th>
+                  <th className="px-3 py-3 text-left">Mode</th>
+                  <th className="px-3 py-3 text-left">Deposit To</th>
+                  <th className="px-3 py-3 text-left">Reference</th>
+                  <th className="px-3 py-3 text-right">Amount</th>
+                  <th className="px-3 py-3 text-right w-20">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingReceipts ? (
+                  <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-400">Loading receipts…</td></tr>
+                ) : receipts.length === 0 ? (
+                  <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-400">No receipts yet. Create one from any invoice's actions menu.</td></tr>
+                ) : receipts.map(r => (
+                  <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">{formatDateDDMMYYYY(r.date)}</td>
+                    <td className="px-3 py-2.5 text-[#162B4D] font-medium">{r.vendorName || "—"}</td>
+                    <td className="px-3 py-2.5 text-gray-700">{r.invoiceNumber || "—"}</td>
+                    <td className="px-3 py-2.5"><span className="text-[11px] font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{r.paymentMode || "—"}</span></td>
+                    <td className="px-3 py-2.5 text-gray-600">{r.depositTo || "—"}</td>
+                    <td className="px-3 py-2.5 text-gray-600">{r.reference || "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-green-700">{formatRupees(r.amount)}</td>
+                    <td className="px-3 py-2.5 text-right">
+                      <button
+                        onClick={() => handleDeleteReceipt(r.id)}
+                        disabled={deletingReceiptId === r.id}
+                        className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 disabled:opacity-50"
+                        title="Delete receipt"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              {receipts.length > 0 && (
+                <tfoot>
+                  <tr className="border-t border-gray-200 bg-gray-50 font-semibold text-[#162B4D]">
+                    <td colSpan={6} className="px-3 py-2.5 text-right">Total</td>
+                    <td className="px-3 py-2.5 text-right text-green-700">
+                      {formatRupees(receipts.reduce((s, r) => s + Number(r.amount || 0), 0))}
+                    </td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Toolbar */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
@@ -481,6 +594,8 @@ export default function VendorInvoices() {
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* Voucher Preview dialog */}
       <VoucherPreviewDialog invoice={viewTarget} onClose={() => setViewTarget(null)} />
@@ -489,7 +604,7 @@ export default function VendorInvoices() {
       <AddReceiptDialog
         invoice={receiptTarget}
         onClose={() => setReceiptTarget(null)}
-        onSaved={() => { setReceiptTarget(null); load(); }}
+        onSaved={() => { setReceiptTarget(null); load(); loadReceipts(); setTab("receipts"); }}
       />
 
       {/* Edit dialog */}
@@ -733,16 +848,17 @@ function AddReceiptDialog({
     if (!Number(amount)) { toast({ title: "Enter amount", variant: "destructive" }); return; }
     setSaving(true);
     try {
-      // Best-effort: post a receipt against the originating invoice. Backend may ignore unknown fields.
       await apiFetch(`/api/vendors/purchases/${invoice.id}/receipts`, {
         method: "POST",
         body: JSON.stringify({
           date, depositTo, receivedFrom, paymentMode,
           amount: Number(amount), reference, remarks,
           lumpSum, markAllPaid,
-          allocations: Object.entries(allocations).map(([id, v]) => ({ invoiceId: id, amount: Number(v) || 0 })),
+          allocations: Object.entries(allocations)
+            .filter(([, v]) => Number(v) > 0)
+            .map(([id, v]) => ({ invoiceId: id, amount: Number(v) || 0 })),
         }),
-      }).catch(() => null);
+      });
       toast({ title: "Receipt saved", description: `${formatRupees(Number(amount))} from ${receivedFrom}` });
       onSaved();
     } catch (e: any) {

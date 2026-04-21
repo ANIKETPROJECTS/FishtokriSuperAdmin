@@ -60,6 +60,33 @@ const purchaseSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const receiptAllocationSchema = new mongoose.Schema({
+  invoiceId: { type: String, default: "" },
+  invoiceNumber: { type: String, default: "" },
+  amount: { type: Number, default: 0 },
+}, { _id: false });
+
+const receiptSchema = new mongoose.Schema(
+  {
+    vendorId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: "Vendor" },
+    vendorName: { type: String, default: "" },
+    invoiceId: { type: String, default: "" },
+    invoiceNumber: { type: String, default: "" },
+    date: { type: Date, default: Date.now },
+    depositTo: { type: String, default: "" },
+    receivedFrom: { type: String, default: "" },
+    paymentMode: { type: String, default: "" },
+    amount: { type: Number, default: 0 },
+    reference: { type: String, default: "" },
+    remarks: { type: String, default: "" },
+    lumpSum: { type: Boolean, default: false },
+    markAllPaid: { type: Boolean, default: false },
+    allocations: { type: [receiptAllocationSchema], default: [] },
+    createdByName: { type: String, default: "" },
+  },
+  { timestamps: true }
+);
+
 const batchSchema = new mongoose.Schema({
   batchRef: { type: String, default: "" },
   vendorId: { type: String, default: "" },
@@ -99,6 +126,37 @@ function getPurchaseModel() {
 function getInventoryModel() {
   if (mongoose.models["Inventory"]) return mongoose.models["Inventory"];
   return mongoose.model("Inventory", inventorySchema, "inventory");
+}
+
+function getReceiptModel() {
+  if (mongoose.models["VendorReceipt"]) return mongoose.models["VendorReceipt"];
+  return mongoose.model("VendorReceipt", receiptSchema, "vendor_receipts");
+}
+
+function serializeReceipt(doc: any) {
+  return {
+    id: String(doc._id),
+    vendorId: String(doc.vendorId || ""),
+    vendorName: doc.vendorName ?? "",
+    invoiceId: doc.invoiceId ?? "",
+    invoiceNumber: doc.invoiceNumber ?? "",
+    date: doc.date,
+    depositTo: doc.depositTo ?? "",
+    receivedFrom: doc.receivedFrom ?? "",
+    paymentMode: doc.paymentMode ?? "",
+    amount: doc.amount ?? 0,
+    reference: doc.reference ?? "",
+    remarks: doc.remarks ?? "",
+    lumpSum: !!doc.lumpSum,
+    markAllPaid: !!doc.markAllPaid,
+    allocations: (doc.allocations ?? []).map((a: any) => ({
+      invoiceId: a.invoiceId ?? "",
+      invoiceNumber: a.invoiceNumber ?? "",
+      amount: a.amount ?? 0,
+    })),
+    createdByName: doc.createdByName ?? "",
+    createdAt: doc.createdAt,
+  };
 }
 
 // ─── SERIALIZERS ──────────────────────────────────────────────────────────────
@@ -664,6 +722,93 @@ router.get("/inventory/all", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to get inventory");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch inventory" });
+  }
+});
+
+// ─── RECEIPTS ─────────────────────────────────────────────────────────────────
+
+router.post("/purchases/:id/receipts", async (req, res) => {
+  try {
+    const Purchase = getPurchaseModel();
+    const Receipt = getReceiptModel();
+    const purchase = await Purchase.findById(req.params.id);
+    if (!purchase) return res.status(404).json({ error: "NotFound", message: "Invoice not found" });
+
+    const body = req.body || {};
+    const allocations = Array.isArray(body.allocations) ? body.allocations : [];
+    const allocInvoiceIds = allocations.map((a: any) => String(a.invoiceId)).filter(Boolean);
+    const allocPurchases = allocInvoiceIds.length
+      ? await Purchase.find({ _id: { $in: allocInvoiceIds } }).select("_id invoiceNumber")
+      : [];
+    const numberMap = new Map(allocPurchases.map((p: any) => [String(p._id), p.invoiceNumber || ""]));
+
+    const receipt = await Receipt.create({
+      vendorId: purchase.vendorId,
+      vendorName: purchase.vendorName,
+      invoiceId: String(purchase._id),
+      invoiceNumber: purchase.invoiceNumber,
+      date: body.date ? new Date(body.date) : new Date(),
+      depositTo: body.depositTo ?? "",
+      receivedFrom: body.receivedFrom ?? purchase.vendorName,
+      paymentMode: body.paymentMode ?? "",
+      amount: Number(body.amount) || 0,
+      reference: body.reference ?? "",
+      remarks: body.remarks ?? "",
+      lumpSum: !!body.lumpSum,
+      markAllPaid: !!body.markAllPaid,
+      allocations: allocations.map((a: any) => ({
+        invoiceId: String(a.invoiceId || ""),
+        invoiceNumber: numberMap.get(String(a.invoiceId)) || "",
+        amount: Number(a.amount) || 0,
+      })),
+      createdByName: (req as any).user?.name ?? "",
+    });
+
+    res.json({ receipt: serializeReceipt(receipt) });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create receipt");
+    res.status(500).json({ error: "InternalError", message: "Failed to create receipt" });
+  }
+});
+
+router.get("/receipts", async (req, res) => {
+  try {
+    const Receipt = getReceiptModel();
+    const { vendorId, page = "1", limit = "30", search, dateFrom, dateTo } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
+    const skip = (pageNum - 1) * limitNum;
+    const filter: Record<string, any> = {};
+    if (vendorId) filter.vendorId = vendorId;
+    if (search) {
+      const re = new RegExp(search, "i");
+      filter.$or = [{ vendorName: re }, { invoiceNumber: re }, { reference: re }];
+    }
+    if (dateFrom || dateTo) {
+      filter.date = {};
+      if (dateFrom) filter.date.$gte = new Date(dateFrom);
+      if (dateTo) { const d = new Date(dateTo); d.setHours(23, 59, 59, 999); filter.date.$lte = d; }
+    }
+    const [receipts, total] = await Promise.all([
+      Receipt.find(filter).sort({ date: -1, createdAt: -1 }).skip(skip).limit(limitNum),
+      Receipt.countDocuments(filter),
+    ]);
+    res.json({ receipts: receipts.map(serializeReceipt), total, page: pageNum, limit: limitNum });
+  } catch (err) {
+    req.log.error({ err }, "Failed to list receipts");
+    res.status(500).json({ error: "InternalError", message: "Failed to list receipts" });
+  }
+});
+
+router.delete("/receipts/:id", async (req, res) => {
+  try {
+    const Receipt = getReceiptModel();
+    const r = await Receipt.findByIdAndDelete(req.params.id);
+    if (!r) return res.status(404).json({ error: "NotFound", message: "Receipt not found" });
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete receipt");
+    res.status(500).json({ error: "InternalError", message: "Failed to delete receipt" });
   }
 });
 
