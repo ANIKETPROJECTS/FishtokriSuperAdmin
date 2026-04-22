@@ -5,7 +5,7 @@ import {
   Phone, User, SlidersHorizontal, ArrowUpDown, UserCheck,
   ShoppingBag, Building2, AlertCircle, ChevronDown, Check,
   Pencil, Trash2, Plus, Store, Home, Trash, Mail, Calendar, Tag, Ticket, Zap,
-  Wallet, CreditCard, Banknote, Smartphone, Landmark,
+  Wallet, CreditCard, Banknote, Smartphone, Landmark, FileText, Printer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,6 +96,191 @@ function formatRupees(n: number) {
 
 function orderTotal(items: any[]) {
   return (items ?? []).reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+}
+
+function numberToWords(n: number): string {
+  const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  function helper(x: number): string {
+    if (x < 20) return ones[x];
+    if (x < 100) return tens[Math.floor(x / 10)] + (x % 10 ? " " + ones[x % 10] : "");
+    if (x < 1000) return ones[Math.floor(x / 100)] + " Hundred" + (x % 100 ? " " + helper(x % 100) : "");
+    if (x < 100000) return helper(Math.floor(x / 1000)) + " Thousand" + (x % 1000 ? " " + helper(x % 1000) : "");
+    if (x < 10000000) return helper(Math.floor(x / 100000)) + " Lakh" + (x % 100000 ? " " + helper(x % 100000) : "");
+    return helper(Math.floor(x / 10000000)) + " Crore" + (x % 10000000 ? " " + helper(x % 10000000) : "");
+  }
+  const int = Math.floor(Math.abs(n));
+  const dec = Math.round((Math.abs(n) - int) * 100);
+  if (int === 0 && dec === 0) return "Zero Rupees";
+  let result = int > 0 ? helper(int) + " Rupees" : "";
+  if (dec > 0) result += (result ? " and " : "") + helper(dec) + " Paise";
+  return result;
+}
+
+function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
+  const items: any[] = order.items ?? [];
+  const total = orderTotal(items);
+  const totalQty = items.reduce((s: number, i: any) => s + (Number(i.quantity) || 1), 0);
+  const discount = 0;
+  const grandTotal = total - discount;
+  const paidAmt = Number(order.paidAmount) ?? grandTotal;
+  const dueAmt = Number(order.dueAmount) ?? 0;
+
+  const invoiceNo = "INV-" + String(order._id).slice(-6).toUpperCase();
+  const d = new Date(order.createdAt ?? Date.now());
+  const dateStr = [
+    String(d.getDate()).padStart(2, "0"),
+    String(d.getMonth() + 1).padStart(2, "0"),
+    d.getFullYear(),
+  ].join("-");
+  const timeStr = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const payMode =
+    order.paymentMode ||
+    (Array.isArray(order.payments) && order.payments.length > 0
+      ? [...new Set(order.payments.map((p: any) => p.method))].join(", ")
+      : "Cash");
+  const payLabel =
+    order.paymentStatus === "paid" ? "Paid" :
+    order.paymentStatus === "partial" ? "Partial" : "Unpaid";
+
+  const handlePrint = () => {
+    const area = document.getElementById("invoice-print-area");
+    if (!area) return;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`<html><head><title>${invoiceNo}</title><style>
+      *{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif}
+      body{padding:28px;color:#111;font-size:13px}
+      h2{text-align:center;font-size:15px;margin-bottom:3px}
+      .sub{text-align:center;font-size:12px;color:#555;margin-bottom:14px}
+      .row{display:flex;justify-content:space-between;margin:2px 0;font-size:12px}
+      .dash{border-top:1px dashed #aaa;margin:10px 0}
+      table{width:100%;border-collapse:collapse;font-size:12px;margin:6px 0}
+      th{border-bottom:1px solid #ccc;padding:4px 2px;text-align:left;font-weight:600}
+      td{padding:4px 2px}
+      .tr{font-weight:600}
+      .grand{display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin:4px 0}
+      .words{text-align:center;font-style:italic;font-size:11px;color:#555;margin:4px 0 10px}
+      .thanks{text-align:center;font-size:11px;color:#555;line-height:1.7;margin-top:14px}
+    </style></head><body>${area.innerHTML}</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 300);
+  };
+
+  return (
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="sm:max-w-[580px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-[#162B4D]">
+            <FileText className="w-4 h-4" /> Voucher Preview
+          </DialogTitle>
+        </DialogHeader>
+
+        <div id="invoice-print-area" className="border border-gray-200 rounded-lg p-5 text-sm bg-white space-y-0">
+          <h2 className="text-center font-bold text-[15px] mb-0.5">
+            Fishtokri{order.superHubName ? ` - ${order.superHubName}` : ""}
+          </h2>
+          <p className="text-center text-xs text-gray-500 mb-4">Mobile No: {order.phone || "—"}</p>
+
+          <div className="flex justify-between text-xs mb-1">
+            <span><strong>Invoice No:</strong> {invoiceNo}</span>
+            <span><strong>Date:</strong> {dateStr}</span>
+          </div>
+          <div className="flex justify-between text-xs mb-1">
+            <span><strong>Payment Mode:</strong> {payMode} <span className="ml-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border
+              {order.paymentStatus === 'paid' ? 'text-green-700 bg-green-50 border-green-200' : 'text-amber-700 bg-amber-50 border-amber-200'}">{payLabel}</span></span>
+            <span><strong>Time:</strong> {timeStr}</span>
+          </div>
+
+          <div className="border-t border-dashed border-gray-300 my-3" />
+
+          <div className="text-xs space-y-1 mb-1">
+            <p><strong>Name:</strong> {order.customerName}</p>
+            {order.address && <p><strong>Add:</strong> {order.address}</p>}
+            <p className="text-[#1A56DB] font-semibold text-[11px]">Created by: Master Admin</p>
+          </div>
+
+          <div className="border-t border-dashed border-gray-300 my-3" />
+
+          <table className="w-full text-xs">
+            <thead>
+              <tr>
+                <th className="text-left pb-2 font-semibold border-b border-gray-200 w-1/2">Item</th>
+                <th className="text-right pb-2 font-semibold border-b border-gray-200">Qty</th>
+                <th className="text-right pb-2 font-semibold border-b border-gray-200">Rate</th>
+                <th className="text-right pb-2 font-semibold border-b border-gray-200">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it: any, i: number) => {
+                const qty = Number(it.quantity) || 1;
+                const rate = Number(it.price) || 0;
+                return (
+                  <tr key={i} className="border-b border-gray-50">
+                    <td className="py-1.5">{it.name}</td>
+                    <td className="py-1.5 text-right">{qty}{it.unit ? ` ${it.unit}` : ""}</td>
+                    <td className="py-1.5 text-right">{rate.toFixed(2)}</td>
+                    <td className="py-1.5 text-right">{(qty * rate).toFixed(2)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          <div className="border-t border-dashed border-gray-300 my-3" />
+
+          <div className="flex justify-between text-xs font-semibold mb-1">
+            <span>Total Items: {items.length}</span>
+            <span className="text-right">{totalQty}</span>
+            <span className="text-right">{total.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-xs text-gray-500 mb-1">
+            <span>Discount :</span>
+            <span>- {discount.toFixed(2)}</span>
+          </div>
+
+          <div className="border-t border-dashed border-gray-300 my-3" />
+
+          <div className="flex justify-between font-bold text-[15px] my-2">
+            <span>Grand Total:</span>
+            <span>{grandTotal.toFixed(2)}</span>
+          </div>
+          <p className="text-center text-xs text-gray-500 italic mb-3">
+            ( {numberToWords(grandTotal)} )
+          </p>
+
+          {(order.paidAmount !== undefined || order.dueAmount !== undefined) && (
+            <div className="flex justify-between text-xs mb-3">
+              <span>Paid: <strong className="text-green-600">{formatRupees(paidAmt)}</strong></span>
+              <span>Due: <strong className={dueAmt > 0 ? "text-red-500" : "text-green-600"}>{formatRupees(dueAmt)}</strong></span>
+            </div>
+          )}
+
+          {order.notes && (
+            <p className="text-xs text-gray-500 mb-3"><strong>Note:</strong> {order.notes}</p>
+          )}
+
+          <div className="border-t border-dashed border-gray-300 mt-3 mb-3" />
+
+          <p className="text-center text-xs text-gray-500 leading-6">
+            Thank you for your business!<br />
+            We appreciate your prompt payment.<br />
+            Please feel free to contact us if you have any questions<br />
+            regarding this invoice.
+          </p>
+        </div>
+
+        <DialogFooter className="gap-2 pt-1">
+          <Button variant="outline" onClick={onClose} className="h-9">Close</Button>
+          <Button onClick={handlePrint} className="h-9 gap-1.5 bg-[#1A56DB] hover:bg-[#1447B4] text-white">
+            <Printer className="w-3.5 h-3.5" /> Print Invoice
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ─── ADDRESS FORMATTING ───────────────────────────────────────────────────────
@@ -320,7 +505,8 @@ export default function Orders() {
   const editIdFromUrl = isEditPage ? location.replace("/orders/edit/", "") : "";
   const isCreatePage = location === "/orders/new" || location.endsWith("/orders/new") || isEditPage;
 
-  const [activeTab, setActiveTab] = useState<"current" | "history" | "all">("current");
+  const [activeTab, setActiveTab] = useState<"current" | "history" | "all" | "invoices">("current");
+  const [invoiceOrder, setInvoiceOrder] = useState<any | null>(null);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -927,6 +1113,7 @@ export default function Orders() {
     if (statusFilter) return statusFilter;
     if (activeTab === "current") return ACTIVE_STATUSES.join(",");
     if (activeTab === "history") return HISTORY_STATUSES.join(",");
+    if (activeTab === "invoices") return HISTORY_STATUSES.join(",");
     return "";
   }, [activeTab, statusFilter]);
 
@@ -940,8 +1127,8 @@ export default function Orders() {
         page: String(page),
         limit: String(LIMIT),
       });
-      if (activeTab === "current" || activeTab === "history") {
-        params.set("tab", activeTab);
+      if (activeTab === "current" || activeTab === "history" || activeTab === "invoices") {
+        params.set("tab", activeTab === "invoices" ? "history" : activeTab);
       }
       if (statusFilter) {
         params.set("status", statusFilter);
@@ -1301,10 +1488,12 @@ export default function Orders() {
   const totalActive = statsTotals.currentTotal ?? ACTIVE_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0);
   const totalHistory = statsTotals.historyTotal ?? (HISTORY_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0) + (statsData.takeaway ?? 0));
 
+  const invoiceCount = (statsData["delivered"] ?? 0) + (statsData["takeaway"] ?? 0);
   const TABS = [
     { key: "current" as const, label: "Current Orders", count: totalActive, icon: Clock, color: "text-blue-600" },
     { key: "history" as const, label: "History", count: totalHistory, icon: CheckCircle2, color: "text-green-600" },
     { key: "all" as const, label: "All Orders", count: totalAll, icon: ClipboardList, color: "text-gray-600" },
+    { key: "invoices" as const, label: "Order Invoices", count: invoiceCount, icon: FileText, color: "text-violet-600" },
   ];
 
   return (
@@ -1347,8 +1536,8 @@ export default function Orders() {
           ))}
         </div>
 
-        {/* Status Tabs */}
-        <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-50 overflow-x-auto scrollbar-none bg-gray-50/50">
+        {/* Status Tabs — hidden on Invoices tab */}
+        {activeTab !== "invoices" && <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-50 overflow-x-auto scrollbar-none bg-gray-50/50">
           <button
             onClick={() => setStatusFilter("")}
             className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
@@ -1385,7 +1574,7 @@ export default function Orders() {
               </button>
             );
           })}
-        </div>
+        </div>}
 
         {/* Toolbar */}
         <div className="p-4 border-b border-gray-50 flex flex-wrap gap-2.5 items-center">
@@ -1458,11 +1647,86 @@ export default function Orders() {
 
         {/* Results Count */}
         <div className="px-4 py-2 text-xs text-gray-400 border-b border-gray-50">
-          {loading ? "Loading..." : `${total} order${total !== 1 ? "s" : ""} found`}
-          {statusFilter && <span className="ml-1">· filtered by <strong>{STATUS_CONFIG[statusFilter]?.label}</strong></span>}
+          {loading ? "Loading..." : activeTab === "invoices"
+            ? `${orders.filter(o => o.status !== "cancelled").length} invoice${orders.filter(o => o.status !== "cancelled").length !== 1 ? "s" : ""}`
+            : `${total} order${total !== 1 ? "s" : ""} found`}
+          {statusFilter && activeTab !== "invoices" && <span className="ml-1">· filtered by <strong>{STATUS_CONFIG[statusFilter]?.label}</strong></span>}
         </div>
 
-        {/* Orders Table */}
+        {/* Orders Table / Invoices List */}
+        {activeTab === "invoices" ? (
+          loading ? (
+            <div className="p-4 space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
+          ) : orders.filter(o => o.status !== "cancelled").length === 0 ? (
+            <div className="py-20 text-center">
+              <FileText className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+              <p className="text-gray-400 font-medium">No completed orders to invoice</p>
+              <p className="text-xs text-gray-300 mt-1">Delivered and takeaway orders will appear here</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50/80 border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                    <th className="px-4 py-3 text-left">Invoice #</th>
+                    <th className="px-4 py-3 text-left">Customer</th>
+                    <th className="px-4 py-3 text-left">Items</th>
+                    <th className="px-4 py-3 text-left">Total</th>
+                    <th className="px-4 py-3 text-left">Hub</th>
+                    <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-left">Date</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {orders.filter(o => o.status !== "cancelled").map((o, idx) => {
+                    const tot = orderTotal(o.items);
+                    const invNo = "INV-" + String(o._id).slice(-6).toUpperCase();
+                    return (
+                      <tr key={String(o._id)} className="hover:bg-violet-50/30 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-100 px-2 py-1 rounded-lg">{invNo}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-[#162B4D] text-sm">{o.customerName}</p>
+                          <p className="text-xs text-gray-400">{o.phone}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-[#162B4D] font-medium text-sm">{(o.items ?? []).length} item{(o.items ?? []).length !== 1 ? "s" : ""}</p>
+                          <p className="text-xs text-gray-400 truncate max-w-[130px]">{(o.items ?? []).map((i: any) => i.name).join(", ")}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-bold text-[#162B4D]">{formatRupees(tot)}</span>
+                          {o.paymentStatus && (
+                            <p className={`text-[10px] font-semibold mt-0.5 ${o.paymentStatus === "paid" ? "text-green-600" : o.paymentStatus === "partial" ? "text-amber-600" : "text-red-500"}`}>
+                              {o.paymentStatus === "paid" ? "Fully Paid" : o.paymentStatus === "partial" ? "Partial" : "Unpaid"}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {o.subHubName
+                            ? <span className="text-xs text-gray-500">{o.subHubName}</span>
+                            : <span className="text-gray-300 text-xs">—</span>}
+                        </td>
+                        <td className="px-4 py-3"><StatusBadge status={o.status} deliveryType={o.deliveryType} /></td>
+                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(o.createdAt)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            size="sm"
+                            onClick={() => setInvoiceOrder(o)}
+                            className="h-8 gap-1.5 text-xs bg-violet-600 hover:bg-violet-700 text-white"
+                          >
+                            <FileText className="w-3.5 h-3.5" /> Invoice
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : (<>
         {loading ? (
           <div className="p-4 space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
         ) : orders.length === 0 ? (
@@ -1570,6 +1834,7 @@ export default function Orders() {
             </table>
           </div>
         )}
+        </>)}
 
         {/* Pagination */}
         {pages > 1 && (
@@ -1601,6 +1866,9 @@ export default function Orders() {
         )}
       </div>
       </>)}
+
+      {/* Invoice Modal */}
+      {invoiceOrder && <InvoiceModal order={invoiceOrder} onClose={() => setInvoiceOrder(null)} />}
 
       {/* Edit Order Modal */}
       <Dialog open={!!editingOrder} onOpenChange={(o) => { if (!o) setEditingOrder(null); }}>
