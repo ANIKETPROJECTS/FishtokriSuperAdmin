@@ -23,6 +23,120 @@ async function getCtx(subHubId: string, res: any) {
   return { sub, conn };
 }
 
+// ─── ANALYTICS SUMMARY (across all sub-hubs) ─────────────────────────────────
+router.get("/analytics/summary", async (_req, res) => {
+  try {
+    const subs = await SubHub.find({}).lean();
+    let totalProducts = 0;
+    let activeProducts = 0;
+    let outOfStockCount = 0;
+    let lowStockCount = 0;
+    let totalStockValue = 0;
+    let totalQuantity = 0;
+    let movements30d = 0;
+    let movementsTotal = 0;
+    let adjustments30d = 0;
+    let adjustmentsTotal = 0;
+    let categories = new Set<string>();
+
+    type LowItem = { id: string; name: string; quantity: number; unit: string; category: string; subHubName: string; subHubId: string };
+    type SubSummary = { id: string; name: string; products: number; outOfStock: number; lowStock: number; stockValue: number };
+    type RecentMove = any;
+    const lowItems: LowItem[] = [];
+    const subSummaries: SubSummary[] = [];
+    const recent: RecentMove[] = [];
+
+    const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    for (const sub of subs) {
+      if (!sub.dbName) continue;
+      const conn = await getSubHubDbConnection(sub.dbName);
+      const productsCol = conn.db.collection("products");
+      const movementsCol = conn.db.collection(MOVEMENTS_COLLECTION);
+      const adjustmentsCol = conn.db.collection(ADJUSTMENTS_COLLECTION);
+
+      const products = await productsCol.find({}).toArray();
+      let subStockValue = 0;
+      let subOut = 0;
+      let subLow = 0;
+      for (const p of products) {
+        const qty = Number(p.quantity) || 0;
+        const price = Number(p.price) || 0;
+        totalProducts += 1;
+        totalQuantity += qty;
+        totalStockValue += qty * price;
+        subStockValue += qty * price;
+        if ((p.status ?? "available") === "available") activeProducts += 1;
+        if (p.category) categories.add(String(p.category));
+        if (qty <= 0) { outOfStockCount += 1; subOut += 1; }
+        else if (qty < 5) {
+          lowStockCount += 1;
+          subLow += 1;
+          lowItems.push({
+            id: String(p._id),
+            name: p.name ?? "",
+            quantity: qty,
+            unit: p.unit ?? "",
+            category: p.category ?? "",
+            subHubName: sub.name ?? "",
+            subHubId: String(sub._id),
+          });
+        }
+      }
+      subSummaries.push({
+        id: String(sub._id),
+        name: sub.name ?? "",
+        products: products.length,
+        outOfStock: subOut,
+        lowStock: subLow,
+        stockValue: subStockValue,
+      });
+
+      const [moveTotal, moveRecent, adjTotal, adjRecent, recentDocs] = await Promise.all([
+        movementsCol.countDocuments({}),
+        movementsCol.countDocuments({ createdAt: { $gte: since30 } }),
+        adjustmentsCol.countDocuments({}),
+        adjustmentsCol.countDocuments({ createdAt: { $gte: since30 } }),
+        movementsCol.find({}).sort({ createdAt: -1 }).limit(8).toArray(),
+      ]);
+      movementsTotal += moveTotal;
+      movements30d += moveRecent;
+      adjustmentsTotal += adjTotal;
+      adjustments30d += adjRecent;
+      for (const m of recentDocs) {
+        recent.push({ ...m, subHubName: sub.name ?? "", subHubId: String(sub._id) });
+      }
+    }
+
+    lowItems.sort((a, b) => a.quantity - b.quantity);
+    recent.sort((a, b) => +new Date(b.createdAt ?? 0) - +new Date(a.createdAt ?? 0));
+    subSummaries.sort((a, b) => b.stockValue - a.stockValue);
+
+    res.json({
+      overview: {
+        totalSubHubs: subs.length,
+        trackedSubHubs: subs.filter((s) => s.dbName).length,
+        totalProducts,
+        activeProducts,
+        outOfStockCount,
+        lowStockCount,
+        totalStockValue,
+        totalQuantity,
+        categoryCount: categories.size,
+        movementsTotal,
+        movements30d,
+        adjustmentsTotal,
+        adjustments30d,
+      },
+      lowStock: lowItems.slice(0, 10),
+      recentMovements: recent.slice(0, 10),
+      subHubBreakdown: subSummaries.slice(0, 8),
+    });
+  } catch (err) {
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch inventory analytics" });
+  }
+});
+
 // ─── PRODUCT LIST (for selected sub-hub) ──────────────────────────────────────
 router.get("/products", async (req, res) => {
   try {
