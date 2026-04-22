@@ -887,10 +887,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
           className="h-8 gap-1.5 text-xs border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300 ml-auto">
           <Download className="w-3.5 h-3.5" /> Export Products {processed.length < products.length ? `(${processed.length} filtered)` : `(${products.length})`}
         </Button>
-        <Button size="sm" variant="outline" disabled={initBatchesBusy} onClick={handleInitBatches}
-          className="h-8 gap-1.5 text-xs border-purple-200 text-purple-700 hover:bg-purple-50 hover:border-purple-300">
-          <Package className="w-3.5 h-3.5" /> {initBatchesBusy ? "Initializing..." : "Init Batches"}
-        </Button>
       </div>
 
       <TabToolbar
