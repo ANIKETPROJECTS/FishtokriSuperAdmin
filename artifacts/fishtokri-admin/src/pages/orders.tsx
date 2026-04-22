@@ -171,113 +171,117 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 
   return (
     <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="sm:max-w-[580px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-[#162B4D]">
-            <FileText className="w-4 h-4" /> Voucher Preview
-          </DialogTitle>
-        </DialogHeader>
-
-        <div id="invoice-print-area" className="border border-gray-200 rounded-lg p-5 text-sm bg-white space-y-0">
-          <h2 className="text-center font-bold text-[15px] mb-0.5">
-            Fishtokri{order.superHubName ? ` - ${order.superHubName}` : ""}
-          </h2>
-          <p className="text-center text-xs text-gray-500 mb-4">Mobile No: {order.phone || "—"}</p>
-
-          <div className="flex justify-between text-xs mb-1">
-            <span><strong>Invoice No:</strong> {invoiceNo}</span>
-            <span><strong>Date:</strong> {dateStr}</span>
-          </div>
-          <div className="flex justify-between text-xs mb-1">
-            <span><strong>Payment Mode:</strong> {payMode} <span className="ml-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border
-              {order.paymentStatus === 'paid' ? 'text-green-700 bg-green-50 border-green-200' : 'text-amber-700 bg-amber-50 border-amber-200'}">{payLabel}</span></span>
-            <span><strong>Time:</strong> {timeStr}</span>
-          </div>
-
-          <div className="border-t border-dashed border-gray-300 my-3" />
-
-          <div className="text-xs space-y-1 mb-1">
-            <p><strong>Name:</strong> {order.customerName}</p>
-            {order.address && <p><strong>Add:</strong> {order.address}</p>}
-            <p className="text-[#1A56DB] font-semibold text-[11px]">Created by: Master Admin</p>
-          </div>
-
-          <div className="border-t border-dashed border-gray-300 my-3" />
-
-          <table className="w-full text-xs">
-            <thead>
-              <tr>
-                <th className="text-left pb-2 font-semibold border-b border-gray-200 w-1/2">Item</th>
-                <th className="text-right pb-2 font-semibold border-b border-gray-200">Qty</th>
-                <th className="text-right pb-2 font-semibold border-b border-gray-200">Rate</th>
-                <th className="text-right pb-2 font-semibold border-b border-gray-200">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it: any, i: number) => {
-                const qty = Number(it.quantity) || 1;
-                const rate = Number(it.price) || 0;
-                return (
-                  <tr key={i} className="border-b border-gray-50">
-                    <td className="py-1.5">{it.name}</td>
-                    <td className="py-1.5 text-right">{qty}{it.unit ? ` ${it.unit}` : ""}</td>
-                    <td className="py-1.5 text-right">{rate.toFixed(2)}</td>
-                    <td className="py-1.5 text-right">{(qty * rate).toFixed(2)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          <div className="border-t border-dashed border-gray-300 my-3" />
-
-          <div className="flex justify-between text-xs font-semibold mb-1">
-            <span>Total Items: {items.length}</span>
-            <span className="text-right">{totalQty}</span>
-            <span className="text-right">{total.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-xs text-gray-500 mb-1">
-            <span>Discount :</span>
-            <span>- {discount.toFixed(2)}</span>
-          </div>
-
-          <div className="border-t border-dashed border-gray-300 my-3" />
-
-          <div className="flex justify-between font-bold text-[15px] my-2">
-            <span>Grand Total:</span>
-            <span>{grandTotal.toFixed(2)}</span>
-          </div>
-          <p className="text-center text-xs text-gray-500 italic mb-3">
-            ( {numberToWords(grandTotal)} )
-          </p>
-
-          {(order.paidAmount !== undefined || order.dueAmount !== undefined) && (
-            <div className="flex justify-between text-xs mb-3">
-              <span>Paid: <strong className="text-green-600">{formatRupees(paidAmt)}</strong></span>
-              <span>Due: <strong className={dueAmt > 0 ? "text-red-500" : "text-green-600"}>{formatRupees(dueAmt)}</strong></span>
-            </div>
-          )}
-
-          {order.notes && (
-            <p className="text-xs text-gray-500 mb-3"><strong>Note:</strong> {order.notes}</p>
-          )}
-
-          <div className="border-t border-dashed border-gray-300 mt-3 mb-3" />
-
-          <p className="text-center text-xs text-gray-500 leading-6">
-            Thank you for your business!<br />
-            We appreciate your prompt payment.<br />
-            Please feel free to contact us if you have any questions<br />
-            regarding this invoice.
-          </p>
+      <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <h2 className="text-base font-semibold text-gray-800">Voucher Preview</h2>
         </div>
 
-        <DialogFooter className="gap-2 pt-1">
+        <div className="max-h-[70vh] overflow-y-auto p-5 bg-gray-50">
+          <div id="invoice-print-area" className="bg-white max-w-md mx-auto p-5 text-[13px] text-gray-800 shadow-sm border border-gray-200 rounded">
+            <h3 className="text-center font-bold text-[15px] mb-1">
+              Fishtokri{order.superHubName ? ` - ${order.superHubName}` : ""}
+            </h3>
+            <div className="border-t border-dashed border-gray-400 my-2" />
+            <div className="text-center text-[12px]">Mobile No: {order.phone || "—"}</div>
+
+            <div className="flex justify-between mt-2">
+              <span><b>Invoice No:</b> {invoiceNo}</span>
+              <span><b>Date:</b> {dateStr}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>
+                <b>Payment Mode:</b> {payMode}
+                <span className={`ml-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border
+                  ${order.paymentStatus === 'paid'
+                    ? 'text-green-700 bg-green-50 border-green-200'
+                    : order.paymentStatus === 'partial'
+                      ? 'text-amber-700 bg-amber-50 border-amber-200'
+                      : 'text-red-700 bg-red-50 border-red-200'}`}>
+                  {payLabel}
+                </span>
+              </span>
+              <span><b>Time:</b> {timeStr}</span>
+            </div>
+
+            <div className="border-t border-dashed border-gray-400 my-2" />
+
+            <div><b>Name:</b> {order.customerName}</div>
+            {order.address && <div><b>Add :</b> {order.address}</div>}
+
+            <div className="border-t border-dashed border-gray-400 my-2" />
+
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-gray-700 text-left">
+                  <th className="py-1">Item</th>
+                  <th className="py-1 text-right">Qty</th>
+                  <th className="py-1 text-right">Rate</th>
+                  <th className="py-1 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it: any, i: number) => {
+                  const qty = Number(it.quantity) || 1;
+                  const rate = Number(it.price) || 0;
+                  return (
+                    <tr key={i}>
+                      <td className="py-1">{it.name}</td>
+                      <td className="py-1 text-right">{qty}{it.unit ? ` ${it.unit}` : ""}</td>
+                      <td className="py-1 text-right">{rate.toFixed(2)}</td>
+                      <td className="py-1 text-right">{(qty * rate).toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+                <tr className="border-t border-gray-400">
+                  <td className="py-1"><b>Total Items: {items.length}</b></td>
+                  <td className="py-1 text-right"><b>{totalQty}</b></td>
+                  <td></td>
+                  <td className="py-1 text-right"><b>{total.toFixed(2)}</b></td>
+                </tr>
+                <tr>
+                  <td className="py-1" colSpan={3}>Discount :</td>
+                  <td className="py-1 text-right">- {discount.toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div className="border-t border-dashed border-gray-400 my-2" />
+
+            <div className="flex justify-between text-[15px] font-bold">
+              <span>Grand Total:</span>
+              <span>{grandTotal.toFixed(2)}</span>
+            </div>
+            <div className="text-center text-[11px] text-gray-600 mt-1">( {numberToWords(grandTotal)} )</div>
+
+            {(order.paidAmount !== undefined || order.dueAmount !== undefined) && (
+              <div className="flex justify-between text-[12px] mt-2">
+                <span>Paid: <strong className="text-green-600">{formatRupees(paidAmt)}</strong></span>
+                <span>Due: <strong className={dueAmt > 0 ? "text-red-500" : "text-green-600"}>{formatRupees(dueAmt)}</strong></span>
+              </div>
+            )}
+
+            {order.notes && (
+              <>
+                <div className="border-t border-dashed border-gray-400 my-2" />
+                <div className="text-[12px]"><b>Note:</b> {order.notes}</div>
+              </>
+            )}
+
+            <div className="text-center text-[12px] text-gray-600 mt-3">
+              Thank you for your business!<br />
+              We appreciate your prompt payment.<br />
+              Please feel free to contact us if you have any questions<br />
+              regarding this invoice.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-200 bg-white">
           <Button variant="outline" onClick={onClose} className="h-9">Close</Button>
           <Button onClick={handlePrint} className="h-9 gap-1.5 bg-[#1A56DB] hover:bg-[#1447B4] text-white">
             <Printer className="w-3.5 h-3.5" /> Print Invoice
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
