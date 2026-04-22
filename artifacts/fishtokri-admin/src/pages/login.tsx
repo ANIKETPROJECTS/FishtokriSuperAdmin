@@ -100,7 +100,7 @@ export default function Login() {
       <div className="flex-1 flex items-center justify-center px-6 py-10 relative overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img src="/login-bg.png" alt="" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-white/75 backdrop-blur-[2px]" />
+          <div className="absolute inset-0 bg-white/40" />
         </div>
         <div className="relative z-10 w-full flex items-center justify-center">
         <div className="w-full max-w-sm">
