@@ -26,6 +26,8 @@ const receiptSchema = new mongoose.Schema(
     oppositeAccountName:  { type: String, required: true, trim: true },
     amount:               { type: Number, required: true },
     notes:                { type: String, default: "" },
+    sourceType:           { type: String, default: "" },
+    sourceOrderId:        { type: String, default: "" },
   },
   { timestamps: true },
 );
@@ -38,8 +40,6 @@ const paymentSchema = new mongoose.Schema(
     oppositeAccountName:  { type: String, required: true, trim: true },
     amount:               { type: Number, required: true },
     notes:                { type: String, default: "" },
-    sourceType:           { type: String, default: "" },
-    sourceOrderId:        { type: String, default: "" },
   },
   { timestamps: true },
 );
@@ -250,12 +250,12 @@ export async function syncOrderBankPayments(opts: {
   payments: Array<{ mode: string; amount: number; reference?: string; paidAt?: Date }>;
   orderRef?: string;
 }) {
-  const Payment = getPaymentModel();
+  const Receipt = getReceiptModel();
   const { orderId, customerName = "", payments = [], orderRef = "" } = opts;
   if (!orderId) return;
 
-  // Remove any prior bank payments tied to this order so updates reconcile cleanly.
-  await Payment.deleteMany({ sourceType: "order", sourceOrderId: orderId });
+  // Remove any prior receipts tied to this order so updates reconcile cleanly.
+  await Receipt.deleteMany({ sourceType: "order", sourceOrderId: orderId });
 
   const docs = (payments || [])
     .filter((p) => p && p.mode && Number(p.amount) > 0)
@@ -279,7 +279,7 @@ export async function syncOrderBankPayments(opts: {
     });
 
   if (docs.length > 0) {
-    await Payment.insertMany(docs);
+    await Receipt.insertMany(docs);
   }
 }
 
