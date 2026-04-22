@@ -134,6 +134,9 @@ function App() {
             <Route path="/orders/new">
               <ProtectedRoute component={Orders} requiredRole="master_admin" />
             </Route>
+            <Route path="/orders/edit/:id">
+              <ProtectedRoute component={Orders} requiredRole="master_admin" />
+            </Route>
             <Route path="/vendor-management">
               <ProtectedRoute component={VendorManagementOverview} requiredRole="master_admin" />
             </Route>
