@@ -63,13 +63,13 @@ const ALL_STATUSES = Object.keys(STATUS_CONFIG);
 // For takeaway orders that are still in the active flow (pending/confirmed/preparing/out_for_delivery),
 // show a single "Takeaway" badge so it's clear there's no delivery involved. Once delivered or cancelled,
 // the actual final status is shown.
-function effectiveStatus(status: string, deliveryType?: string) {
+function displayStatus(status: string, deliveryType?: string) {
   if (deliveryType === "takeaway" && ACTIVE_STATUSES.includes(status)) return "takeaway";
   return status;
 }
 
 function StatusBadge({ status, deliveryType }: { status: string; deliveryType?: string }) {
-  const eff = effectiveStatus(status, deliveryType);
+  const eff = displayStatus(status, deliveryType);
   const cfg = STATUS_CONFIG[eff] ?? { label: eff, color: "text-gray-600", bg: "bg-gray-50 border-gray-200", icon: Clock };
   const Icon = cfg.icon;
   return (
@@ -311,7 +311,9 @@ function InlineDeliverySelect({
 export default function Orders() {
   const { toast } = useToast();
   const [location, setLocation] = useLocation();
-  const isCreatePage = location === "/orders/new" || location.endsWith("/orders/new");
+  const isEditPage = location.startsWith("/orders/edit/");
+  const editIdFromUrl = isEditPage ? location.replace("/orders/edit/", "") : "";
+  const isCreatePage = location === "/orders/new" || location.endsWith("/orders/new") || isEditPage;
 
   const [activeTab, setActiveTab] = useState<"current" | "history" | "all">("current");
 
@@ -353,7 +355,8 @@ export default function Orders() {
   const [inlineAssigningId, setInlineAssigningId] = useState<string | null>(null);
   const [showAllPersons, setShowAllPersons] = useState(false);
 
-  // Edit order
+  // Edit order (full edit reuses the create form via /orders/edit/:id)
+  const [editingOrderId, setEditingOrderId] = useState<string>("");
   const [editingOrder, setEditingOrder] = useState<any>(null);
   const [editForm, setEditForm] = useState({ customerName: "", phone: "", address: "", deliveryArea: "", notes: "", status: "" });
   const [savingEdit, setSavingEdit] = useState(false);
@@ -436,7 +439,28 @@ export default function Orders() {
     setOrderDate(new Date().toISOString().slice(0, 10));
     setPaymentStatus("unpaid");
     setPaymentEntries([]);
+    setEditingOrderId("");
   }, []);
+
+  // If user lands directly on /orders/edit/:id (e.g. via refresh), fetch and populate.
+  useEffect(() => {
+    if (!isEditPage || !editIdFromUrl) return;
+    if (editingOrderId === editIdFromUrl) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch(`/api/orders/${editIdFromUrl}`);
+        const o = data?.order ?? data;
+        if (!cancelled && o && o._id) populateCreateFormFromOrder(o);
+      } catch {
+        if (!cancelled) {
+          toast({ title: "Order not found", variant: "destructive" });
+          setLocation("/orders");
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isEditPage, editIdFromUrl, editingOrderId, populateCreateFormFromOrder, setLocation, toast]);
 
   // Load all customers when create-order modal opens
   useEffect(() => {
@@ -860,8 +884,10 @@ export default function Orders() {
         timeslotStart: orderDeliveryType === "takeaway" ? undefined : selectedTimeslot?.startTime,
         timeslotEnd: orderDeliveryType === "takeaway" ? undefined : selectedTimeslot?.endTime,
       };
-      await apiFetch("/api/orders", { method: "POST", body: JSON.stringify(payload) });
-      toast({ title: "Order created", description: `${customerName} · ${formatRupees(cleanItems.reduce((s, i) => s + i.price * i.quantity, 0))}` });
+      const url = editingOrderId ? `/api/orders/${editingOrderId}` : "/api/orders";
+      const method = editingOrderId ? "PUT" : "POST";
+      await apiFetch(url, { method, body: JSON.stringify(payload) });
+      toast({ title: editingOrderId ? "Order updated" : "Order created", description: `${customerName} · ${formatRupees(cleanItems.reduce((s, i) => s + i.price * i.quantity, 0))}` });
       resetCreateForm();
       setLocation("/orders");
       load();
@@ -1085,16 +1111,94 @@ export default function Orders() {
     } finally { setAssigningDelivery(false); }
   };
 
+  const populateCreateFormFromOrder = useCallback((o: any) => {
+    setEditingOrderId(String(o._id));
+    // Customer
+    const existing = (allCustomers ?? []).find((c) => String(c.id) === String(o.customerId));
+    if (existing) {
+      setCustomerMode("existing");
+      setChosenCustomer(existing);
+    } else {
+      setCustomerMode("new");
+      setNewCustomer({
+        name: o.customerName ?? "",
+        phone: o.phone ?? "",
+        email: o.email ?? "",
+        alternatePhone: "",
+        dateOfBirth: "",
+        gender: "",
+        notes: "",
+      });
+    }
+    // Hub
+    setSelectedSuperHubId(o.superHubId ?? "");
+    setSelectedSubHubId(o.subHubId ?? "");
+    // Items
+    const products = (o.items ?? [])
+      .filter((it: any) => it && it.productId)
+      .map((it: any) => ({
+        productId: String(it.productId),
+        name: it.name ?? "",
+        price: Number(it.price) || 0,
+        unit: it.unit ?? "",
+        quantity: Number(it.quantity) || 0,
+      }));
+    const customs = (o.items ?? [])
+      .filter((it: any) => it && !it.productId)
+      .map((it: any) => ({
+        name: it.name ?? "",
+        price: String(it.price ?? ""),
+        quantity: String(it.quantity ?? "1"),
+        unit: it.unit ?? "",
+      }));
+    setSelectedProducts(products);
+    setOrderItems(customs);
+    // Delivery
+    const dt = o.deliveryType === "takeaway" ? "takeaway" : "delivery";
+    setOrderDeliveryType(dt);
+    if (dt === "delivery") {
+      const d = o.deliveryAddressDetail || {};
+      setOrderAddressMode("new");
+      setSelectedAddressIdx(null);
+      setNewAddress({
+        label: d.label ?? "Home",
+        contactName: d.contactName ?? "",
+        phone: d.phone ?? o.phone ?? "",
+        houseNo: d.houseNo ?? "",
+        building: d.building ?? "",
+        street: d.street ?? "",
+        area: d.area ?? o.deliveryArea ?? "",
+        landmark: d.landmark ?? "",
+        city: d.city ?? "",
+        state: d.state ?? "",
+        pincode: d.pincode ?? "",
+        instructions: d.instructions ?? "",
+      });
+    }
+    setOrderNotes(o.notes ?? "");
+    // Coupons
+    const couponIds = Array.isArray(o.couponIds) && o.couponIds.length
+      ? o.couponIds.map((x: any) => String(x))
+      : (Array.isArray(o.coupons) ? o.coupons.map((c: any) => String(c.id ?? c._id ?? "")).filter(Boolean) : []);
+    setAppliedCouponIds(couponIds);
+    // Payment
+    const ps = ["paid", "partial", "unpaid"].includes(o.paymentStatus) ? o.paymentStatus : "unpaid";
+    setPaymentStatus(ps);
+    const pays = Array.isArray(o.payments) ? o.payments : [];
+    setPaymentEntries(pays.map((p: any) => ({
+      mode: p.mode ?? "",
+      amount: String(p.amount ?? ""),
+      reference: p.reference ?? "",
+    })));
+    // Schedule
+    setOrderScheduleType(o.scheduleType === "instant" ? "instant" : "slot");
+    if (o.deliveryDate) setOrderDate(String(o.deliveryDate).slice(0, 10));
+    if (o.timeslotId) setSelectedTimeslotId(String(o.timeslotId));
+  }, [allCustomers]);
+
   const openEditOrder = (o: any) => {
-    setEditingOrder(o);
-    setEditForm({
-      customerName: o.customerName ?? "",
-      phone: o.phone ?? "",
-      address: o.address ?? "",
-      deliveryArea: o.deliveryArea ?? "",
-      notes: o.notes ?? "",
-      status: o.status ?? "",
-    });
+    populateCreateFormFromOrder(o);
+    setLocation(`/orders/edit/${o._id}`);
   };
 
   const handleSaveEdit = async () => {
@@ -1397,7 +1501,7 @@ export default function Orders() {
                           <button
                             onClick={() => {
                               setSelectedOrder(o);
-                              setEditStatus(effectiveStatus(o.status, o.deliveryType));
+                              setEditStatus(displayStatus(o.status, o.deliveryType));
                               setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? "");
                               setShowAllPersons(false);
                             }}
@@ -1608,10 +1712,10 @@ export default function Orders() {
               </Button>
               <div>
                 <h1 className="text-lg font-bold text-[#162B4D] flex items-center gap-2">
-                  <Plus className="w-4 h-4" />
-                  Create New Order
+                  {editingOrderId ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                  {editingOrderId ? "Edit Order" : "Create New Order"}
                 </h1>
-                <p className="text-[11px] text-gray-400">Fill in the details and create the order</p>
+                <p className="text-[11px] text-gray-400">{editingOrderId ? "Update any details and save changes" : "Fill in the details and create the order"}</p>
               </div>
             </div>
             <Button
@@ -2672,7 +2776,11 @@ export default function Orders() {
           <div className="px-4 sm:px-6 py-3 flex justify-end gap-2">
             <Button variant="outline" onClick={() => { setLocation("/orders"); resetCreateForm(); }} disabled={creatingSaving} className="h-9">Cancel</Button>
             <Button onClick={handleCreateOrder} disabled={creatingSaving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 text-white gap-1.5">
-              {creatingSaving ? "Creating..." : (<><Plus className="w-3.5 h-3.5" /> Create Order</>)}
+              {creatingSaving
+                ? (editingOrderId ? "Saving..." : "Creating...")
+                : editingOrderId
+                  ? (<><Pencil className="w-3.5 h-3.5" /> Save Changes</>)
+                  : (<><Plus className="w-3.5 h-3.5" /> Create Order</>)}
             </Button>
           </div>
         </div>

@@ -354,8 +354,13 @@ router.put("/:id", async (req, res) => {
     const {
       status, notes,
       assignedDeliveryPersonId, assignedDeliveryPersonName,
-      customerName, phone, address, deliveryArea,
+      customerName, phone, email, address, deliveryArea, deliveryAddressDetail,
       paymentStatus, payments, paidAmount, paymentMode,
+      items, deliveryType,
+      superHubId, superHubName, subHubId, subHubName,
+      scheduleType, deliveryDate, timeslotId, timeslotLabel, timeslotStart, timeslotEnd,
+      couponId, couponCode, couponTitle, couponIds, couponCodes, coupons,
+      subtotal, discount, slotCharge, total,
     } = req.body;
     const update: any = { updatedAt: new Date() };
     if (status !== undefined) update.status = status;
@@ -364,8 +369,40 @@ router.put("/:id", async (req, res) => {
     if (assignedDeliveryPersonName !== undefined) update.assignedDeliveryPersonName = assignedDeliveryPersonName;
     if (customerName !== undefined) update.customerName = customerName;
     if (phone !== undefined) update.phone = phone;
+    if (email !== undefined) update.email = email;
     if (address !== undefined) update.address = address;
     if (deliveryArea !== undefined) update.deliveryArea = deliveryArea;
+    if (deliveryAddressDetail !== undefined) update.deliveryAddressDetail = deliveryAddressDetail;
+    if (deliveryType !== undefined) update.deliveryType = deliveryType;
+    if (superHubId !== undefined) update.superHubId = superHubId;
+    if (superHubName !== undefined) update.superHubName = superHubName;
+    if (subHubId !== undefined) update.subHubId = subHubId;
+    if (subHubName !== undefined) update.subHubName = subHubName;
+    if (scheduleType !== undefined) update.scheduleType = scheduleType;
+    if (deliveryDate !== undefined) update.deliveryDate = deliveryDate;
+    if (timeslotId !== undefined) update.timeslotId = timeslotId;
+    if (timeslotLabel !== undefined) update.timeslotLabel = timeslotLabel;
+    if (timeslotStart !== undefined) update.timeslotStart = timeslotStart;
+    if (timeslotEnd !== undefined) update.timeslotEnd = timeslotEnd;
+    if (couponId !== undefined) update.couponId = couponId;
+    if (couponCode !== undefined) update.couponCode = couponCode;
+    if (couponTitle !== undefined) update.couponTitle = couponTitle;
+    if (Array.isArray(couponIds)) update.couponIds = couponIds;
+    if (Array.isArray(couponCodes)) update.couponCodes = couponCodes;
+    if (Array.isArray(coupons)) update.coupons = coupons;
+    if (subtotal !== undefined) update.subtotal = Number(subtotal) || 0;
+    if (discount !== undefined) update.discount = Number(discount) || 0;
+    if (slotCharge !== undefined) update.slotCharge = Number(slotCharge) || 0;
+    if (total !== undefined) update.total = Number(total) || 0;
+    if (Array.isArray(items)) {
+      update.items = items.map((it: any) => ({
+        productId: it?.productId ? String(it.productId) : undefined,
+        name: String(it?.name ?? "").trim(),
+        price: Number(it?.price) || 0,
+        quantity: Number(it?.quantity) || 0,
+        unit: String(it?.unit ?? "").trim(),
+      })).filter((it: any) => it.name && it.quantity > 0);
+    }
 
     if (paymentStatus !== undefined && ["paid", "partial", "unpaid"].includes(String(paymentStatus))) {
       update.paymentStatus = String(paymentStatus);

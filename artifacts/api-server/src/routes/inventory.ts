@@ -259,9 +259,17 @@ export async function applyOrderInventoryOnDelete(order: OrderForSync, wasDeduct
   return true;
 }
 
+function itemsSignature(items: any): string {
+  if (!Array.isArray(items)) return "";
+  return items
+    .map((i: any) => `${i?.productId ?? ""}:${Number(i?.quantity) || 0}`)
+    .filter((s: string) => s !== ":0")
+    .sort()
+    .join("|");
+}
+
 export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: OrderForSync, wasDeducted: boolean) {
   const wantsDeducted = orderShouldDeduct(next);
-  if (wasDeducted === wantsDeducted) return wasDeducted;
   if (!wasDeducted && wantsDeducted) {
     await applyDelta(next, "deduct");
     return true;
@@ -270,6 +278,16 @@ export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: Orde
     // Restore using the previous items snapshot (in case items changed)
     await applyDelta({ ...prev, _id: next._id }, "restore");
     return false;
+  }
+  if (wasDeducted && wantsDeducted) {
+    // Both active: if items or sub-hub changed, re-balance by restoring prev and deducting next.
+    const prevSig = `${prev?.subHubId ?? ""}::${itemsSignature((prev as any)?.items)}`;
+    const nextSig = `${next?.subHubId ?? ""}::${itemsSignature((next as any)?.items)}`;
+    if (prevSig !== nextSig) {
+      await applyDelta({ ...prev, _id: next._id }, "restore");
+      await applyDelta(next, "deduct");
+    }
+    return true;
   }
   return wasDeducted;
 }
