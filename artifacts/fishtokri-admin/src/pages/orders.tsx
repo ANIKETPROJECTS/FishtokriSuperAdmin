@@ -51,6 +51,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   confirmed: { label: "Confirmed", color: "text-blue-600",    bg: "bg-blue-50 border-blue-200",     icon: CheckCircle2 },
   preparing: { label: "Preparing", color: "text-purple-600",  bg: "bg-purple-50 border-purple-200", icon: Package },
   out_for_delivery: { label: "Out for Delivery", color: "text-indigo-600", bg: "bg-indigo-50 border-indigo-200", icon: Truck },
+  takeaway:  { label: "Takeaway",  color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", icon: ShoppingBag },
   delivered: { label: "Delivered", color: "text-green-600",   bg: "bg-green-50 border-green-200",   icon: CheckCircle2 },
   cancelled: { label: "Cancelled", color: "text-red-600",     bg: "bg-red-50 border-red-200",       icon: XCircle },
 };
@@ -59,8 +60,17 @@ const ACTIVE_STATUSES = ["pending", "confirmed", "preparing", "out_for_delivery"
 const HISTORY_STATUSES = ["delivered", "cancelled"];
 const ALL_STATUSES = Object.keys(STATUS_CONFIG);
 
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, color: "text-gray-600", bg: "bg-gray-50 border-gray-200", icon: Clock };
+// For takeaway orders that are still in the active flow (pending/confirmed/preparing/out_for_delivery),
+// show a single "Takeaway" badge so it's clear there's no delivery involved. Once delivered or cancelled,
+// the actual final status is shown.
+function effectiveStatus(status: string, deliveryType?: string) {
+  if (deliveryType === "takeaway" && ACTIVE_STATUSES.includes(status)) return "takeaway";
+  return status;
+}
+
+function StatusBadge({ status, deliveryType }: { status: string; deliveryType?: string }) {
+  const eff = effectiveStatus(status, deliveryType);
+  const cfg = STATUS_CONFIG[eff] ?? { label: eff, color: "text-gray-600", bg: "bg-gray-50 border-gray-200", icon: Clock };
   const Icon = cfg.icon;
   return (
     <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${cfg.color} ${cfg.bg}`}>
@@ -1364,10 +1374,12 @@ export default function Orders() {
                         {o.timeslotLabel && <p className="text-xs text-gray-400 max-w-[140px] truncate">{o.timeslotLabel}</p>}
                         {o.deliveryArea && <p className="text-xs text-gray-400 flex items-center gap-0.5"><MapPin className="w-3 h-3" />{o.deliveryArea}</p>}
                       </td>
-                      <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
+                      <td className="px-4 py-3"><StatusBadge status={o.status} deliveryType={o.deliveryType} /></td>
                       <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(o.createdAt)}</td>
                       <td className="px-4 py-3">
-                        {deliveryPersons.length > 0 ? (
+                        {o.deliveryType === "takeaway" ? (
+                          <span className="text-xs text-gray-400 italic">Not required</span>
+                        ) : deliveryPersons.length > 0 ? (
                           <InlineDeliverySelect
                             order={o}
                             persons={deliveryPersons}
@@ -1559,7 +1571,7 @@ export default function Orders() {
                   <p className="text-xs text-gray-500">
                     {Array.isArray(deletingOrder.items) ? deletingOrder.items.length : 0} item(s) ·{" "}
                     {formatRupees(orderTotal(deletingOrder.items))} ·{" "}
-                    <StatusBadge status={deletingOrder.status} />
+                    <StatusBadge status={deletingOrder.status} deliveryType={deletingOrder.deliveryType} />
                   </p>
                 </div>
               </div>
@@ -2829,7 +2841,18 @@ export default function Orders() {
                   </div>
                 </div>
 
-                {/* Assign Delivery Partner */}
+                {/* Assign Delivery Partner — not applicable for takeaway */}
+                {selectedOrder.deliveryType === "takeaway" ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-100 rounded-xl">
+                    <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                      <ShoppingBag className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-emerald-700">Takeaway order</p>
+                      <p className="text-[11px] text-emerald-600">No delivery partner needed — customer picks up from {selectedOrder.pickupLocation || selectedOrder.subHubName || "the store"}.</p>
+                    </div>
+                  </div>
+                ) : (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Assign Delivery Partner</p>
@@ -2940,6 +2963,7 @@ export default function Orders() {
                     <p className="text-[11px] text-gray-400 italic">No delivery persons found. Add them via Admin Users.</p>
                   )}
                 </div>
+                )}
 
                 {/* Status Update */}
                 <div className="space-y-2">
@@ -2965,7 +2989,7 @@ export default function Orders() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-400">Current:</span>
-                    <StatusBadge status={selectedOrder.status} />
+                    <StatusBadge status={selectedOrder.status} deliveryType={selectedOrder.deliveryType} />
                   </div>
                 </div>
               </div>
