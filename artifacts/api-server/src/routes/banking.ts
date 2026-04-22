@@ -38,6 +38,8 @@ const paymentSchema = new mongoose.Schema(
     oppositeAccountName:  { type: String, required: true, trim: true },
     amount:               { type: Number, required: true },
     notes:                { type: String, default: "" },
+    sourceType:           { type: String, default: "" },
+    sourceOrderId:        { type: String, default: "" },
   },
   { timestamps: true },
 );
@@ -231,5 +233,54 @@ router.delete("/payments/:id", async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+
+// ── Helper: sync order payments → bank_payments ───────────────────────────
+const ORDER_MODE_MAP: Record<string, string> = {
+  cash: "CASH",
+  upi: "UPI",
+  card: "CREDIT CARD",
+  bank_transfer: "NEFT",
+  wallet: "PAYTM",
+  other: "OTHER",
+};
+
+export async function syncOrderBankPayments(opts: {
+  orderId: string;
+  customerName?: string;
+  payments: Array<{ mode: string; amount: number; reference?: string; paidAt?: Date }>;
+  orderRef?: string;
+}) {
+  const Payment = getPaymentModel();
+  const { orderId, customerName = "", payments = [], orderRef = "" } = opts;
+  if (!orderId) return;
+
+  // Remove any prior bank payments tied to this order so updates reconcile cleanly.
+  await Payment.deleteMany({ sourceType: "order", sourceOrderId: orderId });
+
+  const docs = (payments || [])
+    .filter((p) => p && p.mode && Number(p.amount) > 0)
+    .map((p) => {
+      const modeKey = String(p.mode || "").toLowerCase();
+      const mappedMode = ORDER_MODE_MAP[modeKey] || String(p.mode || "OTHER").toUpperCase();
+      const noteParts = [
+        `Order${orderRef ? ` ${orderRef}` : ""} payment`,
+        p.reference ? `Ref: ${p.reference}` : "",
+      ].filter(Boolean);
+      return {
+        date: p.paidAt ? new Date(p.paidAt) : new Date(),
+        paymentMode: mappedMode,
+        depositAccountName: mappedMode,
+        oppositeAccountName: customerName || "Customer",
+        amount: Math.max(0, Number(p.amount) || 0),
+        notes: noteParts.join(" · "),
+        sourceType: "order",
+        sourceOrderId: orderId,
+      };
+    });
+
+  if (docs.length > 0) {
+    await Payment.insertMany(docs);
+  }
+}
 
 export default router;

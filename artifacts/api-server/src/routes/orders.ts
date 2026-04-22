@@ -2,6 +2,7 @@ import { Router } from "express";
 import mongoose from "mongoose";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 import { getCustomersConnection } from "../db/customers-connection.js";
+import { syncOrderBankPayments } from "./banking.js";
 
 const router = Router();
 
@@ -283,6 +284,21 @@ router.post("/", async (req, res) => {
 
     const conn = await getOrdersDb();
     const result = await conn.db.collection(COLLECTION).insertOne(orderDoc);
+
+    // Mirror order payments into banking ▸ payments so the ledger stays in sync.
+    if (Array.isArray(orderDoc.payments) && orderDoc.payments.length > 0) {
+      try {
+        await syncOrderBankPayments({
+          orderId: String(result.insertedId),
+          customerName: orderDoc.customerName,
+          payments: orderDoc.payments,
+          orderRef: `#${String(result.insertedId).slice(-6).toUpperCase()}`,
+        });
+      } catch (e) {
+        req.log.error({ err: e }, "Failed to sync order payments to banking");
+      }
+    }
+
     res.status(201).json({ order: { ...orderDoc, _id: result.insertedId } });
   } catch (err) {
     req.log.error({ err }, "Failed to create order");
@@ -366,6 +382,21 @@ router.put("/:id", async (req, res) => {
       { returnDocument: "after" }
     );
     if (!result) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+
+    // If the payments list was touched, re-sync this order's banking payments.
+    if (Array.isArray(payments)) {
+      try {
+        await syncOrderBankPayments({
+          orderId: String((result as any)._id),
+          customerName: (result as any).customerName,
+          payments: (result as any).payments || [],
+          orderRef: `#${String((result as any)._id).slice(-6).toUpperCase()}`,
+        });
+      } catch (e) {
+        req.log.error({ err: e }, "Failed to sync order payments to banking");
+      }
+    }
+
     res.json({ order: result });
   } catch (err) {
     req.log.error({ err }, "Failed to update order");
@@ -383,6 +414,13 @@ router.delete("/:id", async (req, res) => {
     const result = await conn.db.collection(COLLECTION).deleteOne({ _id: oid });
     req.log.info({ deletedCount: result.deletedCount }, "Delete result");
     if (result.deletedCount === 0) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+
+    try {
+      await syncOrderBankPayments({ orderId: req.params.id, payments: [] });
+    } catch (e) {
+      req.log.error({ err: e }, "Failed to remove order payments from banking");
+    }
+
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete order");
