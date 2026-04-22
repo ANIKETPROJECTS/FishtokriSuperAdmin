@@ -1990,20 +1990,27 @@ export default function Orders() {
             )}
 
             {/* ITEMS */}
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Items <span className="text-gray-300">({totalItemCount})</span></p>
-                <div className="flex items-center gap-3">
-                  <Popover open={productPickerOpen} onOpenChange={(o) => { setProductPickerOpen(o); if (!o) { setPickerCategory(null); setProductSearch(""); } }}>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        disabled={!selectedSubHubId}
-                        className="text-xs font-semibold text-[#1A56DB] hover:underline inline-flex items-center gap-1 disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
-                      >
-                        <Plus className="w-3 h-3" /> Add product
-                      </button>
-                    </PopoverTrigger>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                  Items <span className="text-gray-300">({totalItemCount})</span>
+                </p>
+              </div>
+
+              {/* Action bar — prominent Add Product + Custom Item */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Popover open={productPickerOpen} onOpenChange={(o) => { setProductPickerOpen(o); if (!o) { setPickerCategory(null); setProductSearch(""); } }}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      disabled={!selectedSubHubId}
+                      className="h-11 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#1A56DB] text-white text-sm font-semibold shadow-sm hover:bg-[#1647b8] active:bg-[#0f3a99] transition-colors disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      title={selectedSubHubId ? "Add a product from the catalog" : "Select a sub-hub first"}
+                    >
+                      <Package className="w-4 h-4" />
+                      Add Product
+                    </button>
+                  </PopoverTrigger>
                     <PopoverContent
                       className="p-0 shadow-xl border border-gray-100 rounded-2xl overflow-hidden w-[420px]"
                       align="end"
@@ -2123,20 +2130,33 @@ export default function Orders() {
                         </div>
                       )}
                     </PopoverContent>
-                  </Popover>
-                  <button
-                    onClick={() => setOrderItems((arr) => [...arr, { name: "", price: "", quantity: "1", unit: "" }])}
-                    className="text-xs font-semibold text-gray-500 hover:underline inline-flex items-center gap-1"
-                  >
-                    <Plus className="w-3 h-3" /> Custom item
-                  </button>
-                </div>
+                </Popover>
+
+                <button
+                  type="button"
+                  onClick={() => setOrderItems((arr) => [...arr, { name: "", price: "", quantity: "1", unit: "" }])}
+                  className="h-11 w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#1A56DB]/40 text-[#1A56DB] text-sm font-semibold bg-[#1A56DB]/5 hover:bg-[#1A56DB]/10 hover:border-[#1A56DB]/60 transition-colors"
+                  title="Add a one-off item not in the catalog"
+                >
+                  <Plus className="w-4 h-4" />
+                  Custom Item
+                </button>
               </div>
 
               {!selectedSubHubId && selectedProducts.length === 0 && orderItems.length === 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-[11px] text-amber-700 inline-flex items-start gap-2">
                   <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                   <span>Select a sub-hub above to choose products from its catalog, or add a custom item.</span>
+                </div>
+              )}
+
+              {selectedSubHubId && selectedProducts.length === 0 && orderItems.length === 0 && (
+                <div className="px-4 py-6 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-center">
+                  <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-white border border-gray-200 flex items-center justify-center">
+                    <ShoppingBag className="w-4 h-4 text-gray-400" />
+                  </div>
+                  <p className="text-sm font-semibold text-[#162B4D]">No items added yet</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Use <span className="font-semibold text-[#1A56DB]">Add Product</span> to pick from the catalog or <span className="font-semibold text-[#1A56DB]">Custom Item</span> for a one-off entry.</p>
                 </div>
               )}
 
