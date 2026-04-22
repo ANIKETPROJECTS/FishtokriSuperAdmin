@@ -177,7 +177,7 @@ export default function Login() {
         <div className="w-full max-w-sm">
           <button
             onClick={() => setLocation("/")}
-            className="flex items-center gap-1.5 text-gray-500 hover:text-[#0D1F3C] text-xs mb-8 transition-colors"
+            className="flex items-center gap-1.5 text-gray-700 hover:text-[#0D1F3C] text-xs mb-8 transition-colors font-medium"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Back to role selection
@@ -192,7 +192,7 @@ export default function Login() {
           </div>
 
           <div className="mb-8">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-gray-400 mb-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 mb-2">
               Sign in
             </p>
             <h1 className="text-2xl font-semibold text-[#0D1F3C] tracking-tight" data-testid="login-heading">
@@ -275,7 +275,7 @@ export default function Login() {
             </Button>
           </form>
 
-          <p className="mt-8 text-xs text-gray-400">
+          <p className="mt-8 text-xs text-gray-700">
             Need help signing in? Contact your system administrator.
           </p>
         </div>

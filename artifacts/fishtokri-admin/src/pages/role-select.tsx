@@ -98,13 +98,13 @@ export default function RoleSelect() {
           </div>
 
           <div className="mb-8">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-gray-400 mb-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 mb-2">
               Sign in
             </p>
             <h1 className="text-2xl font-semibold text-[#0D1F3C] tracking-tight">
               Choose your account type
             </h1>
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-gray-700">
               Select the role that matches your responsibilities to continue.
             </p>
           </div>
@@ -121,14 +121,14 @@ export default function RoleSelect() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-[#0D1F3C]">{label}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 truncate">{desc}</p>
+                  <p className="text-xs text-gray-600 mt-0.5 truncate">{desc}</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-[#0D1F3C] group-hover:translate-x-0.5 transition-all" />
               </button>
             ))}
           </div>
 
-          <p className="mt-8 text-xs text-gray-400">
+          <p className="mt-8 text-xs text-gray-700">
             Need help signing in? Contact your system administrator.
           </p>
         </div>
