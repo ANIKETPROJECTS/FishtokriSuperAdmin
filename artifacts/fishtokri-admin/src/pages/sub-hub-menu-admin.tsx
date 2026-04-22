@@ -957,7 +957,16 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
                     {p.serves && <p className="text-[10px] text-gray-400">{p.serves}</p>}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <span className={`text-xs font-bold ${(p.quantity ?? 0) < 10 ? "text-red-500" : "text-[#162B4D]"}`}>{p.quantity ?? 0}</span>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className={`text-xs font-bold ${(p.quantity ?? 0) === 0 ? "text-red-500" : (p.lowStockThreshold > 0 && (p.quantity ?? 0) <= p.lowStockThreshold) ? "text-amber-500" : "text-[#162B4D]"}`}>
+                        {p.quantity ?? 0}
+                      </span>
+                      {p.lowStockThreshold > 0 && (p.quantity ?? 0) <= p.lowStockThreshold && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1 py-0.5 rounded-full leading-none whitespace-nowrap">
+                          <AlertCircle className="w-2.5 h-2.5" /> Low Stock
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-center">
                     {Array.isArray(p.recipes) && p.recipes.length > 0
@@ -1013,7 +1022,15 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
                   {p.unit && <div><span className="text-gray-400">Unit: </span><span className="font-medium text-gray-600">{p.unit}</span></div>}
                   {p.pieces && <div><span className="text-gray-400">Pieces: </span><span className="font-medium text-gray-600">{p.pieces}</span></div>}
                   {p.serves && <div><span className="text-gray-400">Serves: </span><span className="font-medium text-gray-600">{p.serves}</span></div>}
-                  <div><span className="text-gray-400">Stock: </span><span className={`font-bold ${(p.quantity ?? 0) < 10 ? "text-red-500" : "text-gray-700"}`}>{p.quantity ?? 0}</span></div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-gray-400">Stock: </span>
+                    <span className={`font-bold ${(p.quantity ?? 0) === 0 ? "text-red-500" : (p.lowStockThreshold > 0 && (p.quantity ?? 0) <= p.lowStockThreshold) ? "text-amber-500" : "text-gray-700"}`}>{p.quantity ?? 0}</span>
+                    {p.lowStockThreshold > 0 && (p.quantity ?? 0) <= p.lowStockThreshold && (
+                      <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1 py-0.5 rounded-full leading-none">
+                        <AlertCircle className="w-2.5 h-2.5" /> Low
+                      </span>
+                    )}
+                  </div>
                   {Array.isArray(p.recipes) && p.recipes.length > 0 && (
                     <div><span className="text-gray-400">Recipes: </span><span className="font-medium text-blue-600">{p.recipes.length}</span></div>
                   )}
@@ -2137,6 +2154,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const [saving, setSaving] = useState(false);
   const [batches, setBatches] = useState<BatchForm[]>([]);
   const [batchesLoading, setBatchesLoading] = useState(false);
+  const [lowStockThreshold, setLowStockThreshold] = useState("0");
 
   const discountPct = useMemo(() => {
     const p = Number(price), op = Number(originalPrice);
@@ -2170,6 +2188,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
         method: Array.isArray(r.method) && r.method.length > 0 ? r.method : [""],
       })) : []);
       setCouponIds(Array.isArray(product.couponIds) ? product.couponIds.map((id: any) => String(id?.$oid ?? id?._id ?? id)) : []);
+      setLowStockThreshold(String(product.lowStockThreshold ?? 0));
       // Load batches from inventory API
       setBatchesLoading(true);
       apiFetch(`/api/inventory/products/${product._id}/batches?subHubId=${subHubId}`)
@@ -2193,6 +2212,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setGrossWeight(""); setNetWeight(""); setPieces(""); setServes(""); setQuantity("0"); setStatus("available");
       setIsArchived(false); setProductImageUrl(""); setProductImageMode("url"); setRecipes([]);
       setCouponIds([]);
+      setLowStockThreshold("0");
       setBatches([emptyBatch()]);
     }
   }, [isOpen, product]);
@@ -2254,6 +2274,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       unit, grossWeight, netWeight, pieces, serves,
       quantity: batchesTotal,
       status, isArchived, imageUrl,
+      lowStockThreshold: Number(lowStockThreshold) || 0,
       recipes: cleanedRecipes,
       couponIds,
     };
@@ -2331,11 +2352,33 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                 <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Gross Weight</Label><Input value={grossWeight} onChange={(e) => setGrossWeight(e.target.value)} placeholder="e.g. 550g" className="h-9" /></div>
                 <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Net Weight</Label><Input value={netWeight} onChange={(e) => setNetWeight(e.target.value)} placeholder="e.g. 500g" className="h-9" /></div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Pieces</Label><Input value={pieces} onChange={(e) => setPieces(e.target.value)} placeholder="e.g. 8–10 Pieces" className="h-9" /></div>
                 <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Serves</Label><Input value={serves} onChange={(e) => setServes(e.target.value)} placeholder="e.g. Serves 4" className="h-9" /></div>
-                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Stock (Qty)</Label><Input type="number" readOnly value={batchesTotal} className="h-9 bg-gray-50 text-gray-500 cursor-not-allowed" title="Derived from batches below" /></div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-gray-600">Stock (Qty)</Label>
+                  <Input type="number" readOnly value={batchesTotal} className="h-9 bg-gray-50 text-gray-500 cursor-not-allowed" title="Derived from batches below" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                    Low Stock Alert
+                  </Label>
+                  <Input
+                    type="number" min="0"
+                    value={lowStockThreshold}
+                    onChange={(e) => setLowStockThreshold(e.target.value)}
+                    placeholder="e.g. 5"
+                    className="h-9"
+                    title="Warn when stock drops below this number (0 = disabled)"
+                  />
+                </div>
               </div>
+              {Number(lowStockThreshold) > 0 && batchesTotal <= Number(lowStockThreshold) && (
+                <div className="flex items-center gap-2 text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                  <span className="text-amber-700 font-semibold">Stock is at or below the low-stock threshold ({lowStockThreshold})</span>
+                </div>
+              )}
             </div>
           </section>
 

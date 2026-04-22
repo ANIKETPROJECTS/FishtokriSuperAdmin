@@ -87,7 +87,7 @@ router.post("/products", async (req, res) => {
     const {
       name, description, category, subCategory,
       price, originalPrice, discountPct, unit, weight, grossWeight, netWeight, pieces, serves, quantity,
-      status, isArchived, imageUrl, limitedStockNote,
+      status, isArchived, imageUrl, limitedStockNote, lowStockThreshold,
       recipes, sectionId, couponIds,
     } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
@@ -112,6 +112,7 @@ router.post("/products", async (req, res) => {
       isArchived: isArchived === true,
       imageUrl: imageUrl ?? "",
       limitedStockNote: limitedStockNote ?? "",
+      lowStockThreshold: lowStockThreshold != null ? Number(lowStockThreshold) : 0,
       recipes: Array.isArray(recipes) ? recipes : [],
       sectionId: normalizeIdList(sectionId),
       couponIds: normalizeIdList(couponIds),
@@ -135,7 +136,7 @@ router.put("/products/:productId", async (req, res) => {
     const {
       name, description, category, subCategory,
       price, originalPrice, discountPct, unit, weight, grossWeight, netWeight, pieces, serves, quantity,
-      status, isArchived, imageUrl, limitedStockNote,
+      status, isArchived, imageUrl, limitedStockNote, lowStockThreshold,
       recipes, sectionId, couponIds,
     } = req.body;
     const update: any = { updatedAt: new Date() };
@@ -157,6 +158,7 @@ router.put("/products/:productId", async (req, res) => {
     if (isArchived !== undefined) update.isArchived = isArchived === true;
     if (imageUrl !== undefined) update.imageUrl = imageUrl;
     if (limitedStockNote !== undefined) update.limitedStockNote = limitedStockNote;
+    if (lowStockThreshold !== undefined) update.lowStockThreshold = Number(lowStockThreshold) || 0;
     if (recipes !== undefined) update.recipes = Array.isArray(recipes) ? recipes : [];
     if (sectionId !== undefined) update.sectionId = normalizeIdList(sectionId);
     if (couponIds !== undefined) update.couponIds = normalizeIdList(couponIds);
