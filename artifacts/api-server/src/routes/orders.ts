@@ -51,13 +51,35 @@ router.get("/", async (req, res) => {
 
     if (q) {
       const re = { $regex: q, $options: "i" };
-      filter.$or = [
+      const orClauses: any[] = [
         { customerName: re },
         { phone: re },
         { deliveryArea: re },
         { address: re },
         { "items.name": re },
       ];
+      // Match by order id — full ObjectId or trailing fragment (case-insensitive,
+      // hex-only). Reference shown in UI is `#<last6>` from the _id, so support
+      // partial hex matches too.
+      const hex = q.replace(/^#/, "").toLowerCase();
+      if (/^[0-9a-f]+$/.test(hex)) {
+        if (hex.length === 24) {
+          const oid = toId(hex);
+          if (oid) orClauses.push({ _id: oid });
+        } else {
+          // Match any _id whose hex string ends with the query fragment.
+          orClauses.push({
+            $expr: {
+              $regexMatch: {
+                input: { $toString: "$_id" },
+                regex: `${hex}$`,
+                options: "i",
+              },
+            },
+          });
+        }
+      }
+      filter.$or = orClauses;
     }
 
     // Tab semantics: takeaway-deliveryType orders are always treated as completed (History).
