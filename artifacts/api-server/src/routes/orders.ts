@@ -3,6 +3,11 @@ import mongoose from "mongoose";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 import { getCustomersConnection } from "../db/customers-connection.js";
 import { syncOrderBankPayments } from "./banking.js";
+import {
+  applyOrderInventoryOnCreate,
+  applyOrderInventoryOnUpdate,
+  applyOrderInventoryOnDelete,
+} from "./inventory.js";
 
 const router = Router();
 
@@ -285,6 +290,26 @@ router.post("/", async (req, res) => {
     const conn = await getOrdersDb();
     const result = await conn.db.collection(COLLECTION).insertOne(orderDoc);
 
+    // Sync inventory (deduct stock for active orders).
+    try {
+      const deducted = await applyOrderInventoryOnCreate({
+        _id: result.insertedId,
+        subHubId: orderDoc.subHubId,
+        subHubName: orderDoc.subHubName,
+        status: orderDoc.status,
+        items: orderDoc.items,
+      });
+      if (deducted) {
+        await conn.db.collection(COLLECTION).updateOne(
+          { _id: result.insertedId },
+          { $set: { inventoryDeducted: true } }
+        );
+        orderDoc.inventoryDeducted = true;
+      }
+    } catch (e) {
+      req.log.error({ err: e }, "Failed to sync inventory on order create");
+    }
+
     // Mirror order payments into banking ▸ payments so the ledger stays in sync.
     if (Array.isArray(orderDoc.payments) && orderDoc.payments.length > 0) {
       try {
@@ -376,12 +401,33 @@ router.put("/:id", async (req, res) => {
       update.dueAmount = Math.max(0, totalNum - paidNum);
     }
     const conn = await getOrdersDb();
+    const prev = await conn.db.collection(COLLECTION).findOne({ _id: oid });
+    if (!prev) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
     const result = await conn.db.collection(COLLECTION).findOneAndUpdate(
       { _id: oid },
       { $set: update },
       { returnDocument: "after" }
     );
     if (!result) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+
+    // Sync inventory if status transitioned between active/cancelled.
+    try {
+      const wasDeducted = (prev as any).inventoryDeducted === true;
+      const nowDeducted = await applyOrderInventoryOnUpdate(
+        prev as any,
+        result as any,
+        wasDeducted,
+      );
+      if (wasDeducted !== nowDeducted) {
+        await conn.db.collection(COLLECTION).updateOne(
+          { _id: oid },
+          { $set: { inventoryDeducted: nowDeducted } }
+        );
+        (result as any).inventoryDeducted = nowDeducted;
+      }
+    } catch (e) {
+      req.log.error({ err: e }, "Failed to sync inventory on order update");
+    }
 
     // If the payments list was touched, re-sync this order's banking payments.
     if (Array.isArray(payments)) {
@@ -411,9 +457,18 @@ router.delete("/:id", async (req, res) => {
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
     const conn = await getOrdersDb();
     req.log.info({ id: req.params.id, oid: oid.toHexString() }, "Attempting to delete order");
+    const existing = await conn.db.collection(COLLECTION).findOne({ _id: oid });
+    if (!existing) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
     const result = await conn.db.collection(COLLECTION).deleteOne({ _id: oid });
     req.log.info({ deletedCount: result.deletedCount }, "Delete result");
     if (result.deletedCount === 0) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+
+    // Restore inventory for any deducted items.
+    try {
+      await applyOrderInventoryOnDelete(existing as any, (existing as any).inventoryDeducted === true);
+    } catch (e) {
+      req.log.error({ err: e }, "Failed to restore inventory on order delete");
+    }
 
     try {
       await syncOrderBankPayments({ orderId: req.params.id, payments: [] });

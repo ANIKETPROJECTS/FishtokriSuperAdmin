@@ -13,6 +13,7 @@ import vendorsRouter from "./vendors";
 import vendorItemsRouter from "./vendor-items";
 import retailInvoicesRouter from "./retail-invoices";
 import bankingRouter from "./banking";
+import inventoryRouter from "./inventory";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use("/vendors", vendorsRouter);
 router.use("/vendor-items", vendorItemsRouter);
 router.use("/retail-invoices", retailInvoicesRouter);
 router.use("/banking", bankingRouter);
+router.use("/inventory", inventoryRouter);
 
 export default router;

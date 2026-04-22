@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal, FileText, Receipt } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal, FileText, Receipt, Package, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
 
@@ -18,6 +18,16 @@ const masterAdminNavItems = [
       { href: "/vendor-categories", label: "Categories", icon: FolderOpen },
       { href: "/vendor-items", label: "Items", icon: Boxes },
       { href: "/stock-adjustment", label: "Stock Adjustment", icon: SlidersHorizontal },
+    ],
+  },
+  {
+    href: "/inventory",
+    label: "Inventory Management",
+    icon: Boxes,
+    children: [
+      { href: "/inventory/products", label: "Inventory", icon: Package },
+      { href: "/inventory/history", label: "History", icon: History },
+      { href: "/inventory/adjustment", label: "Stock Adjustment", icon: SlidersHorizontal },
     ],
   },
   {

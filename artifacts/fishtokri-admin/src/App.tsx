@@ -29,6 +29,9 @@ import VendorManagementOverview from "@/pages/vendor-management-overview";
 import VendorItems from "@/pages/vendor-items";
 import VendorCategories from "@/pages/vendor-categories";
 import StockAdjustmentPage from "@/pages/stock-adjustment";
+import InventoryPage from "@/pages/inventory";
+import InventoryHistoryPage from "@/pages/inventory-history";
+import InventoryStockAdjustmentPage from "@/pages/inventory-stock-adjustment";
 import BankingOverview from "@/pages/banking-overview";
 import BankingAccounts from "@/pages/banking-accounts";
 import BankingReceipts from "@/pages/banking-receipts";
@@ -154,6 +157,18 @@ function App() {
             </Route>
             <Route path="/stock-adjustment">
               <ProtectedRoute component={StockAdjustmentPage} requiredRole="master_admin" />
+            </Route>
+            <Route path="/inventory">
+              <ProtectedRoute component={InventoryPage} requiredRole="master_admin" />
+            </Route>
+            <Route path="/inventory/products">
+              <ProtectedRoute component={InventoryPage} requiredRole="master_admin" />
+            </Route>
+            <Route path="/inventory/history">
+              <ProtectedRoute component={InventoryHistoryPage} requiredRole="master_admin" />
+            </Route>
+            <Route path="/inventory/adjustment">
+              <ProtectedRoute component={InventoryStockAdjustmentPage} requiredRole="master_admin" />
             </Route>
             <Route path="/banking">
               <ProtectedRoute component={BankingOverview} requiredRole="master_admin" />
