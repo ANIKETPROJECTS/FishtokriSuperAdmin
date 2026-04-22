@@ -442,26 +442,6 @@ export default function Orders() {
     setEditingOrderId("");
   }, []);
 
-  // If user lands directly on /orders/edit/:id (e.g. via refresh), fetch and populate.
-  useEffect(() => {
-    if (!isEditPage || !editIdFromUrl) return;
-    if (editingOrderId === editIdFromUrl) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await apiFetch(`/api/orders/${editIdFromUrl}`);
-        const o = data?.order ?? data;
-        if (!cancelled && o && o._id) populateCreateFormFromOrder(o);
-      } catch {
-        if (!cancelled) {
-          toast({ title: "Order not found", variant: "destructive" });
-          setLocation("/orders");
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [isEditPage, editIdFromUrl, editingOrderId, populateCreateFormFromOrder, setLocation, toast]);
-
   // Load all customers when create-order modal opens
   useEffect(() => {
     if (!isCreatePage) return;
@@ -1200,6 +1180,26 @@ export default function Orders() {
     populateCreateFormFromOrder(o);
     setLocation(`/orders/edit/${o._id}`);
   };
+
+  // If user lands directly on /orders/edit/:id (e.g. via refresh), fetch and populate.
+  useEffect(() => {
+    if (!isEditPage || !editIdFromUrl) return;
+    if (editingOrderId === editIdFromUrl) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch(`/api/orders/${editIdFromUrl}`);
+        const o = data?.order ?? data;
+        if (!cancelled && o && o._id) populateCreateFormFromOrder(o);
+      } catch {
+        if (!cancelled) {
+          toast({ title: "Order not found", variant: "destructive" });
+          setLocation("/orders");
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isEditPage, editIdFromUrl, editingOrderId, populateCreateFormFromOrder, setLocation, toast]);
 
   const handleSaveEdit = async () => {
     if (!editingOrder) return;
