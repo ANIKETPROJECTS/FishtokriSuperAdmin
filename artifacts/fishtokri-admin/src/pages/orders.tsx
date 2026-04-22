@@ -1326,25 +1326,6 @@ export default function Orders() {
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-        {ALL_STATUSES.map((s) => {
-          const cfg = STATUS_CONFIG[s];
-          const Icon = cfg.icon;
-          return (
-            <button
-              key={s}
-              onClick={() => { setStatusFilter(s === statusFilter ? "" : s); setActiveTab("all"); }}
-              className={`rounded-xl border p-3 text-left transition-all hover:shadow-sm ${statusFilter === s ? `${cfg.bg} shadow-sm` : "bg-white border-gray-100 hover:border-gray-200"}`}
-            >
-              <Icon className={`w-4 h-4 mb-1.5 ${cfg.color}`} />
-              <p className={`text-lg font-bold leading-none ${cfg.color}`}>{statsData[s] ?? 0}</p>
-              <p className="text-[10px] text-gray-400 font-medium mt-0.5">{cfg.label}</p>
-            </button>
-          );
-        })}
-      </div>
-
       {/* Main Card */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {/* Tabs */}
