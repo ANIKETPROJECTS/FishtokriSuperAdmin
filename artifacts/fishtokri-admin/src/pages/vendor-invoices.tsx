@@ -317,7 +317,7 @@ export default function VendorInvoices() {
             <FileText className="w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-[#162B4D]">Invoices</h1>
+            <h1 className="text-xl font-bold text-[#162B4D]">Vendor Invoices</h1>
             <p className="text-xs text-gray-500">{total} invoice{total !== 1 ? "s" : ""}</p>
           </div>
         </div>

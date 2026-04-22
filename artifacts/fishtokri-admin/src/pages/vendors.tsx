@@ -390,27 +390,31 @@ function VendorCard({ vendor, onEdit, onDelete, onView, onAddPurchase, onViewHis
         </div>
       </div>
 
-      <div className="flex gap-1.5">
-        <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" onClick={() => onView(vendor)}>
-          <Eye className="w-3 h-3 mr-1" /> View
-        </Button>
-        <Button size="sm" className="flex-1 h-7 text-xs bg-[#162B4D] hover:bg-[#1e3a6e] text-white" onClick={() => onAddPurchase(vendor)}>
-          <ShoppingCart className="w-3 h-3 mr-1" /> Buy
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => onViewHistory(vendor)}>
-          <History className="w-3 h-3 mr-1" /> History
-        </Button>
-        <Link href={`/vendor-statement/${vendor.id}`}>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50">
-            <BookOpen className="w-3 h-3 mr-1" /> Statement
+      <div className="space-y-1.5">
+        <div className="flex gap-1.5 min-w-0">
+          <Button size="sm" variant="outline" className="flex-1 min-w-0 h-7 text-xs px-2" onClick={() => onView(vendor)}>
+            <Eye className="w-3 h-3 mr-1 flex-shrink-0" /> View
           </Button>
-        </Link>
-        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600" onClick={() => onEdit(vendor)}>
-          <Edit2 className="w-3.5 h-3.5" />
-        </Button>
-        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-red-500" onClick={() => onDelete(vendor)}>
-          <Trash2 className="w-3.5 h-3.5" />
-        </Button>
+          <Button size="sm" className="flex-1 min-w-0 h-7 text-xs px-2 bg-[#162B4D] hover:bg-[#1e3a6e] text-white" onClick={() => onAddPurchase(vendor)}>
+            <ShoppingCart className="w-3 h-3 mr-1 flex-shrink-0" /> Buy
+          </Button>
+          <Button size="sm" variant="outline" className="flex-1 min-w-0 h-7 text-xs px-2 text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => onViewHistory(vendor)}>
+            <History className="w-3 h-3 mr-1 flex-shrink-0" /> History
+          </Button>
+          <Link href={`/vendor-statement/${vendor.id}`} className="flex-1 min-w-0">
+            <Button size="sm" variant="outline" className="w-full h-7 text-xs px-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+              <BookOpen className="w-3 h-3 mr-1 flex-shrink-0" /> Statement
+            </Button>
+          </Link>
+        </div>
+        <div className="flex justify-end gap-1">
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600" onClick={() => onEdit(vendor)}>
+            <Edit2 className="w-3.5 h-3.5" />
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-red-500" onClick={() => onDelete(vendor)}>
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        </div>
       </div>
     </div>
   );

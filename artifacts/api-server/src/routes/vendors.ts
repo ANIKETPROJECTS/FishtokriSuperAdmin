@@ -83,7 +83,8 @@ const receiptSchema = new mongoose.Schema(
     markAllPaid: { type: Boolean, default: false },
     allocations: { type: [receiptAllocationSchema], default: [] },
     createdByName: { type: String, default: "" },
-    bankReceiptId: { type: String, default: "" },
+    bankReceiptId: { type: String, default: "" }, // legacy field retained for backward compat
+    bankPaymentId: { type: String, default: "" },
   },
   { timestamps: true }
 );
@@ -134,8 +135,8 @@ function getReceiptModel() {
   return mongoose.model("VendorReceipt", receiptSchema, "vendor_receipts");
 }
 
-function getBankReceiptModel() {
-  if (mongoose.models["BankReceipt"]) return mongoose.models["BankReceipt"];
+function getBankPaymentModel() {
+  if (mongoose.models["BankPayment"]) return mongoose.models["BankPayment"];
   // Define a minimal compatible schema in case banking routes haven't loaded first.
   const s = new mongoose.Schema(
     {
@@ -148,7 +149,7 @@ function getBankReceiptModel() {
     },
     { timestamps: true }
   );
-  return mongoose.model("BankReceipt", s, "bank_receipts");
+  return mongoose.model("BankPayment", s, "bank_payments");
 }
 
 function serializeReceipt(doc: any) {
@@ -768,17 +769,20 @@ router.post("/purchases/:id/receipts", async (req, res) => {
     const reference = body.reference ?? "";
     const remarks = body.remarks ?? "";
 
-    // Mirror this receipt into the Banking → Receipts ledger so it appears alongside other receipts.
-    let bankReceiptId = "";
+    // Mirror this vendor payment into the Banking → Payments ledger (money
+    // going OUT to the vendor) so it appears alongside other outgoing
+    // payments. Vendor "receipts" represent receipts of payment WE made TO
+    // the vendor — i.e., outflows, not income.
+    let bankPaymentId = "";
     if (depositTo && paymentMode && receivedFrom && amount > 0) {
       try {
-        const BankReceipt = getBankReceiptModel();
+        const BankPayment = getBankPaymentModel();
         const noteParts = [
           purchase.invoiceNumber ? `Invoice ${purchase.invoiceNumber}` : "",
           reference ? `Ref ${reference}` : "",
           remarks,
         ].filter(Boolean);
-        const bankDoc = await BankReceipt.create({
+        const bankDoc = await BankPayment.create({
           date: receiptDate,
           paymentMode,
           depositAccountName: depositTo,
@@ -786,9 +790,9 @@ router.post("/purchases/:id/receipts", async (req, res) => {
           amount,
           notes: noteParts.join(" • "),
         });
-        bankReceiptId = String(bankDoc._id);
+        bankPaymentId = String(bankDoc._id);
       } catch (e) {
-        req.log.warn({ err: e }, "Failed to mirror vendor receipt into banking receipts");
+        req.log.warn({ err: e }, "Failed to mirror vendor payment into banking payments");
       }
     }
 
@@ -812,7 +816,7 @@ router.post("/purchases/:id/receipts", async (req, res) => {
         amount: Number(a.amount) || 0,
       })),
       createdByName: (req as any).user?.name ?? "",
-      bankReceiptId,
+      bankPaymentId,
     });
 
     res.json({ receipt: serializeReceipt(receipt) });
@@ -856,12 +860,21 @@ router.delete("/receipts/:id", async (req, res) => {
     const Receipt = getReceiptModel();
     const r = await Receipt.findByIdAndDelete(req.params.id);
     if (!r) return res.status(404).json({ error: "NotFound", message: "Receipt not found" });
-    if (r.bankReceiptId) {
+    if ((r as any).bankPaymentId) {
       try {
-        const BankReceipt = getBankReceiptModel();
-        await BankReceipt.findByIdAndDelete(r.bankReceiptId);
+        const BankPayment = getBankPaymentModel();
+        await BankPayment.findByIdAndDelete((r as any).bankPaymentId);
       } catch (e) {
-        req.log.warn({ err: e }, "Failed to delete linked bank receipt");
+        req.log.warn({ err: e }, "Failed to delete linked bank payment");
+      }
+    }
+    // Clean up legacy mirror entry if it exists.
+    if ((r as any).bankReceiptId) {
+      try {
+        const BankReceipt = mongoose.models["BankReceipt"];
+        if (BankReceipt) await BankReceipt.findByIdAndDelete((r as any).bankReceiptId);
+      } catch (e) {
+        req.log.warn({ err: e }, "Failed to delete legacy bank receipt mirror");
       }
     }
     res.json({ ok: true });
