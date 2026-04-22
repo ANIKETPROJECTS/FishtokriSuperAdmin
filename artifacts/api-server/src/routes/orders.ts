@@ -167,6 +167,9 @@ router.get("/stats", async (req, res) => {
       rawStats[st] = (rawStats[st] ?? 0) + c;
       if (dt === "takeaway") {
         if (HISTORY.includes(st)) {
+          // Delivered/cancelled takeaway orders count under their final status,
+          // not under the Takeaway bucket.
+          stats[st] = (stats[st] ?? 0) + c;
           takeawayHistory += c;
         } else {
           takeawayActive += c;
@@ -175,11 +178,11 @@ router.get("/stats", async (req, res) => {
         stats[st] = (stats[st] ?? 0) + c;
       }
     }
-    stats.takeaway = takeawayActive + takeawayHistory;
+    stats.takeaway = takeawayActive;
 
     const total = Object.values(rawStats).reduce((a, b) => a + b, 0);
     const currentTotal = ACTIVE.reduce((s, k) => s + (stats[k] ?? 0), 0);
-    const historyTotal = HISTORY.reduce((s, k) => s + (stats[k] ?? 0), 0) + takeawayActive + takeawayHistory;
+    const historyTotal = HISTORY.reduce((s, k) => s + (stats[k] ?? 0), 0) + takeawayActive;
 
     res.json({ stats, rawStats, total, currentTotal, historyTotal });
   } catch (err) {
