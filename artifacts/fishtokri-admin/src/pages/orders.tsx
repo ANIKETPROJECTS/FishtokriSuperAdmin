@@ -644,9 +644,7 @@ export default function Orders() {
   }, [paymentStatus]);
 
   const toggleCoupon = (id: string) => {
-    setAppliedCouponIds((ids) =>
-      ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
-    );
+    setAppliedCouponIds((ids) => (ids.includes(id) ? [] : [id]));
     setCouponError("");
   };
 
@@ -660,7 +658,7 @@ export default function Orders() {
     if (itemsSubtotal < min) { setCouponError(`Min order ₹${min} required`); return; }
     const id = String(match._id);
     if (appliedCouponIds.includes(id)) { setCouponError("Coupon already applied"); return; }
-    setAppliedCouponIds((ids) => [...ids, id]);
+    setAppliedCouponIds([id]);
     setCouponCode("");
     setCouponError("");
   };
