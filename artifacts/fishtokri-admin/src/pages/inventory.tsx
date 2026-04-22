@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Building2, Search, Boxes, Package, AlertTriangle } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { Building2, Search, Boxes, Package, AlertTriangle, ChevronDown, ChevronRight, Clock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -26,6 +26,15 @@ async function apiFetch(path: string, options: RequestInit = {}) {
 
 type SuperHub = { id: string; name: string; location?: string };
 type SubHub = { id: string; name: string; location?: string };
+type Batch = {
+  id: string;
+  batchNumber: string;
+  quantity: number;
+  shelfLifeDays: number | null;
+  receivedDate: string | null;
+  expiryDate: string | null;
+  notes: string;
+};
 type Product = {
   id: string;
   name: string;
@@ -36,7 +45,21 @@ type Product = {
   quantity: number;
   status: string;
   imageUrl: string;
+  batches?: Batch[];
 };
+
+function fmtDate(iso: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
+}
+function daysUntil(iso: string | null) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return Math.ceil((d.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+}
 
 export default function InventoryPage() {
   const { toast } = useToast();
@@ -48,6 +71,8 @@ export default function InventoryPage() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  function toggleExpanded(id: string) { setExpanded((m) => ({ ...m, [id]: !m[id] })); }
 
   useEffect(() => {
     apiFetch("/api/super-hubs")
@@ -94,6 +119,12 @@ export default function InventoryPage() {
   const totalValue = filtered.reduce((s, p) => s + p.price * p.quantity, 0);
   const lowStock = filtered.filter((p) => p.quantity > 0 && p.quantity < 5).length;
   const outOfStock = filtered.filter((p) => p.quantity <= 0).length;
+  const expiringCount = filtered.reduce((c, p) => {
+    return c + (p.batches ?? []).filter((b) => {
+      const dl = daysUntil(b.expiryDate);
+      return b.quantity > 0 && dl != null && dl <= 7;
+    }).length;
+  }, 0);
 
   return (
     <div className="space-y-5">
@@ -155,11 +186,12 @@ export default function InventoryPage() {
       ) : (
         <>
           {/* Stat cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <StatCard label="Products" value={filtered.length} icon={<Package className="w-4 h-4 text-blue-500" />} />
             <StatCard label="Stock Value" value={`₹${totalValue.toFixed(0)}`} icon={<Boxes className="w-4 h-4 text-emerald-500" />} />
             <StatCard label="Low Stock (<5)" value={lowStock} icon={<AlertTriangle className="w-4 h-4 text-amber-500" />} accent={lowStock > 0 ? "amber" : "default"} />
             <StatCard label="Out of Stock" value={outOfStock} icon={<AlertTriangle className="w-4 h-4 text-red-500" />} accent={outOfStock > 0 ? "red" : "default"} />
+            <StatCard label="Expiring ≤ 7d" value={expiringCount} icon={<Clock className="w-4 h-4 text-orange-500" />} accent={expiringCount > 0 ? "amber" : "default"} />
           </div>
 
           {/* Filter bar */}
@@ -188,58 +220,129 @@ export default function InventoryPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-2 py-3 w-8"></th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Price</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Stock</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Batches</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Next Expiry</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Stock Value</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loadingProducts ? (
-                    <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">Loading...</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">Loading...</td></tr>
                   ) : filtered.length === 0 ? (
-                    <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">No products found</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">No products found</td></tr>
                   ) : filtered.map((p) => {
                     const stockTone =
                       p.quantity <= 0 ? "bg-red-50 text-red-700"
                       : p.quantity < 5 ? "bg-amber-50 text-amber-700"
                       : "bg-emerald-50 text-emerald-700";
+                    const batches = p.batches ?? [];
+                    const nextBatch = batches.find((b) => b.quantity > 0 && b.expiryDate);
+                    const dl = nextBatch ? daysUntil(nextBatch.expiryDate) : null;
+                    const expTone = dl == null ? "text-gray-400"
+                      : dl < 0 ? "text-red-600"
+                      : dl <= 7 ? "text-amber-600"
+                      : "text-emerald-600";
+                    const isOpen = !!expanded[p.id];
                     return (
-                      <tr key={p.id} className="hover:bg-gray-50/40">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            {p.imageUrl ? (
-                              <img src={p.imageUrl} alt="" className="w-9 h-9 rounded-lg object-cover border border-gray-100 flex-shrink-0" />
-                            ) : (
-                              <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                                <Package className="w-4 h-4 text-gray-400" />
-                              </div>
+                      <Fragment key={p.id}>
+                        <tr className="hover:bg-gray-50/40">
+                          <td className="px-2 py-3 text-center">
+                            {batches.length > 0 && (
+                              <button onClick={() => toggleExpanded(p.id)} className="text-gray-400 hover:text-[#1A56DB]">
+                                {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                              </button>
                             )}
-                            <div className="min-w-0">
-                              <p className="font-medium text-[#162B4D] truncate">{p.name}</p>
-                              {p.unit && <p className="text-[11px] text-gray-400">{p.unit}</p>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              {p.imageUrl ? (
+                                <img src={p.imageUrl} alt="" className="w-9 h-9 rounded-lg object-cover border border-gray-100 flex-shrink-0" />
+                              ) : (
+                                <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                                  <Package className="w-4 h-4 text-gray-400" />
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="font-medium text-[#162B4D] truncate">{p.name}</p>
+                                {p.unit && <p className="text-[11px] text-gray-400">{p.unit}</p>}
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-600">
-                          {p.category || <span className="text-gray-300">—</span>}
-                          {p.subCategory && <span className="text-gray-400"> / {p.subCategory}</span>}
-                        </td>
-                        <td className="px-4 py-3 text-right text-gray-700">₹{p.price}</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={`inline-flex items-center justify-end px-2 py-0.5 rounded-md font-semibold text-xs ${stockTone}`}>
-                            {p.quantity} {p.unit ? "" : ""}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right text-gray-600">₹{(p.price * p.quantity).toFixed(0)}</td>
-                        <td className="px-4 py-3 text-center">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
-                            p.status === "available" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"
-                          }`}>{p.status || "—"}</span>
-                        </td>
-                      </tr>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600">
+                            {p.category || <span className="text-gray-300">—</span>}
+                            {p.subCategory && <span className="text-gray-400"> / {p.subCategory}</span>}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-700">₹{p.price}</td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={`inline-flex items-center justify-end px-2 py-0.5 rounded-md font-semibold text-xs ${stockTone}`}>
+                              {p.quantity}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center text-xs text-gray-500">
+                            {batches.length > 0 ? batches.length : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className={`px-4 py-3 text-xs font-medium ${expTone}`}>
+                            {nextBatch ? (
+                              <>
+                                {fmtDate(nextBatch.expiryDate)}
+                                {dl != null && (
+                                  <span className="ml-1 text-[10px]">
+                                    ({dl < 0 ? `expired ${Math.abs(dl)}d ago` : dl === 0 ? "today" : `${dl}d`})
+                                  </span>
+                                )}
+                              </>
+                            ) : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-600">₹{(p.price * p.quantity).toFixed(0)}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+                              p.status === "available" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"
+                            }`}>{p.status || "—"}</span>
+                          </td>
+                        </tr>
+                        {isOpen && batches.length > 0 && (
+                          <tr className="bg-gray-50/40">
+                            <td></td>
+                            <td colSpan={8} className="px-4 py-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                {batches.map((b) => {
+                                  const bdl = daysUntil(b.expiryDate);
+                                  const tone = bdl == null ? "border-gray-200 bg-white"
+                                    : bdl < 0 ? "border-red-200 bg-red-50/60"
+                                    : bdl <= 7 ? "border-amber-200 bg-amber-50/60"
+                                    : "border-emerald-200 bg-emerald-50/40";
+                                  return (
+                                    <div key={b.id} className={`rounded-lg border ${tone} p-2.5 text-xs`}>
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-semibold text-[#162B4D]">{b.batchNumber || "Batch"}</span>
+                                        <span className="font-bold">{b.quantity} {p.unit}</span>
+                                      </div>
+                                      <div className="text-[11px] text-gray-500 mt-1">
+                                        Expires {fmtDate(b.expiryDate)}
+                                        {bdl != null && (
+                                          <span className="ml-1">
+                                            ({bdl < 0 ? `expired ${Math.abs(bdl)}d ago` : bdl === 0 ? "today" : `${bdl}d left`})
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[10px] text-gray-400 mt-0.5">
+                                        Received {fmtDate(b.receivedDate)}
+                                        {b.shelfLifeDays != null && ` · shelf ${b.shelfLifeDays}d`}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Building2, Plus, Search, X, Trash2, ChevronDown, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,15 +28,22 @@ function formatDateTime(iso: string) {
 
 type SuperHub = { id: string; name: string };
 type SubHub = { id: string; name: string };
-type Product = { id: string; name: string; category: string; unit: string; quantity: number };
+type Batch = { id: string; batchNumber: string; quantity: number; shelfLifeDays: number | null; receivedDate: string | null; expiryDate: string | null; notes: string };
+type Product = { id: string; name: string; category: string; unit: string; quantity: number; batches?: Batch[] };
 
+type FormMode = "add" | "remove";
 type FormRow = {
   productId: string;
   productName: string;
   category: string;
   unit: string;
   quantityBefore: number;
-  newQuantity: string;
+  mode: FormMode;
+  addQuantity: string;
+  shelfLifeDays: string;
+  expiryDate: string;
+  batchNumber: string;
+  removeQuantity: string;
   search: string;
 };
 
@@ -47,7 +54,11 @@ type Adjustment = {
   notes: string;
   superHubName?: string;
   subHubName?: string;
-  items: Array<{ productName: string; unit: string; quantityBefore: number; newQuantity: number; quantityAdjusted: number }>;
+  items: Array<{
+    productName: string; unit: string; quantityBefore: number; newQuantity: number; quantityAdjusted: number;
+    mode?: string;
+    batch?: { batchNumber?: string; quantity?: number; shelfLifeDays?: number | null; expiryDate?: string | null };
+  }>;
   createdAt: string;
 };
 
@@ -57,7 +68,31 @@ const REASONS = [
 ];
 
 function emptyRow(): FormRow {
-  return { productId: "", productName: "", category: "", unit: "", quantityBefore: 0, newQuantity: "", search: "" };
+  return {
+    productId: "", productName: "", category: "", unit: "", quantityBefore: 0,
+    mode: "add", addQuantity: "", shelfLifeDays: "", expiryDate: "", batchNumber: "",
+    removeQuantity: "", search: "",
+  };
+}
+
+function addDaysISO(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+function formatExpiry(iso: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
+}
+
+function daysUntil(iso: string | null) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return Math.ceil((d.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
 }
 
 function ProductSelector({
@@ -300,10 +335,31 @@ export default function InventoryStockAdjustment() {
     updateRow(i, { search: val, productId: "", productName: "", category: "", unit: "", quantityBefore: 0 });
   }
 
+  function setShelfLife(i: number, val: string) {
+    const days = Number(val);
+    const expiry = val !== "" && Number.isFinite(days) ? addDaysISO(days) : "";
+    updateRow(i, { shelfLifeDays: val, expiryDate: expiry });
+  }
+  function setExpiryDate(i: number, val: string) {
+    // user-overridden expiry: clear shelfLifeDays so it doesn't conflict
+    updateRow(i, { expiryDate: val, shelfLifeDays: "" });
+  }
+
   async function handleSave() {
-    const validRows = formRows.filter((r) => r.productId && r.newQuantity !== "");
-    if (validRows.length === 0) { toast({ title: "Add at least one product", variant: "destructive" }); return; }
+    const validRows = formRows.filter((r) =>
+      r.productId && (
+        (r.mode === "add" && r.addQuantity !== "" && Number(r.addQuantity) > 0) ||
+        (r.mode === "remove" && r.removeQuantity !== "" && Number(r.removeQuantity) > 0)
+      )
+    );
+    if (validRows.length === 0) { toast({ title: "Add at least one product with a quantity", variant: "destructive" }); return; }
     if (!formReason.trim()) { toast({ title: "Reason is required", variant: "destructive" }); return; }
+    // Require shelf-life or expiry on every "add" row
+    const missingExpiry = validRows.find((r) => r.mode === "add" && !r.shelfLifeDays && !r.expiryDate);
+    if (missingExpiry) {
+      toast({ title: "Set shelf life or expiry", description: `Add shelf life (days) or an expiry date for ${missingExpiry.productName}.`, variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       await apiFetch("/api/inventory/adjustments", {
@@ -314,7 +370,21 @@ export default function InventoryStockAdjustment() {
           date: formDate,
           reason: formReason,
           notes: formNotes,
-          items: validRows.map((r) => ({ productId: r.productId, newQuantity: Number(r.newQuantity) })),
+          items: validRows.map((r) => r.mode === "add"
+            ? {
+                productId: r.productId,
+                mode: "add",
+                addQuantity: Number(r.addQuantity),
+                shelfLifeDays: r.shelfLifeDays !== "" ? Number(r.shelfLifeDays) : undefined,
+                expiryDate: r.expiryDate || undefined,
+                batchNumber: r.batchNumber || undefined,
+              }
+            : {
+                productId: r.productId,
+                mode: "remove",
+                removeQuantity: Number(r.removeQuantity),
+              }
+          ),
         }),
       });
       toast({ title: "Stock adjustment saved" });
@@ -362,65 +432,127 @@ export default function InventoryStockAdjustment() {
           </div>
 
           <div className="w-full overflow-x-auto rounded-lg border border-gray-100">
-            <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-              <colgroup>
-                <col style={{ width: "38%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "18%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "6%" }} />
-              </colgroup>
+            <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Product <span className="text-red-500">*</span></th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Qty Available</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">New Qty On Hand</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Qty Adjusted</th>
-                  <th className="px-3 py-3"></th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-[26%]">Product <span className="text-red-500">*</span></th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-[8%]">Avail.</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-[10%]">Mode</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-[10%]">Quantity</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Shelf Life (days)</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-[14%]">Expiry Date</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Batch # (opt)</th>
+                  <th className="px-2 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {formRows.map((row, idx) => {
-                  const newQtyNum = row.newQuantity === "" ? NaN : Number(row.newQuantity);
-                  const adjusted = isNaN(newQtyNum) ? null : newQtyNum - row.quantityBefore;
+                  const isAdd = row.mode === "add";
+                  const dLeft = isAdd ? daysUntil(row.expiryDate) : null;
+                  const expTone = dLeft == null ? "text-gray-400"
+                    : dLeft < 0 ? "text-red-600"
+                    : dLeft <= 7 ? "text-amber-600"
+                    : "text-emerald-600";
                   return (
-                    <tr key={idx} className="hover:bg-gray-50/40">
-                      <td className="px-4 py-2.5">
-                        <ProductSelector
-                          row={row} idx={idx} allProducts={products} usedIds={usedIds}
-                          onSelect={selectProduct} onClear={clearProduct} onSearchChange={onSearchChange}
-                        />
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="text-sm text-gray-600 font-medium">{row.unit || <span className="text-gray-300">—</span>}</span>
-                      </td>
-                      <td className="px-3 py-2.5 text-center text-sm text-gray-700">
-                        {row.productId ? row.quantityBefore : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <input
-                          type="number" value={row.newQuantity}
-                          onChange={(e) => updateRow(idx, { newQuantity: e.target.value })}
-                          placeholder="0"
-                          className="w-full h-9 px-2 text-sm text-center border border-gray-200 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
-                        />
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        {adjusted === null ? <span className="text-gray-300">—</span> :
-                          <span className={`text-sm font-semibold ${adjusted > 0 ? "text-emerald-600" : adjusted < 0 ? "text-red-600" : "text-gray-500"}`}>
-                            {adjusted > 0 ? "+" : ""}{adjusted}
-                          </span>}
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        {formRows.length > 1 && (
-                          <button onClick={() => removeRow(idx)} className="text-gray-400 hover:text-red-500">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={idx}>
+                      <tr className="hover:bg-gray-50/40 align-top">
+                        <td className="px-3 py-2.5">
+                          <ProductSelector
+                            row={row} idx={idx} allProducts={products} usedIds={usedIds}
+                            onSelect={selectProduct} onClear={clearProduct} onSearchChange={onSearchChange}
+                          />
+                          {row.unit && <p className="text-[10px] text-gray-400 mt-1">{row.unit}</p>}
+                        </td>
+                        <td className="px-2 py-2.5 text-sm text-gray-700">
+                          {row.productId ? row.quantityBefore : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-2 py-2.5">
+                          <Select value={row.mode} onValueChange={(v) => updateRow(idx, { mode: v as FormMode })}>
+                            <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="add">Add Batch</SelectItem>
+                              <SelectItem value="remove">Reduce</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="px-2 py-2.5">
+                          <input
+                            type="number" min="0"
+                            value={isAdd ? row.addQuantity : row.removeQuantity}
+                            onChange={(e) => updateRow(idx, isAdd ? { addQuantity: e.target.value } : { removeQuantity: e.target.value })}
+                            placeholder="0"
+                            className="w-full h-9 px-2 text-sm text-center border border-gray-200 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+                          />
+                        </td>
+                        <td className="px-2 py-2.5">
+                          <input
+                            type="number" min="0"
+                            value={isAdd ? row.shelfLifeDays : ""}
+                            disabled={!isAdd}
+                            onChange={(e) => setShelfLife(idx, e.target.value)}
+                            placeholder={isAdd ? "e.g. 7" : "—"}
+                            className="w-full h-9 px-2 text-sm text-center border border-gray-200 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-300"
+                          />
+                        </td>
+                        <td className="px-2 py-2.5">
+                          <input
+                            type="date"
+                            value={isAdd ? row.expiryDate : ""}
+                            disabled={!isAdd}
+                            onChange={(e) => setExpiryDate(idx, e.target.value)}
+                            className={`w-full h-9 px-2 text-xs border border-gray-200 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-300 ${expTone}`}
+                          />
+                          {isAdd && dLeft != null && (
+                            <p className={`text-[10px] mt-0.5 font-semibold ${expTone}`}>
+                              {dLeft < 0 ? `Expired ${Math.abs(dLeft)}d ago` : dLeft === 0 ? "Expires today" : `${dLeft}d left`}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-2 py-2.5">
+                          <input
+                            type="text"
+                            value={isAdd ? row.batchNumber : ""}
+                            disabled={!isAdd}
+                            onChange={(e) => updateRow(idx, { batchNumber: e.target.value })}
+                            placeholder={isAdd ? "auto" : "—"}
+                            className="w-full h-9 px-2 text-xs border border-gray-200 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-300"
+                          />
+                        </td>
+                        <td className="px-2 py-2.5 text-center">
+                          {formRows.length > 1 && (
+                            <button onClick={() => removeRow(idx)} className="text-gray-400 hover:text-red-500">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {row.productId && (() => {
+                        const prod = products.find((p) => p.id === row.productId);
+                        const batches = prod?.batches ?? [];
+                        if (batches.length === 0) return null;
+                        return (
+                          <tr key={`${idx}-batches`} className="bg-gray-50/40">
+                            <td colSpan={8} className="px-4 py-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Existing batches:</span>
+                                {batches.map((b) => {
+                                  const dl = daysUntil(b.expiryDate);
+                                  const tone = dl == null ? "bg-gray-100 text-gray-600 border-gray-200"
+                                    : dl < 0 ? "bg-red-50 text-red-700 border-red-200"
+                                    : dl <= 7 ? "bg-amber-50 text-amber-700 border-amber-200"
+                                    : "bg-emerald-50 text-emerald-700 border-emerald-200";
+                                  return (
+                                    <span key={b.id} className={`text-[11px] px-2 py-0.5 rounded-full border ${tone}`}>
+                                      {b.batchNumber || "Batch"} · {b.quantity}{prod?.unit ? "" : ""} · exp {formatExpiry(b.expiryDate)}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })()}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -520,12 +652,17 @@ export default function InventoryStockAdjustment() {
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         {a.items.map((it, i) => (
-                          <div key={i} className="flex items-center gap-2 text-xs">
+                          <div key={i} className="flex items-center gap-2 text-xs flex-wrap">
                             <span className="text-gray-700 font-medium">{it.productName}</span>
                             <span className="text-gray-400">{it.quantityBefore} → {it.newQuantity} {it.unit}</span>
                             <span className={`font-semibold ${it.quantityAdjusted > 0 ? "text-emerald-600" : it.quantityAdjusted < 0 ? "text-red-600" : "text-gray-400"}`}>
                               ({it.quantityAdjusted > 0 ? "+" : ""}{it.quantityAdjusted})
                             </span>
+                            {it.batch?.expiryDate && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                {it.batch.batchNumber || "Batch"} · exp {formatExpiry(it.batch.expiryDate as any)}
+                              </span>
+                            )}
                           </div>
                         ))}
                       </div>

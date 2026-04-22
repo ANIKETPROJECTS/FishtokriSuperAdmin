@@ -23,6 +23,93 @@ async function getCtx(subHubId: string, res: any) {
   return { sub, conn };
 }
 
+// ─── BATCH HELPERS ────────────────────────────────────────────────────────────
+type Batch = {
+  _id?: any;
+  batchNumber?: string;
+  quantity: number;
+  shelfLifeDays?: number | null;
+  receivedDate?: Date | null;
+  expiryDate?: Date | null;
+  notes?: string;
+  createdAt?: Date;
+};
+
+function toDate(v: any): Date | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function normalizeBatch(b: any): Batch {
+  const received = toDate(b?.receivedDate) ?? new Date();
+  const shelf = b?.shelfLifeDays != null && b.shelfLifeDays !== "" ? Number(b.shelfLifeDays) : null;
+  let expiry = toDate(b?.expiryDate);
+  if (!expiry && shelf != null && Number.isFinite(shelf)) {
+    expiry = new Date(received.getTime() + shelf * 24 * 60 * 60 * 1000);
+  }
+  return {
+    _id: b?._id ?? new mongoose.Types.ObjectId(),
+    batchNumber: b?.batchNumber ? String(b.batchNumber).trim() : "",
+    quantity: Math.max(0, Number(b?.quantity) || 0),
+    shelfLifeDays: shelf != null && Number.isFinite(shelf) ? shelf : null,
+    receivedDate: received,
+    expiryDate: expiry,
+    notes: b?.notes ? String(b.notes).trim() : "",
+    createdAt: b?.createdAt ? new Date(b.createdAt) : new Date(),
+  };
+}
+
+function batchesTotal(batches: Batch[] | undefined | null): number {
+  if (!Array.isArray(batches)) return 0;
+  return batches.reduce((s, b) => s + (Number(b?.quantity) || 0), 0);
+}
+
+function sortBatchesFIFO(batches: Batch[]): Batch[] {
+  // earliest expiry first; batches without expiry sort to the end
+  return [...batches].sort((a, b) => {
+    const ax = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity;
+    const bx = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity;
+    if (ax !== bx) return ax - bx;
+    const ac = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bc = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return ac - bc;
+  });
+}
+
+/**
+ * Consume `qty` units from batches FIFO (earliest expiry first).
+ * If batches are empty/insufficient, the remaining qty is recorded against
+ * a virtual unbatched bucket (we still allow the operation so legacy data
+ * without batches keeps working).
+ */
+function consumeBatches(batches: Batch[], qty: number): { batches: Batch[]; remaining: number } {
+  let remaining = qty;
+  const sorted = sortBatchesFIFO(batches);
+  for (const b of sorted) {
+    if (remaining <= 0) break;
+    const take = Math.min(b.quantity, remaining);
+    b.quantity -= take;
+    remaining -= take;
+  }
+  // drop emptied batches
+  return { batches: sorted.filter((b) => b.quantity > 0), remaining };
+}
+
+/**
+ * Sync a product document so `quantity` matches the sum of its batches,
+ * keeps batches normalized and persisted.
+ */
+async function persistBatches(productsCol: any, productId: any, batches: Batch[], extra: Record<string, any> = {}) {
+  const normalized = batches.map((b) => normalizeBatch(b));
+  const total = batchesTotal(normalized);
+  await productsCol.updateOne(
+    { _id: productId },
+    { $set: { batches: normalized, quantity: total, updatedAt: new Date(), ...extra } }
+  );
+  return { batches: normalized, quantity: total };
+}
+
 // ─── ANALYTICS SUMMARY (across all sub-hubs) ─────────────────────────────────
 router.get("/analytics/summary", async (_req, res) => {
   try {
@@ -31,6 +118,8 @@ router.get("/analytics/summary", async (_req, res) => {
     let activeProducts = 0;
     let outOfStockCount = 0;
     let lowStockCount = 0;
+    let expiringSoonCount = 0;
+    let expiredCount = 0;
     let totalStockValue = 0;
     let totalQuantity = 0;
     let movements30d = 0;
@@ -40,13 +129,17 @@ router.get("/analytics/summary", async (_req, res) => {
     let categories = new Set<string>();
 
     type LowItem = { id: string; name: string; quantity: number; unit: string; category: string; subHubName: string; subHubId: string };
+    type ExpiringItem = { id: string; name: string; quantity: number; unit: string; expiryDate: string; subHubName: string; subHubId: string; daysLeft: number };
     type SubSummary = { id: string; name: string; products: number; outOfStock: number; lowStock: number; stockValue: number };
     type RecentMove = any;
     const lowItems: LowItem[] = [];
+    const expiringItems: ExpiringItem[] = [];
     const subSummaries: SubSummary[] = [];
     const recent: RecentMove[] = [];
 
-    const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const since30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const soonCutoff = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     for (const sub of subs) {
       if (!sub.dbName) continue;
@@ -60,7 +153,8 @@ router.get("/analytics/summary", async (_req, res) => {
       let subOut = 0;
       let subLow = 0;
       for (const p of products) {
-        const qty = Number(p.quantity) || 0;
+        const batches: Batch[] = Array.isArray(p.batches) ? p.batches : [];
+        const qty = batches.length > 0 ? batchesTotal(batches) : (Number(p.quantity) || 0);
         const price = Number(p.price) || 0;
         totalProducts += 1;
         totalQuantity += qty;
@@ -81,6 +175,25 @@ router.get("/analytics/summary", async (_req, res) => {
             subHubName: sub.name ?? "",
             subHubId: String(sub._id),
           });
+        }
+        for (const b of batches) {
+          if (!b.expiryDate || (Number(b.quantity) || 0) <= 0) continue;
+          const exp = new Date(b.expiryDate);
+          if (isNaN(exp.getTime())) continue;
+          const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+          if (exp.getTime() < now.getTime()) {
+            expiredCount += 1;
+            expiringItems.push({
+              id: String(p._id), name: p.name ?? "", quantity: Number(b.quantity) || 0, unit: p.unit ?? "",
+              expiryDate: exp.toISOString(), subHubName: sub.name ?? "", subHubId: String(sub._id), daysLeft,
+            });
+          } else if (exp.getTime() <= soonCutoff.getTime()) {
+            expiringSoonCount += 1;
+            expiringItems.push({
+              id: String(p._id), name: p.name ?? "", quantity: Number(b.quantity) || 0, unit: p.unit ?? "",
+              expiryDate: exp.toISOString(), subHubName: sub.name ?? "", subHubId: String(sub._id), daysLeft,
+            });
+          }
         }
       }
       subSummaries.push({
@@ -109,6 +222,7 @@ router.get("/analytics/summary", async (_req, res) => {
     }
 
     lowItems.sort((a, b) => a.quantity - b.quantity);
+    expiringItems.sort((a, b) => a.daysLeft - b.daysLeft);
     recent.sort((a, b) => +new Date(b.createdAt ?? 0) - +new Date(a.createdAt ?? 0));
     subSummaries.sort((a, b) => b.stockValue - a.stockValue);
 
@@ -120,6 +234,8 @@ router.get("/analytics/summary", async (_req, res) => {
         activeProducts,
         outOfStockCount,
         lowStockCount,
+        expiringSoonCount,
+        expiredCount,
         totalStockValue,
         totalQuantity,
         categoryCount: categories.size,
@@ -129,6 +245,7 @@ router.get("/analytics/summary", async (_req, res) => {
         adjustments30d,
       },
       lowStock: lowItems.slice(0, 10),
+      expiringBatches: expiringItems.slice(0, 12),
       recentMovements: recent.slice(0, 10),
       subHubBreakdown: subSummaries.slice(0, 8),
     });
@@ -148,17 +265,31 @@ router.get("/products", async (req, res) => {
     const query: any = search ? { name: { $regex: search, $options: "i" } } : {};
     const products = await ctx.conn.db.collection("products").find(query).sort({ category: 1, name: 1 }).toArray();
     res.json({
-      products: products.map((p: any) => ({
-        id: String(p._id),
-        name: p.name,
-        category: p.category ?? "",
-        subCategory: p.subCategory ?? "",
-        unit: p.unit ?? "",
-        price: Number(p.price) || 0,
-        quantity: Number(p.quantity) || 0,
-        status: p.status ?? "available",
-        imageUrl: p.imageUrl ?? "",
-      })),
+      products: products.map((p: any) => {
+        const batches: Batch[] = Array.isArray(p.batches) ? p.batches : [];
+        const qty = batches.length > 0 ? batchesTotal(batches) : (Number(p.quantity) || 0);
+        return {
+          id: String(p._id),
+          name: p.name,
+          category: p.category ?? "",
+          subCategory: p.subCategory ?? "",
+          unit: p.unit ?? "",
+          price: Number(p.price) || 0,
+          quantity: qty,
+          status: p.status ?? "available",
+          imageUrl: p.imageUrl ?? "",
+          batches: sortBatchesFIFO(batches).map((b) => ({
+            id: String(b._id ?? ""),
+            batchNumber: b.batchNumber ?? "",
+            quantity: Number(b.quantity) || 0,
+            shelfLifeDays: b.shelfLifeDays ?? null,
+            receivedDate: b.receivedDate ? new Date(b.receivedDate).toISOString() : null,
+            expiryDate: b.expiryDate ? new Date(b.expiryDate).toISOString() : null,
+            notes: b.notes ?? "",
+            createdAt: b.createdAt ? new Date(b.createdAt).toISOString() : null,
+          })),
+        };
+      }),
       total: products.length,
       subHub: { id: String(ctx.sub._id), name: ctx.sub.name, dbName: ctx.sub.dbName },
     });
@@ -242,29 +373,87 @@ router.post("/adjustments", async (req, res) => {
       if (!pid) continue;
       const existing = await products.findOne({ _id: pid });
       if (!existing) continue;
-      const before = Number(existing.quantity) || 0;
-      const newQty = Number(it.newQuantity);
-      if (!Number.isFinite(newQty)) continue;
-      const delta = newQty - before;
-      if (delta === 0 && !it.force) {
-        adjustmentItems.push({
-          productId: String(pid),
-          productName: existing.name,
-          unit: existing.unit ?? "",
-          quantityBefore: before,
-          newQuantity: newQty,
-          quantityAdjusted: 0,
+
+      const currentBatches: Batch[] = Array.isArray(existing.batches) ? existing.batches.map((b: any) => normalizeBatch(b)) : [];
+      const before = batchesTotal(currentBatches) || (Number(existing.quantity) || 0);
+
+      const mode = String(it.mode || (it.addQuantity != null ? "add" : it.removeQuantity != null ? "remove" : "set"));
+
+      let newBatches = [...currentBatches];
+      let delta = 0;
+      let appliedBatch: Batch | null = null;
+
+      if (mode === "add") {
+        const addQty = Math.max(0, Number(it.addQuantity) || 0);
+        if (addQty <= 0) continue;
+        const batch = normalizeBatch({
+          batchNumber: it.batchNumber,
+          quantity: addQty,
+          shelfLifeDays: it.shelfLifeDays,
+          expiryDate: it.expiryDate,
+          receivedDate: it.receivedDate ?? now,
+          notes: it.notes,
+          createdAt: now,
         });
-        continue;
+        newBatches.push(batch);
+        delta = addQty;
+        appliedBatch = batch;
+      } else if (mode === "remove") {
+        const rmQty = Math.max(0, Number(it.removeQuantity) || 0);
+        if (rmQty <= 0) continue;
+        const consumed = consumeBatches(currentBatches, rmQty);
+        newBatches = consumed.batches;
+        delta = -(rmQty - consumed.remaining);
+        if (delta === 0) continue;
+      } else {
+        // legacy "set" mode (no batch info) — keep behaviour for backward compat
+        const newQty = Number(it.newQuantity);
+        if (!Number.isFinite(newQty)) continue;
+        delta = newQty - before;
+        if (delta === 0 && !it.force) {
+          adjustmentItems.push({
+            productId: String(pid), productName: existing.name, unit: existing.unit ?? "",
+            quantityBefore: before, newQuantity: newQty, quantityAdjusted: 0, mode: "set",
+          });
+          continue;
+        }
+        if (delta > 0) {
+          // treat as new batch with optional shelf life
+          const batch = normalizeBatch({
+            quantity: delta,
+            shelfLifeDays: it.shelfLifeDays,
+            expiryDate: it.expiryDate,
+            receivedDate: now,
+            createdAt: now,
+          });
+          newBatches.push(batch);
+          appliedBatch = batch;
+        } else {
+          const consumed = consumeBatches(currentBatches, -delta);
+          newBatches = consumed.batches;
+          if (consumed.remaining > 0 && currentBatches.length === 0) {
+            // legacy product without batches: just set total directly
+            newBatches = [];
+          }
+        }
       }
-      await products.updateOne({ _id: pid }, { $set: { quantity: newQty, updatedAt: now } });
+
+      const persisted = await persistBatches(products, pid, newBatches);
+
       adjustmentItems.push({
         productId: String(pid),
         productName: existing.name,
         unit: existing.unit ?? "",
         quantityBefore: before,
-        newQuantity: newQty,
+        newQuantity: persisted.quantity,
         quantityAdjusted: delta,
+        mode,
+        batch: appliedBatch ? {
+          batchNumber: appliedBatch.batchNumber,
+          quantity: appliedBatch.quantity,
+          shelfLifeDays: appliedBatch.shelfLifeDays,
+          expiryDate: appliedBatch.expiryDate,
+        } : undefined,
       });
       movementDocs.push({
         type: "adjustment",
@@ -272,9 +461,11 @@ router.post("/adjustments", async (req, res) => {
         productName: existing.name,
         unit: existing.unit ?? "",
         change: delta,
-        balance: newQty,
+        balance: persisted.quantity,
         reason: String(reason).trim(),
         notes: notes ? String(notes).trim() : "",
+        batchNumber: appliedBatch?.batchNumber || undefined,
+        expiryDate: appliedBatch?.expiryDate || undefined,
         createdAt: now,
       });
     }
@@ -301,6 +492,51 @@ router.post("/adjustments", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to create inventory adjustment");
     res.status(500).json({ error: "InternalError", message: "Failed to save adjustment" });
+  }
+});
+
+// ─── PER-PRODUCT BATCH ENDPOINTS ──────────────────────────────────────────────
+router.get("/products/:productId/batches", async (req, res) => {
+  try {
+    const subHubId = String(req.query.subHubId || "");
+    if (!subHubId) { res.status(400).json({ error: "ValidationError", message: "subHubId is required" }); return; }
+    const ctx = await getCtx(subHubId, res);
+    if (!ctx) return;
+    const pid = toId(req.params.productId);
+    if (!pid) { res.status(400).json({ error: "InvalidId", message: "Invalid product id" }); return; }
+    const product = await ctx.conn.db.collection("products").findOne({ _id: pid });
+    if (!product) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
+    const batches: Batch[] = Array.isArray(product.batches) ? product.batches : [];
+    res.json({
+      productId: String(pid),
+      name: product.name,
+      unit: product.unit ?? "",
+      quantity: batchesTotal(batches) || (Number(product.quantity) || 0),
+      batches: sortBatchesFIFO(batches),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch batches");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch batches" });
+  }
+});
+
+router.delete("/products/:productId/batches/:batchId", async (req, res) => {
+  try {
+    const subHubId = String(req.query.subHubId || "");
+    if (!subHubId) { res.status(400).json({ error: "ValidationError", message: "subHubId is required" }); return; }
+    const ctx = await getCtx(subHubId, res);
+    if (!ctx) return;
+    const pid = toId(req.params.productId);
+    if (!pid) { res.status(400).json({ error: "InvalidId", message: "Invalid product id" }); return; }
+    const product = await ctx.conn.db.collection("products").findOne({ _id: pid });
+    if (!product) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
+    const batches: Batch[] = Array.isArray(product.batches) ? product.batches.map((b: any) => normalizeBatch(b)) : [];
+    const remaining = batches.filter((b) => String(b._id) !== String(req.params.batchId));
+    const persisted = await persistBatches(ctx.conn.db.collection("products"), pid, remaining);
+    res.json({ productId: String(pid), quantity: persisted.quantity, batches: persisted.batches });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete batch");
+    res.status(500).json({ error: "InternalError", message: "Failed to delete batch" });
   }
 });
 
@@ -339,22 +575,56 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore") 
     if (!pid) continue;
     const qty = Math.max(0, Number(it.quantity) || 0);
     if (qty <= 0) continue;
-    const change = direction === "deduct" ? -qty : qty;
-    const updated = await products.findOneAndUpdate(
-      { _id: pid },
-      { $inc: { quantity: change }, $set: { updatedAt: now } },
-      { returnDocument: "after" }
-    );
-    if (!updated) continue;
+
+    const existing = await products.findOne({ _id: pid });
+    if (!existing) continue;
+    const currentBatches: Batch[] = Array.isArray(existing.batches) ? existing.batches.map((b: any) => normalizeBatch(b)) : [];
+
+    let newBatches = currentBatches;
+    let appliedExpiry: Date | null = null;
+    if (direction === "deduct") {
+      if (currentBatches.length > 0) {
+        const consumed = consumeBatches(currentBatches, qty);
+        newBatches = consumed.batches;
+        appliedExpiry = sortBatchesFIFO(currentBatches)[0]?.expiryDate ?? null;
+      } else {
+        // legacy product with no batches — just decrement quantity
+        await products.updateOne(
+          { _id: pid },
+          { $inc: { quantity: -qty }, $set: { updatedAt: now } }
+        );
+        const after = await products.findOne({ _id: pid }, { projection: { quantity: 1, name: 1, unit: 1 } });
+        await movements.insertOne({
+          type: "order_deduct", productId: String(pid),
+          productName: (after as any)?.name ?? it.name ?? "",
+          unit: (after as any)?.unit ?? it.unit ?? "",
+          change: -qty, balance: Number((after as any)?.quantity) || 0,
+          orderId, orderRef, createdAt: now,
+        });
+        continue;
+      }
+    } else {
+      // restore: push back as a new "restored" batch (preserves traceability)
+      newBatches = [...currentBatches, normalizeBatch({
+        batchNumber: `RESTORE-${orderRef}`,
+        quantity: qty,
+        receivedDate: now,
+        notes: `Restored from order ${orderRef}`,
+        createdAt: now,
+      })];
+    }
+
+    const persisted = await persistBatches(products, pid, newBatches);
     await movements.insertOne({
       type: direction === "deduct" ? "order_deduct" : "order_restore",
       productId: String(pid),
-      productName: (updated as any).name ?? it.name ?? "",
-      unit: (updated as any).unit ?? it.unit ?? "",
-      change,
-      balance: Number((updated as any).quantity) || 0,
+      productName: existing.name ?? it.name ?? "",
+      unit: existing.unit ?? it.unit ?? "",
+      change: direction === "deduct" ? -qty : qty,
+      balance: persisted.quantity,
       orderId,
       orderRef,
+      expiryDate: appliedExpiry || undefined,
       createdAt: now,
     });
   }
