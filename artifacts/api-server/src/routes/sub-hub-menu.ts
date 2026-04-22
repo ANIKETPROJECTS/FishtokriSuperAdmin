@@ -66,7 +66,14 @@ router.get("/products", async (req, res) => {
     const search = String(req.query.search || "");
     const query: any = search ? { name: { $regex: search, $options: "i" } } : {};
     const products = await ctx.conn.db.collection("products").find(query).sort({ sortOrder: 1, name: 1 }).toArray();
-    res.json({ products, total: products.length });
+    // Always derive quantity from batches so the list is consistent with the edit modal.
+    // Products with no batches show 0 (same as the batch-total shown in the edit form).
+    const productsWithQty = products.map((p: any) => {
+      const batches: any[] = Array.isArray(p.batches) ? p.batches : [];
+      const total = batches.reduce((s: number, b: any) => s + (Math.max(0, Number(b?.quantity) || 0)), 0);
+      return { ...p, quantity: total };
+    });
+    res.json({ products: productsWithQty, total: productsWithQty.length });
   } catch (err) {
     req.log.error({ err }, "Failed to get products");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch products" });
