@@ -3079,11 +3079,11 @@ export default function Orders() {
                   {(() => {
                     const isTakeaway = selectedOrder.deliveryType === "takeaway";
                     const statusOptions = isTakeaway
-                      ? (selectedOrder.status === "cancelled" ? ["takeaway", "cancelled"] : ["takeaway"])
+                      ? ["takeaway", "cancelled"]
                       : ALL_STATUSES.filter((s) => s !== "takeaway");
                     return (
                       <div className="flex gap-2">
-                        <Select value={editStatus} onValueChange={setEditStatus} disabled={isTakeaway && statusOptions.length === 1}>
+                        <Select value={editStatus} onValueChange={setEditStatus}>
                           <SelectTrigger className="h-9 flex-1 text-sm"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             {statusOptions.map((s) => (
@@ -3095,7 +3095,7 @@ export default function Orders() {
                         </Select>
                         <Button
                           onClick={handleStatusUpdate}
-                          disabled={savingStatus || editStatus === selectedOrder.status || (isTakeaway && statusOptions.length === 1)}
+                          disabled={savingStatus || editStatus === displayStatus(selectedOrder.status, selectedOrder.deliveryType)}
                           className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 px-4"
                         >
                           {savingStatus ? "Saving..." : "Update"}
