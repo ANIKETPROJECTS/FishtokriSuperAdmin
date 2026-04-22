@@ -199,7 +199,7 @@ type OrderForSync = {
   items?: Array<{ productId?: string; name?: string; quantity?: number; unit?: string }>;
 };
 
-const ACTIVE_STATUSES = new Set(["pending", "confirmed", "preparing", "out_for_delivery", "delivered"]);
+const ACTIVE_STATUSES = new Set(["pending", "confirmed", "preparing", "out_for_delivery", "delivered", "takeaway"]);
 
 function orderShouldDeduct(order: OrderForSync) {
   if (!order || !order.subHubId) return false;
