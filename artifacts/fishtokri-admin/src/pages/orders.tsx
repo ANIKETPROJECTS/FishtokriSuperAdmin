@@ -2837,6 +2837,27 @@ export default function Orders() {
               </DialogHeader>
 
               <div className="space-y-4 pt-1">
+                {/* Hub Info */}
+                {(selectedOrder.superHubName || selectedOrder.subHubName) && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {selectedOrder.superHubName && (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#1A56DB] bg-blue-50 border border-blue-100 rounded-full px-2.5 py-1">
+                        <Building2 className="w-3 h-3" />
+                        {selectedOrder.superHubName}
+                      </span>
+                    )}
+                    {selectedOrder.superHubName && selectedOrder.subHubName && (
+                      <ChevronRight className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+                    )}
+                    {selectedOrder.subHubName && (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#162B4D] bg-gray-100 border border-gray-200 rounded-full px-2.5 py-1">
+                        <Store className="w-3 h-3" />
+                        {selectedOrder.subHubName}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Customer Info */}
                 <div className="bg-gray-50 rounded-xl p-4 space-y-2">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Customer</p>
