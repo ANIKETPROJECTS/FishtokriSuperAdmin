@@ -99,11 +99,11 @@ export default function VendorInvoices() {
   useEffect(() => { if (tab === "receipts") loadReceipts(); }, [tab, loadReceipts]);
 
   const handleDeleteReceipt = async (id: string) => {
-    if (!window.confirm("Delete this receipt?")) return;
+    if (!window.confirm("Delete this payment?")) return;
     setDeletingReceiptId(id);
     try {
       await apiFetch(`/api/vendors/receipts/${id}`, { method: "DELETE" });
-      toast({ title: "Receipt deleted" });
+      toast({ title: "Payment deleted" });
       loadReceipts();
     } catch (e: any) {
       toast({ title: "Delete failed", description: e.message, variant: "destructive" });
@@ -337,7 +337,7 @@ export default function VendorInvoices() {
       <div className="flex items-center gap-1 border-b border-gray-200">
         {([
           { key: "invoices", label: "Invoices" },
-          { key: "receipts", label: "Receipts" },
+          { key: "receipts", label: "Payments" },
         ] as const).map(t => (
           <button
             key={t.key}
@@ -371,9 +371,9 @@ export default function VendorInvoices() {
               </thead>
               <tbody>
                 {loadingReceipts ? (
-                  <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-400">Loading receipts…</td></tr>
+                  <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-400">Loading payments…</td></tr>
                 ) : receipts.length === 0 ? (
-                  <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-400">No receipts yet. Create one from any invoice's actions menu.</td></tr>
+                  <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-400">No payments yet. Create one from any invoice's actions menu.</td></tr>
                 ) : receipts.map(r => (
                   <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
                     <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">{formatDateDDMMYYYY(r.date)}</td>
@@ -388,7 +388,7 @@ export default function VendorInvoices() {
                         onClick={() => handleDeleteReceipt(r.id)}
                         disabled={deletingReceiptId === r.id}
                         className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 disabled:opacity-50"
-                        title="Delete receipt"
+                        title="Delete payment"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -550,7 +550,7 @@ export default function VendorInvoices() {
                           </DropdownMenuItem>
                           {(inv.status || "saved") !== "draft" && (
                             <DropdownMenuItem onClick={() => setReceiptTarget(inv)}>
-                              <Receipt className="w-4 h-4 mr-2 text-violet-600" /> Create Receipt
+                              <Receipt className="w-4 h-4 mr-2 text-violet-600" /> Create Payment
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem onClick={() => shareMail(inv)}>
@@ -859,7 +859,7 @@ function AddReceiptDialog({
             .map(([id, v]) => ({ invoiceId: id, amount: Number(v) || 0 })),
         }),
       });
-      toast({ title: "Receipt saved", description: `${formatRupees(Number(amount))} from ${receivedFrom}` });
+      toast({ title: "Payment saved", description: `${formatRupees(Number(amount))} to ${receivedFrom}` });
       onSaved();
     } catch (e: any) {
       toast({ title: "Save failed", description: e.message, variant: "destructive" });
@@ -870,7 +870,7 @@ function AddReceiptDialog({
     <Dialog open={!!invoice} onOpenChange={open => !open && onClose()}>
       <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-200">
-          <h2 className="text-base font-semibold text-gray-800">Add Receipt</h2>
+          <h2 className="text-base font-semibold text-gray-800">Add Payment</h2>
         </div>
 
         <div className="max-h-[75vh] overflow-y-auto p-5 space-y-4">
