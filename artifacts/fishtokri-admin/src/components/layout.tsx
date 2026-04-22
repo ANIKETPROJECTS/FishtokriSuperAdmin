@@ -53,24 +53,35 @@ function getAdminData() {
   }
 }
 
-function ExpandableNavItem({ href, label, icon: Icon, isActive, childActive, subItems, location, sidebarOpen }: any) {
+function ExpandableNavItem({ href, label, icon: Icon, isActive, childActive, subItems, location, sidebarOpen, sidebarWidth }: any) {
   const [hovered, setHovered] = useState(false);
+  const [coords, setCoords] = useState<{ top: number } | null>(null);
+  const rowRef = useRef<HTMLDivElement | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const open = hovered || childActive;
+  const open = hovered;
+
+  const updateCoords = () => {
+    if (rowRef.current) {
+      const r = rowRef.current.getBoundingClientRect();
+      setCoords({ top: r.top });
+    }
+  };
 
   const handleMouseEnter = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    updateCoords();
     setHovered(true);
   };
   const handleMouseLeave = () => {
-    timeoutRef.current = setTimeout(() => setHovered(false), 100);
+    timeoutRef.current = setTimeout(() => setHovered(false), 120);
   };
 
   return (
-    <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+    <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} className="relative">
       <Link href={href}>
         <div
+          ref={rowRef}
           title={!sidebarOpen ? label : undefined}
           className={`flex items-center cursor-pointer transition-all text-sm font-medium border-l-2 ${
             sidebarOpen ? "gap-3 px-5 py-2.5" : "justify-center px-0 py-3"
@@ -85,42 +96,48 @@ function ExpandableNavItem({ href, label, icon: Icon, isActive, childActive, sub
             <>
               <span className="truncate flex-1">{label}</span>
               <ChevronDown
-                className={`w-3 h-3 transition-all duration-200 ${open ? "rotate-180 opacity-100" : "opacity-50"}`}
+                className={`w-3 h-3 transition-all duration-200 ${open ? "-rotate-90 opacity-100" : "-rotate-90 opacity-50"}`}
               />
             </>
           )}
         </div>
       </Link>
-      {/* Inline sub-menu */}
-      <div
-        style={{
-          maxHeight: open ? "300px" : "0px",
-          overflow: "hidden",
-          transition: "max-height 0.2s ease",
-        }}
-      >
-        {subItems.map((child: any) => {
-          const ChildIcon = child.icon;
-          const isChildActive = location === child.href || location.startsWith(child.href);
-          return (
-            <Link key={child.href} href={child.href}>
-              <div
-                title={!sidebarOpen ? child.label : undefined}
-                className={`flex items-center cursor-pointer transition-all text-sm font-medium border-l-2 ${
-                  sidebarOpen ? "gap-3 pl-10 pr-5 py-2" : "justify-center px-0 py-2.5"
-                } ${
-                  isChildActive
-                    ? "bg-white/10 text-white border-amber-400"
-                    : "text-white/50 hover:text-white hover:bg-white/5 border-transparent"
-                }`}
-              >
-                <ChildIcon className="w-3.5 h-3.5 flex-shrink-0" />
-                {sidebarOpen && <span className="truncate">{child.label}</span>}
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+
+      {/* Flyout submenu (renders to right of sidebar) */}
+      {open && coords && (
+        <div
+          className="fixed z-50"
+          style={{ top: coords.top, left: sidebarWidth }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          {/* small bridge so cursor can travel without losing hover */}
+          <div className="absolute -left-2 top-0 h-full w-2" />
+          <div className="ml-1 min-w-[200px] rounded-lg bg-[#162B4D] border border-white/10 shadow-2xl py-1.5 overflow-hidden">
+            <div className="px-3 py-1.5 border-b border-white/10">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">{label}</p>
+            </div>
+            {subItems.map((child: any) => {
+              const ChildIcon = child.icon;
+              const isChildActive = location === child.href || location.startsWith(child.href);
+              return (
+                <Link key={child.href} href={child.href}>
+                  <div
+                    className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer text-[13px] font-medium transition-colors ${
+                      isChildActive
+                        ? "bg-white/10 text-white"
+                        : "text-white/70 hover:text-white hover:bg-white/5"
+                    }`}
+                  >
+                    <ChildIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate">{child.label}</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -235,6 +252,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   subItems={children}
                   location={location}
                   sidebarOpen={sidebarOpen}
+                  sidebarWidth={sidebarOpen ? 260 : 56}
                 />
               );
             }
