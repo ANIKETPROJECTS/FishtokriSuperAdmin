@@ -163,8 +163,39 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const handleLogout = () => {
     localStorage.removeItem("fishtokri_token");
     localStorage.removeItem("fishtokri_admin");
+    sessionStorage.removeItem("fishtokri_token");
+    sessionStorage.removeItem("fishtokri_admin");
     setLocation("/");
   };
+
+  // Pending password reset count (master admin only) — polled every 60s.
+  const [pendingResets, setPendingResets] = useState(0);
+  useEffect(() => {
+    if (admin?.role !== "master_admin") return;
+    let cancelled = false;
+    const fetchPending = async () => {
+      try {
+        const base = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+        const token = localStorage.getItem("fishtokri_token") || "";
+        const res = await fetch(`${base}/api/auth/password-reset-requests`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setPendingResets((data.requests || []).filter((r: any) => r.status === "pending").length);
+      } catch {}
+    };
+    fetchPending();
+    const id = setInterval(fetchPending, 60000);
+    const onFocus = () => fetchPending();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [admin?.role, location]);
 
   const isSuperHub = role === "super_hub";
   const isSubHub = role === "sub_hub";
@@ -256,11 +287,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
               );
             }
 
+            const badgeCount = href === "/admin-users" ? pendingResets : 0;
+
             return (
               <Link key={href} href={href}>
                 <div
-                  title={!sidebarOpen ? label : undefined}
-                  className={`flex items-center cursor-pointer transition-all text-sm font-medium border-l-2 ${
+                  title={!sidebarOpen ? (badgeCount > 0 ? `${label} (${badgeCount} pending)` : label) : undefined}
+                  className={`flex items-center cursor-pointer transition-all text-sm font-medium border-l-2 relative ${
                     sidebarOpen ? "gap-3 px-5 py-2.5" : "justify-center px-0 py-3"
                   } ${
                     isActive
@@ -268,8 +301,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       : "text-white/60 hover:text-white hover:bg-white/5 border-transparent"
                   }`}
                 >
-                  <Icon className="w-4 h-4 flex-shrink-0" />
-                  {sidebarOpen && <span className="truncate">{label}</span>}
+                  <div className="relative flex-shrink-0">
+                    <Icon className="w-4 h-4" />
+                    {!sidebarOpen && badgeCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-[#162B4D]" />
+                    )}
+                  </div>
+                  {sidebarOpen && (
+                    <>
+                      <span className="truncate flex-1">{label}</span>
+                      {badgeCount > 0 && (
+                        <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold rounded-full bg-amber-400 text-[#162B4D]">
+                          {badgeCount > 99 ? "99+" : badgeCount}
+                        </span>
+                      )}
+                    </>
+                  )}
                 </div>
               </Link>
             );
