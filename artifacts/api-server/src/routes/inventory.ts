@@ -78,22 +78,31 @@ function sortBatchesFIFO(batches: Batch[]): Batch[] {
 }
 
 /**
- * Consume `qty` units from batches FIFO (earliest expiry first).
- * If batches are empty/insufficient, the remaining qty is recorded against
- * a virtual unbatched bucket (we still allow the operation so legacy data
- * without batches keeps working).
+ * Consume `qty` units from batches FIFO (earliest expiry first),
+ * skipping any batches that have already expired.
+ * Expired batches are preserved unchanged in the returned list so
+ * admins can still see and remove them manually.
+ * If non-expired batches are insufficient, `remaining` will be > 0.
  */
-function consumeBatches(batches: Batch[], qty: number): { batches: Batch[]; remaining: number } {
+function consumeBatches(batches: Batch[], qty: number, now: Date = new Date()): { batches: Batch[]; remaining: number } {
+  const nowMs = now.getTime();
+
+  // Split into expired (untouched) and active (eligible for deduction)
+  const expired = batches.filter((b) => b.expiryDate && new Date(b.expiryDate).getTime() < nowMs);
+  const active  = batches.filter((b) => !b.expiryDate || new Date(b.expiryDate).getTime() >= nowMs);
+
   let remaining = qty;
-  const sorted = sortBatchesFIFO(batches);
+  const sorted = sortBatchesFIFO(active);
   for (const b of sorted) {
     if (remaining <= 0) break;
     const take = Math.min(b.quantity, remaining);
     b.quantity -= take;
     remaining -= take;
   }
-  // drop emptied batches
-  return { batches: sorted.filter((b) => b.quantity > 0), remaining };
+
+  // Drop emptied active batches; keep expired batches as-is
+  const result = [...expired, ...sorted.filter((b) => b.quantity > 0)];
+  return { batches: result, remaining };
 }
 
 /**
@@ -632,9 +641,15 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore") 
     let appliedExpiry: Date | null = null;
     if (direction === "deduct") {
       if (currentBatches.length > 0) {
-        const consumed = consumeBatches(currentBatches, qty);
+        const now2 = new Date();
+        const nowMs2 = now2.getTime();
+        const consumed = consumeBatches(currentBatches, qty, now2);
         newBatches = consumed.batches;
-        appliedExpiry = sortBatchesFIFO(currentBatches)[0]?.expiryDate ?? null;
+        // Pick expiry from the oldest active (non-expired) batch that was consumed
+        const activeSorted = sortBatchesFIFO(
+          currentBatches.filter((b) => !b.expiryDate || new Date(b.expiryDate).getTime() >= nowMs2)
+        );
+        appliedExpiry = activeSorted[0]?.expiryDate ?? null;
       } else {
         // legacy product with no batches — just decrement quantity
         await products.updateOne(
