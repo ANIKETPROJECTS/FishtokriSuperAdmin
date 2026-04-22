@@ -1125,6 +1125,14 @@ export default function Orders() {
     // Hub — flag the effects to preserve our pre-populated sub-hub / products / coupons.
     skipSubHubResetRef.current = true;
     skipMenuResetRef.current = true;
+    // Seed the sub-hubs list with the order's sub-hub so the Select can render its label
+    // immediately, before the async fetch returns the full list.
+    if (o.subHubId) {
+      setSubHubs((prev) => {
+        if (prev.some((h: any) => String(h.id) === String(o.subHubId))) return prev;
+        return [{ id: String(o.subHubId), name: o.subHubName ?? "Selected sub-hub", location: "" }, ...prev];
+      });
+    }
     setSelectedSuperHubId(o.superHubId ?? "");
     setSelectedSubHubId(o.subHubId ?? "");
     // Items
