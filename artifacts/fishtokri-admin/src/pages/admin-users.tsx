@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Plus, Search, Edit2, Trash2, Mail, Phone, Eye, EyeOff, ArrowUpDown, SlidersHorizontal, X, LayoutGrid, LayoutList } from "lucide-react";
 import { ImageUpload } from "@/components/image-upload";
+import PasswordResetInbox from "@/components/password-reset-inbox";
 import {
   useGetUsers,
   getGetUsersQueryKey,
@@ -155,6 +156,8 @@ export default function AdminUsers() {
           Add User
         </Button>
       </div>
+
+      <PasswordResetInbox />
 
       {/* Search, Sort, Filter Bar */}
       <div className="flex flex-wrap items-center gap-3">

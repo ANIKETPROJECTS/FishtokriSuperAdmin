@@ -5,18 +5,38 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, ShieldCheck, Warehouse, Store, Truck, Eye, EyeOff } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+
+const REMEMBER_EMAIL_KEY = "fishtokri_remembered_email";
 
 export default function Login() {
   const [, setLocation] = useLocation();
   const search = useSearch();
   const params = new URLSearchParams(search);
   const role = params.get("role");
+  const { toast } = useToast();
 
   const loginMutation = useLogin();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Forgot password modal
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotNote, setForgotNote] = useState("");
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+
+  useEffect(() => {
+    const remembered = localStorage.getItem(REMEMBER_EMAIL_KEY);
+    if (remembered) {
+      setEmail(remembered);
+      setRememberMe(true);
+    }
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem("fishtokri_token");
@@ -38,6 +58,27 @@ export default function Login() {
   const roleLabel = isMasterAdmin ? "Master Admin" : isSubHub ? "Sub Hub" : isDelivery ? "Delivery Partner" : "Super Hub";
   const RoleIcon = isMasterAdmin ? ShieldCheck : isSubHub ? Store : isDelivery ? Truck : Warehouse;
 
+  const persistAuth = (token: string, admin: any) => {
+    const adminJson = JSON.stringify(admin);
+    if (rememberMe) {
+      // Long-lived: localStorage only, plus remember email.
+      localStorage.setItem("fishtokri_token", token);
+      localStorage.setItem("fishtokri_admin", adminJson);
+      localStorage.setItem(REMEMBER_EMAIL_KEY, email);
+      sessionStorage.removeItem("fishtokri_token");
+      sessionStorage.removeItem("fishtokri_admin");
+    } else {
+      // Session-only: sessionStorage is the source of truth; we mirror to
+      // localStorage so the rest of the app keeps working, then a beforeunload
+      // handler in main.tsx clears localStorage on tab close.
+      sessionStorage.setItem("fishtokri_token", token);
+      sessionStorage.setItem("fishtokri_admin", adminJson);
+      localStorage.setItem("fishtokri_token", token);
+      localStorage.setItem("fishtokri_admin", adminJson);
+      localStorage.removeItem(REMEMBER_EMAIL_KEY);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -45,8 +86,7 @@ export default function Login() {
       { data: { email, password, loginRole: (role || "master_admin") as any } },
       {
         onSuccess: (data) => {
-          localStorage.setItem("fishtokri_token", data.token);
-          localStorage.setItem("fishtokri_admin", JSON.stringify(data.admin));
+          persistAuth(data.token, data.admin);
           if ((data.admin as any).role === "super_hub") {
             setLocation("/super-hub-dashboard");
           } else if ((data.admin as any).role === "sub_hub") {
@@ -62,6 +102,37 @@ export default function Login() {
         }
       }
     );
+  };
+
+  const openForgot = () => {
+    setForgotEmail(email);
+    setForgotNote("");
+    setForgotOpen(true);
+  };
+
+  const submitForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail) return;
+    setForgotSubmitting(true);
+    try {
+      const base = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+      const res = await fetch(`${base}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail.trim().toLowerCase(), note: forgotNote.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || "Could not submit request");
+      toast({
+        title: "Request submitted",
+        description: "If the account exists, your master admin has been notified to reset the password.",
+      });
+      setForgotOpen(false);
+    } catch (err: any) {
+      toast({ title: "Could not submit", description: err.message, variant: "destructive" });
+    } finally {
+      setForgotSubmitting(false);
+    }
   };
 
   return (
@@ -169,6 +240,25 @@ export default function Login() {
               </div>
             </div>
 
+            <div className="flex items-center justify-between pt-1">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-[#0D1F3C] focus:ring-[#0D1F3C]/30"
+                />
+                <span className="text-xs text-gray-600">Remember me</span>
+              </label>
+              <button
+                type="button"
+                onClick={openForgot}
+                className="text-xs text-[#0D1F3C] hover:underline font-medium"
+              >
+                Forgot password?
+              </button>
+            </div>
+
             {error && (
               <p className="text-red-600 text-xs font-medium bg-red-50 border border-red-200 px-3 py-2 rounded-md" data-testid="text-error">
                 {error}
@@ -191,6 +281,58 @@ export default function Login() {
         </div>
         </div>
       </div>
+
+      {/* Forgot password dialog */}
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset your password</DialogTitle>
+            <DialogDescription>
+              Enter your account email and your master admin will set a new password for you.
+              {isMasterAdmin && (
+                <span className="block mt-2 text-amber-600">
+                  Master Admin credentials are not stored in the system. Please contact your system administrator directly.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submitForgot} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-gray-700 font-medium text-xs">Email address</Label>
+              <Input
+                type="email"
+                required
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                placeholder="you@fishtokri.com"
+                className="h-10"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-gray-700 font-medium text-xs">Note for your admin (optional)</Label>
+              <Input
+                type="text"
+                value={forgotNote}
+                onChange={(e) => setForgotNote(e.target.value)}
+                placeholder="e.g. Forgot my password after vacation"
+                className="h-10"
+              />
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button type="button" variant="ghost" onClick={() => setForgotOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={forgotSubmitting || !forgotEmail}
+                className="bg-[#0D1F3C] hover:bg-[#162B4D] text-white"
+              >
+                {forgotSubmitting ? "Submitting…" : "Send request"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
