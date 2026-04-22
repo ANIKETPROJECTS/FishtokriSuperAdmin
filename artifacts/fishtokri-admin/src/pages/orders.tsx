@@ -1744,8 +1744,10 @@ export default function Orders() {
                                 key={c.id}
                                 onClick={() => {
                                   setChosenCustomer(c);
-                                  setSelectedAddressIdx(c.addresses?.length ? 0 : null);
-                                  setOrderAddressMode(c.addresses?.length ? "saved" : "new");
+                                  const addrs = Array.isArray(c.addresses) ? c.addresses : [];
+                                  const defaultIdx = addrs.findIndex((a: any) => getAddressFields(a)?.isDefault);
+                                  setSelectedAddressIdx(addrs.length ? (defaultIdx >= 0 ? defaultIdx : 0) : null);
+                                  setOrderAddressMode(addrs.length ? "saved" : "new");
                                   setCustomerDropdownOpen(false);
                                   setCustomerSearch("");
                                 }}
