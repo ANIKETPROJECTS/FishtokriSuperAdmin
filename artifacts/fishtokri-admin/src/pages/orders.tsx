@@ -60,6 +60,11 @@ const ACTIVE_STATUSES = ["pending", "confirmed", "preparing", "out_for_delivery"
 const HISTORY_STATUSES = ["delivered", "cancelled"];
 const ALL_STATUSES = Object.keys(STATUS_CONFIG);
 
+// Takeaway orders are treated as completed and shown in History.
+function isHistoryOrder(o: any) {
+  return HISTORY_STATUSES.includes(o?.status) || o?.deliveryType === "takeaway";
+}
+
 // For takeaway orders that are still in the active flow (pending/confirmed/preparing/out_for_delivery),
 // show a single "Takeaway" badge so it's clear there's no delivery involved. Once delivered or cancelled,
 // the actual final status is shown.
@@ -337,6 +342,7 @@ export default function Orders() {
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [statsData, setStatsData] = useState<Record<string, number>>({});
+  const [statsTotals, setStatsTotals] = useState<{ total?: number; currentTotal?: number; historyTotal?: number }>({});
 
   // Detail modal
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -934,12 +940,11 @@ export default function Orders() {
         page: String(page),
         limit: String(LIMIT),
       });
+      if (activeTab === "current" || activeTab === "history") {
+        params.set("tab", activeTab);
+      }
       if (statusFilter) {
         params.set("status", statusFilter);
-      } else if (activeTab === "current") {
-        params.set("status", ACTIVE_STATUSES.join(","));
-      } else if (activeTab === "history") {
-        params.set("status", HISTORY_STATUSES.join(","));
       }
       if (deliveryTypeFilter) params.set("deliveryType", deliveryTypeFilter);
       if (dateFrom) params.set("from", dateFrom);
@@ -958,6 +963,11 @@ export default function Orders() {
     try {
       const data = await apiFetch("/api/orders/stats");
       setStatsData(data.stats ?? {});
+      setStatsTotals({
+        total: data.total,
+        currentTotal: data.currentTotal,
+        historyTotal: data.historyTotal,
+      });
     } catch { }
   }, []);
 
@@ -1105,11 +1115,18 @@ export default function Orders() {
 
   const populateCreateFormFromOrder = useCallback((o: any) => {
     setEditingOrderId(String(o._id));
-    // Customer
-    const existing = (allCustomers ?? []).find((c) => String(c.id) === String(o.customerId));
-    if (existing) {
+    // Customer — if the order has a customerId, treat it as existing even if the
+    // full customer list hasn't loaded yet (we'll re-resolve when it does).
+    if (o.customerId) {
+      const existing = (allCustomers ?? []).find((c) => String(c.id) === String(o.customerId));
       setCustomerMode("existing");
-      setChosenCustomer(existing);
+      setChosenCustomer(existing ?? {
+        id: String(o.customerId),
+        name: o.customerName ?? "",
+        phone: o.phone ?? "",
+        email: o.email ?? "",
+        addresses: Array.isArray(o.customerAddresses) ? o.customerAddresses : [],
+      });
     } else {
       setCustomerMode("new");
       setNewCustomer({
@@ -1203,6 +1220,19 @@ export default function Orders() {
     setLocation(`/orders/edit/${o._id}`);
   };
 
+  // When the customers list finishes loading after we've already pre-populated
+  // a synthetic customer for an order being edited, swap in the real record so
+  // saved addresses, etc. become available.
+  useEffect(() => {
+    if (!editingOrderId) return;
+    if (!chosenCustomer?.id) return;
+    if (Array.isArray(chosenCustomer.addresses) && chosenCustomer.addresses.length > 0) return;
+    const real = (allCustomers ?? []).find((c) => String(c.id) === String(chosenCustomer.id));
+    if (real && real !== chosenCustomer) {
+      setChosenCustomer(real);
+    }
+  }, [allCustomers, editingOrderId, chosenCustomer]);
+
   // If user lands directly on /orders/edit/:id (e.g. via refresh), fetch and populate.
   useEffect(() => {
     if (!isEditPage || !editIdFromUrl) return;
@@ -1263,9 +1293,13 @@ export default function Orders() {
 
   const hasFilters = !!(search || statusFilter || deliveryTypeFilter || dateFrom || dateTo);
 
-  const totalAll = Object.values(statsData).reduce((a, b) => a + b, 0);
-  const totalActive = ACTIVE_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0);
-  const totalHistory = HISTORY_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0);
+  const totalAll = (statsTotals.total ?? 0) || (
+    ACTIVE_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0) +
+    HISTORY_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0) +
+    (statsData.takeaway ?? 0)
+  );
+  const totalActive = statsTotals.currentTotal ?? ACTIVE_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0);
+  const totalHistory = statsTotals.historyTotal ?? (HISTORY_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0) + (statsData.takeaway ?? 0));
 
   const TABS = [
     { key: "current" as const, label: "Current Orders", count: totalActive, icon: Clock, color: "text-blue-600" },

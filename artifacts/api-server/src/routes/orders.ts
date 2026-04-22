@@ -37,6 +37,7 @@ router.get("/", async (req, res) => {
       q = "",
       status = "",
       deliveryType = "",
+      tab = "",
       sort = "createdAt",
       order = "desc",
       page = "1",
@@ -59,9 +60,34 @@ router.get("/", async (req, res) => {
       ];
     }
 
-    if (status) {
-      const statuses = status.split(",").map((s: string) => s.trim()).filter(Boolean);
-      filter.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
+    // Tab semantics: takeaway-deliveryType orders are always treated as completed (History).
+    // - "current": active statuses AND deliveryType != takeaway
+    // - "history": history statuses OR deliveryType == takeaway
+    const ACTIVE = ["pending", "confirmed", "preparing", "out_for_delivery"];
+    const HISTORY = ["delivered", "cancelled"];
+
+    const statusList = status
+      ? status.split(",").map((s: string) => s.trim()).filter(Boolean)
+      : [];
+
+    if (tab === "current") {
+      const list = statusList.length ? statusList.filter((s) => ACTIVE.includes(s)) : ACTIVE;
+      filter.status = { $in: list };
+      filter.deliveryType = { $ne: "takeaway" };
+    } else if (tab === "history") {
+      const list = statusList.length ? statusList.filter((s) => HISTORY.includes(s)) : HISTORY;
+      filter.$or = [
+        ...(filter.$or ?? []).map((c: any) => ({ ...c })),
+      ];
+      const historyClause = { $or: [{ status: { $in: list } }, { deliveryType: "takeaway" }] };
+      if (filter.$or && filter.$or.length) {
+        filter.$and = [{ $or: filter.$or }, historyClause];
+        delete filter.$or;
+      } else {
+        Object.assign(filter, historyClause);
+      }
+    } else if (statusList.length) {
+      filter.status = statusList.length === 1 ? statusList[0] : { $in: statusList };
     }
     if (deliveryType) filter.deliveryType = deliveryType;
     if (assignedTo) filter.assignedDeliveryPersonId = assignedTo;
@@ -98,14 +124,42 @@ router.get("/stats", async (req, res) => {
   try {
     const conn = await getOrdersDb();
     const agg = await conn.db.collection(COLLECTION).aggregate([
-      { $group: { _id: "$status", count: { $sum: 1 } } },
+      { $group: { _id: { status: "$status", deliveryType: "$deliveryType" }, count: { $sum: 1 } } },
     ]).toArray();
 
-    const stats: Record<string, number> = {};
-    for (const row of agg) stats[row._id ?? "unknown"] = row.count;
+    const ACTIVE = ["pending", "confirmed", "preparing", "out_for_delivery"];
+    const HISTORY = ["delivered", "cancelled"];
 
-    const total = Object.values(stats).reduce((a, b) => a + b, 0);
-    res.json({ stats, total });
+    // Raw per-status counts (used by some legacy callers).
+    const rawStats: Record<string, number> = {};
+    // Display stats: takeaway-deliveryType orders are bucketed under "takeaway",
+    // not under their underlying status. Delivered/cancelled keep their status.
+    const stats: Record<string, number> = {};
+    let takeawayActive = 0;
+    let takeawayHistory = 0;
+
+    for (const row of agg) {
+      const st = row._id?.status ?? "unknown";
+      const dt = row._id?.deliveryType ?? "delivery";
+      const c = row.count ?? 0;
+      rawStats[st] = (rawStats[st] ?? 0) + c;
+      if (dt === "takeaway") {
+        if (HISTORY.includes(st)) {
+          takeawayHistory += c;
+        } else {
+          takeawayActive += c;
+        }
+      } else {
+        stats[st] = (stats[st] ?? 0) + c;
+      }
+    }
+    stats.takeaway = takeawayActive + takeawayHistory;
+
+    const total = Object.values(rawStats).reduce((a, b) => a + b, 0);
+    const currentTotal = ACTIVE.reduce((s, k) => s + (stats[k] ?? 0), 0);
+    const historyTotal = HISTORY.reduce((s, k) => s + (stats[k] ?? 0), 0) + takeawayActive + takeawayHistory;
+
+    res.json({ stats, rawStats, total, currentTotal, historyTotal });
   } catch (err) {
     req.log.error({ err }, "Failed to get order stats");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch order stats" });
