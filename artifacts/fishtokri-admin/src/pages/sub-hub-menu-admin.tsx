@@ -49,6 +49,20 @@ async function apiFetch(path: string, options?: RequestInit) {
 type Tab = "products" | "categories" | "combos" | "coupons" | "carousels" | "sections" | "timeslots";
 type Layout = "list" | "grid";
 
+type BatchForm = {
+  _id?: string;
+  batchNumber: string;
+  quantity: string;
+  shelfLifeDays: string;
+  receivedDate: string;
+  expiryDate: string;
+  notes: string;
+};
+
+function emptyBatch(): BatchForm {
+  return { batchNumber: "", quantity: "0", shelfLifeDays: "", receivedDate: new Date().toISOString().slice(0, 10), expiryDate: "", notes: "" };
+}
+
 const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: "products", label: "Products", icon: Package },
   { key: "categories", label: "Categories", icon: Tag },
@@ -501,8 +515,21 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [xlsxBusy, setXlsxBusy] = useState(false);
+  const [initBatchesBusy, setInitBatchesBusy] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const editRef = useRef<HTMLInputElement>(null);
+
+  const handleInitBatches = async () => {
+    if (!confirm("This will add an initial batch (qty=0) to all products that don't have one yet. Continue?")) return;
+    setInitBatchesBusy(true);
+    try {
+      const data = await apiFetch(`/api/inventory/init-product-batches`, { method: "POST", body: JSON.stringify({ subHubId }) });
+      toast({ title: "Batches initialized", description: data.message });
+      load();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally { setInitBatchesBusy(false); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -859,6 +886,10 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         <Button size="sm" variant="outline" disabled={xlsxBusy || processed.length === 0} onClick={handleExport}
           className="h-8 gap-1.5 text-xs border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300 ml-auto">
           <Download className="w-3.5 h-3.5" /> Export Products {processed.length < products.length ? `(${processed.length} filtered)` : `(${products.length})`}
+        </Button>
+        <Button size="sm" variant="outline" disabled={initBatchesBusy} onClick={handleInitBatches}
+          className="h-8 gap-1.5 text-xs border-purple-200 text-purple-700 hover:bg-purple-50 hover:border-purple-300">
+          <Package className="w-3.5 h-3.5" /> {initBatchesBusy ? "Initializing..." : "Init Batches"}
         </Button>
       </div>
 
@@ -2104,6 +2135,8 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const [couponIds, setCouponIds] = useState<string[]>([]);
   const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
+  const [batches, setBatches] = useState<BatchForm[]>([]);
+  const [batchesLoading, setBatchesLoading] = useState(false);
 
   const discountPct = useMemo(() => {
     const p = Number(price), op = Number(originalPrice);
@@ -2137,12 +2170,30 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
         method: Array.isArray(r.method) && r.method.length > 0 ? r.method : [""],
       })) : []);
       setCouponIds(Array.isArray(product.couponIds) ? product.couponIds.map((id: any) => String(id?.$oid ?? id?._id ?? id)) : []);
+      // Load batches from inventory API
+      setBatchesLoading(true);
+      apiFetch(`/api/inventory/products/${product._id}/batches?subHubId=${subHubId}`)
+        .then((d) => {
+          const loaded: BatchForm[] = (d.batches ?? []).map((b: any) => ({
+            _id: String(b._id ?? ""),
+            batchNumber: b.batchNumber ?? "",
+            quantity: String(b.quantity ?? 0),
+            shelfLifeDays: b.shelfLifeDays != null ? String(b.shelfLifeDays) : "",
+            receivedDate: b.receivedDate ? new Date(b.receivedDate).toISOString().slice(0, 10) : "",
+            expiryDate: b.expiryDate ? new Date(b.expiryDate).toISOString().slice(0, 10) : "",
+            notes: b.notes ?? "",
+          }));
+          setBatches(loaded);
+        })
+        .catch(() => setBatches([]))
+        .finally(() => setBatchesLoading(false));
     } else {
       setName(""); setDescription(""); setCategory(""); setSubCategory("");
       setPrice(""); setOriginalPrice(""); setUnit("per kg");
       setGrossWeight(""); setNetWeight(""); setPieces(""); setServes(""); setQuantity("0"); setStatus("available");
       setIsArchived(false); setProductImageUrl(""); setProductImageMode("url"); setRecipes([]);
       setCouponIds([]);
+      setBatches([emptyBatch()]);
     }
   }, [isOpen, product]);
 
@@ -2169,6 +2220,24 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
     }
   };
 
+  const batchesTotal = batches.reduce((s, b) => s + (Number(b.quantity) || 0), 0);
+
+  const saveBatches = async (productId: string) => {
+    const batchPayload = batches.map((b) => ({
+      _id: b._id || undefined,
+      batchNumber: b.batchNumber || "",
+      quantity: Number(b.quantity) || 0,
+      shelfLifeDays: b.shelfLifeDays !== "" ? Number(b.shelfLifeDays) : null,
+      receivedDate: b.receivedDate || null,
+      expiryDate: b.expiryDate || null,
+      notes: b.notes || "",
+    }));
+    await apiFetch(`/api/inventory/products/${productId}/batches?subHubId=${subHubId}`, {
+      method: "PUT",
+      body: JSON.stringify({ batches: batchPayload }),
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -2183,19 +2252,23 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       originalPrice: Number(originalPrice) || Number(price) || 0,
       discountPct,
       unit, grossWeight, netWeight, pieces, serves,
-      quantity: Number(quantity) || 0,
+      quantity: batchesTotal,
       status, isArchived, imageUrl,
       recipes: cleanedRecipes,
       couponIds,
     };
     try {
+      let productId: string;
       if (isEditing) {
         await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/${product._id}`, { method: "PUT", body: JSON.stringify(payload) });
+        productId = String(product._id);
         toast({ title: "Product updated" });
       } else {
-        await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, { method: "POST", body: JSON.stringify(payload) });
+        const created = await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, { method: "POST", body: JSON.stringify(payload) });
+        productId = String(created.product._id);
         toast({ title: "Product added" });
       }
+      await saveBatches(productId);
       onSaved(); onClose();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -2204,7 +2277,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[640px] max-h-[92vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[760px] max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Product" : "Add Product"}</DialogTitle>
         </DialogHeader>
@@ -2261,7 +2334,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Pieces</Label><Input value={pieces} onChange={(e) => setPieces(e.target.value)} placeholder="e.g. 8–10 Pieces" className="h-9" /></div>
                 <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Serves</Label><Input value={serves} onChange={(e) => setServes(e.target.value)} placeholder="e.g. Serves 4" className="h-9" /></div>
-                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Stock (Qty)</Label><Input type="number" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="h-9" /></div>
+                <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Stock (Qty)</Label><Input type="number" readOnly value={batchesTotal} className="h-9 bg-gray-50 text-gray-500 cursor-not-allowed" title="Derived from batches below" /></div>
               </div>
             </div>
           </section>
@@ -2311,6 +2384,102 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                 </div>
               </div>
             </div>
+          </section>
+
+          {/* ── BATCHES ────────────────────────────────────── */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2 after:flex-1 after:h-px after:bg-gray-100 after:ml-2">
+                Stock Batches ({batches.length}){batchesTotal > 0 && <span className="text-blue-600 font-bold normal-case">— Total: {batchesTotal}</span>}
+              </p>
+              <button type="button" onClick={() => setBatches([...batches, emptyBatch()])} className="text-xs text-[#1A56DB] font-semibold flex items-center gap-1 hover:underline ml-4 flex-shrink-0">
+                <Plus className="w-3 h-3" /> Add Batch
+              </button>
+            </div>
+            {batchesLoading ? (
+              <div className="text-xs text-gray-400 py-3">Loading batches...</div>
+            ) : batches.length === 0 ? (
+              <div className="text-center py-5 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">
+                No batches yet. Click "Add Batch" to track stock.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {batches.map((b, i) => (
+                  <div key={i} className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Batch #</label>
+                        <Input
+                          value={b.batchNumber}
+                          onChange={(e) => setBatches(batches.map((x, idx) => idx === i ? { ...x, batchNumber: e.target.value } : x))}
+                          placeholder="e.g. BATCH-1"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Quantity *</label>
+                        <Input
+                          type="number" min="0"
+                          value={b.quantity}
+                          onChange={(e) => setBatches(batches.map((x, idx) => idx === i ? { ...x, quantity: e.target.value } : x))}
+                          placeholder="0"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Shelf Life (days)</label>
+                        <Input
+                          type="number" min="0"
+                          value={b.shelfLifeDays}
+                          onChange={(e) => setBatches(batches.map((x, idx) => idx === i ? { ...x, shelfLifeDays: e.target.value } : x))}
+                          placeholder="e.g. 3"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Received Date</label>
+                        <Input
+                          type="date"
+                          value={b.receivedDate}
+                          onChange={(e) => setBatches(batches.map((x, idx) => idx === i ? { ...x, receivedDate: e.target.value } : x))}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Expiry Date</label>
+                        <Input
+                          type="date"
+                          value={b.expiryDate}
+                          onChange={(e) => setBatches(batches.map((x, idx) => idx === i ? { ...x, expiryDate: e.target.value } : x))}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Notes</label>
+                        <Input
+                          value={b.notes}
+                          onChange={(e) => setBatches(batches.map((x, idx) => idx === i ? { ...x, notes: e.target.value } : x))}
+                          placeholder="Optional notes..."
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setBatches(batches.filter((_, idx) => idx !== i))}
+                        className="h-8 px-2 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md border border-gray-200 transition-colors"
+                        title="Remove batch"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           {/* ── RECIPES ────────────────────────────────────── */}

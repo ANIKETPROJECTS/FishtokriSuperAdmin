@@ -540,6 +540,54 @@ router.delete("/products/:productId/batches/:batchId", async (req, res) => {
   }
 });
 
+// PUT /api/inventory/products/:productId/batches — replace batches for a product
+router.put("/products/:productId/batches", async (req, res) => {
+  try {
+    const subHubId = String(req.query.subHubId || "");
+    if (!subHubId) { res.status(400).json({ error: "ValidationError", message: "subHubId is required" }); return; }
+    const ctx = await getCtx(subHubId, res);
+    if (!ctx) return;
+    const pid = toId(req.params.productId);
+    if (!pid) { res.status(400).json({ error: "InvalidId", message: "Invalid product id" }); return; }
+    const product = await ctx.conn.db.collection("products").findOne({ _id: pid });
+    if (!product) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
+    const batches: Batch[] = Array.isArray(req.body.batches) ? req.body.batches : [];
+    const persisted = await persistBatches(ctx.conn.db.collection("products"), pid, batches);
+    res.json({ productId: String(pid), quantity: persisted.quantity, batches: persisted.batches });
+  } catch (err) {
+    req.log.error({ err }, "Failed to update batches");
+    res.status(500).json({ error: "InternalError", message: "Failed to update batches" });
+  }
+});
+
+// POST /api/inventory/init-product-batches — one-time migration: add empty batch to products without any batch
+router.post("/init-product-batches", async (req, res) => {
+  try {
+    const subHubId = String((req.body as any)?.subHubId || req.query.subHubId || "");
+    if (!subHubId) { res.status(400).json({ error: "ValidationError", message: "subHubId is required" }); return; }
+    const ctx = await getCtx(subHubId, res);
+    if (!ctx) return;
+    const productsCol = ctx.conn.db.collection("products");
+    const allProducts = await productsCol.find({}).toArray();
+    let initialized = 0;
+    let skipped = 0;
+    for (const p of allProducts) {
+      const existingBatches: Batch[] = Array.isArray(p.batches) ? p.batches : [];
+      if (existingBatches.length === 0) {
+        const emptyBatch = normalizeBatch({ batchNumber: "BATCH-1", quantity: 0, receivedDate: new Date(), notes: "" });
+        await persistBatches(productsCol, p._id, [emptyBatch]);
+        initialized++;
+      } else {
+        skipped++;
+      }
+    }
+    res.json({ message: `Done. Added initial batch to ${initialized} products; ${skipped} already had batches.`, initialized, skipped });
+  } catch (err) {
+    req.log.error({ err }, "Failed to init product batches");
+    res.status(500).json({ error: "InternalError", message: "Failed to init batches" });
+  }
+});
+
 // ─── ORDER SYNC HELPERS (used by orders.ts) ───────────────────────────────────
 type OrderForSync = {
   _id: any;
