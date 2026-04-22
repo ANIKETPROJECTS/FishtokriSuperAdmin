@@ -810,7 +810,7 @@ export default function Orders() {
         subHubId: selectedSubHubId,
         subHubName: subHub?.name ?? "",
         notes: orderNotes.trim(),
-        status: "pending",
+        status: orderDeliveryType === "takeaway" ? "takeaway" : "pending",
         createCustomerIfMissing: customerMode === "new",
         newCustomerExtras: customerMode === "new" ? {
           alternatePhone: newCustomer.alternatePhone.trim(),
@@ -1397,7 +1397,7 @@ export default function Orders() {
                           <button
                             onClick={() => {
                               setSelectedOrder(o);
-                              setEditStatus(o.status);
+                              setEditStatus(effectiveStatus(o.status, o.deliveryType));
                               setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? "");
                               setShowAllPersons(false);
                             }}
@@ -2968,25 +2968,33 @@ export default function Orders() {
                 {/* Status Update */}
                 <div className="space-y-2">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Update Status</p>
-                  <div className="flex gap-2">
-                    <Select value={editStatus} onValueChange={setEditStatus}>
-                      <SelectTrigger className="h-9 flex-1 text-sm"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {ALL_STATUSES.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            <span className="flex items-center gap-2">{STATUS_CONFIG[s].label}</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      onClick={handleStatusUpdate}
-                      disabled={savingStatus || editStatus === selectedOrder.status}
-                      className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 px-4"
-                    >
-                      {savingStatus ? "Saving..." : "Update"}
-                    </Button>
-                  </div>
+                  {(() => {
+                    const isTakeaway = selectedOrder.deliveryType === "takeaway";
+                    const statusOptions = isTakeaway
+                      ? (selectedOrder.status === "cancelled" ? ["takeaway", "cancelled"] : ["takeaway"])
+                      : ALL_STATUSES.filter((s) => s !== "takeaway");
+                    return (
+                      <div className="flex gap-2">
+                        <Select value={editStatus} onValueChange={setEditStatus} disabled={isTakeaway && statusOptions.length === 1}>
+                          <SelectTrigger className="h-9 flex-1 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {statusOptions.map((s) => (
+                              <SelectItem key={s} value={s}>
+                                <span className="flex items-center gap-2">{STATUS_CONFIG[s].label}</span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          onClick={handleStatusUpdate}
+                          disabled={savingStatus || editStatus === selectedOrder.status || (isTakeaway && statusOptions.length === 1)}
+                          className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 px-4"
+                        >
+                          {savingStatus ? "Saving..." : "Update"}
+                        </Button>
+                      </div>
+                    );
+                  })()}
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-400">Current:</span>
                     <StatusBadge status={selectedOrder.status} deliveryType={selectedOrder.deliveryType} />
