@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   Search, X, RefreshCw, ClipboardList, Clock, CheckCircle2, XCircle,
   Truck, Package, ChevronLeft, ChevronRight, Eye, MapPin,
@@ -461,6 +461,10 @@ export default function Orders() {
     }
   }, [isCreatePage, allCustomers.length, superHubs.length]);
 
+  // Refs to avoid wiping pre-populated edit-form values when super/sub-hub effects fire.
+  const skipSubHubResetRef = useRef(false);
+  const skipMenuResetRef = useRef(false);
+
   // Load sub-hubs when super-hub changes
   useEffect(() => {
     if (!selectedSuperHubId) { setSubHubs([]); setSelectedSubHubId(""); return; }
@@ -469,6 +473,10 @@ export default function Orders() {
       .then((d) => setSubHubs(d.subHubs ?? []))
       .catch(() => setSubHubs([]))
       .finally(() => setLoadingSubHubs(false));
+    if (skipSubHubResetRef.current) {
+      skipSubHubResetRef.current = false;
+      return;
+    }
     setSelectedSubHubId("");
     setSubHubProducts([]);
     setSelectedProducts([]);
@@ -499,6 +507,10 @@ export default function Orders() {
       .catch(() => setTimeslots([]))
       .finally(() => setLoadingTimeslots(false));
 
+    if (skipMenuResetRef.current) {
+      skipMenuResetRef.current = false;
+      return;
+    }
     setSelectedProducts([]);
     setAppliedCouponIds([]); setCouponCode(""); setCouponError("");
     setSelectedTimeslotId("");
@@ -1110,7 +1122,9 @@ export default function Orders() {
         notes: "",
       });
     }
-    // Hub
+    // Hub — flag the effects to preserve our pre-populated sub-hub / products / coupons.
+    skipSubHubResetRef.current = true;
+    skipMenuResetRef.current = true;
     setSelectedSuperHubId(o.superHubId ?? "");
     setSelectedSubHubId(o.subHubId ?? "");
     // Items
