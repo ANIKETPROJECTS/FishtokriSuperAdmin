@@ -14,7 +14,6 @@ const masterAdminNavItems = [
     children: [
       { href: "/vendors", label: "Vendor", icon: Handshake },
       { href: "/vendor-invoices", label: "Vendor Invoices", icon: FileText },
-      { href: "/retail-invoices", label: "Retail Invoices", icon: Receipt },
       { href: "/vendor-categories", label: "Categories", icon: FolderOpen },
       { href: "/vendor-items", label: "Items", icon: Boxes },
       { href: "/stock-adjustment", label: "Stock Adjustment", icon: SlidersHorizontal },

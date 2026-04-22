@@ -24,7 +24,6 @@ import SubHubMenuAdmin from "@/pages/sub-hub-menu-admin";
 import Vendors from "@/pages/vendors";
 import VendorInvoices from "@/pages/vendor-invoices";
 import VendorStatement from "@/pages/vendor-statement";
-import RetailInvoicesPage from "@/pages/retail-invoices";
 import VendorManagementOverview from "@/pages/vendor-management-overview";
 import VendorItems from "@/pages/vendor-items";
 import VendorCategories from "@/pages/vendor-categories";
@@ -149,9 +148,6 @@ function App() {
             </Route>
             <Route path="/vendor-invoices">
               <ProtectedRoute component={VendorInvoices} requiredRole="master_admin" />
-            </Route>
-            <Route path="/retail-invoices">
-              <ProtectedRoute component={RetailInvoicesPage} requiredRole="master_admin" />
             </Route>
             <Route path="/vendor-items">
               <ProtectedRoute component={VendorItems} requiredRole="master_admin" />
