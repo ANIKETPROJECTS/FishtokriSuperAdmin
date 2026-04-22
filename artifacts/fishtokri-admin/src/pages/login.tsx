@@ -97,7 +97,12 @@ export default function Login() {
       </div>
 
       {/* Right form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-10">
+      <div className="flex-1 flex items-center justify-center px-6 py-10 relative overflow-hidden">
+        <div className="absolute inset-0 z-0">
+          <img src="/login-bg.png" alt="" className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-white/75 backdrop-blur-[2px]" />
+        </div>
+        <div className="relative z-10 w-full flex items-center justify-center">
         <div className="w-full max-w-sm">
           <button
             onClick={() => setLocation("/")}
@@ -183,6 +188,7 @@ export default function Login() {
           <p className="mt-8 text-xs text-gray-400">
             Need help signing in? Contact your system administrator.
           </p>
+        </div>
         </div>
       </div>
     </div>
