@@ -538,6 +538,27 @@ router.put("/:id", async (req, res) => {
         }
       }
     }
+
+    // If the order is being moved OUT of "delivered" back to an earlier
+    // active status (e.g. pending / confirmed / out_for_delivery), the
+    // previously recorded payment is no longer relevant — clear it so the
+    // next "delivered" transition prompts for fresh payment info.
+    let clearPayments = false;
+    if (
+      status !== undefined &&
+      prev.status === "delivered" &&
+      status !== "delivered" &&
+      status !== "cancelled" &&
+      !Array.isArray(payments) // don't override an explicit payments update
+    ) {
+      clearPayments = true;
+      update.payments = [];
+      update.paymentStatus = "unpaid";
+      update.paidAmount = 0;
+      update.paymentMode = "";
+      const totalForDue = Number((update.total ?? prev.total)) || 0;
+      update.dueAmount = totalForDue;
+    }
     const result = await conn.db.collection(COLLECTION).findOneAndUpdate(
       { _id: oid },
       { $set: update },
@@ -565,7 +586,7 @@ router.put("/:id", async (req, res) => {
     }
 
     // If the payments list was touched, re-sync this order's banking payments.
-    if (Array.isArray(payments)) {
+    if (Array.isArray(payments) || clearPayments) {
       try {
         await syncOrderBankPayments({
           orderId: String((result as any)._id),

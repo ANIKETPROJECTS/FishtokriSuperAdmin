@@ -1183,8 +1183,28 @@ export default function Orders() {
     setSavingStatus(true);
     try {
       await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify({ status: editStatus }) });
-      toast({ title: "Order status updated" });
-      setSelectedOrder((o: any) => ({ ...o, status: editStatus }));
+      const movedOutOfDelivered =
+        selectedOrder.status === "delivered" &&
+        editStatus !== "delivered" &&
+        editStatus !== "cancelled";
+      toast({
+        title: "Order status updated",
+        description: movedOutOfDelivered
+          ? "Previous payment info was cleared. Re-record payment when delivered again."
+          : undefined,
+      });
+      setSelectedOrder((o: any) => {
+        const next: any = { ...o, status: editStatus };
+        if (movedOutOfDelivered) {
+          const totalAmt = Number(o?.total) > 0 ? Number(o.total) : orderTotal(o?.items);
+          next.payments = [];
+          next.paymentStatus = "unpaid";
+          next.paidAmount = 0;
+          next.paymentMode = "";
+          next.dueAmount = totalAmt;
+        }
+        return next;
+      });
       load();
       loadStats();
     } catch (err: any) {
