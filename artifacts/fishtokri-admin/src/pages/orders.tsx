@@ -3115,29 +3115,46 @@ export default function Orders() {
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Update Status</p>
                   {(() => {
                     const isTakeaway = selectedOrder.deliveryType === "takeaway";
+                    const hasAssignee = !!selectedOrder.assignedDeliveryPersonId;
+                    const requiresAssignee = (s: string) =>
+                      !isTakeaway && !hasAssignee && (s === "out_for_delivery" || s === "delivered");
                     const statusOptions = isTakeaway
                       ? ["takeaway", "cancelled"]
                       : ALL_STATUSES.filter((s) => s !== "takeaway");
+                    const blocked = requiresAssignee(editStatus);
                     return (
-                      <div className="flex gap-2">
-                        <Select value={editStatus} onValueChange={setEditStatus}>
-                          <SelectTrigger className="h-9 flex-1 text-sm"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {statusOptions.map((s) => (
-                              <SelectItem key={s} value={s}>
-                                <span className="flex items-center gap-2">{STATUS_CONFIG[s].label}</span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          onClick={handleStatusUpdate}
-                          disabled={savingStatus || editStatus === displayStatus(selectedOrder.status, selectedOrder.deliveryType)}
-                          className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 px-4"
-                        >
-                          {savingStatus ? "Saving..." : "Update"}
-                        </Button>
-                      </div>
+                      <>
+                        <div className="flex gap-2">
+                          <Select value={editStatus} onValueChange={setEditStatus}>
+                            <SelectTrigger className="h-9 flex-1 text-sm"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {statusOptions.map((s) => {
+                                const disabled = requiresAssignee(s);
+                                return (
+                                  <SelectItem key={s} value={s} disabled={disabled}>
+                                    <span className="flex items-center gap-2">
+                                      {STATUS_CONFIG[s].label}
+                                      {disabled && <span className="text-[10px] text-gray-400">(assign partner first)</span>}
+                                    </span>
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            onClick={handleStatusUpdate}
+                            disabled={savingStatus || blocked || editStatus === displayStatus(selectedOrder.status, selectedOrder.deliveryType)}
+                            className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 px-4"
+                          >
+                            {savingStatus ? "Saving..." : "Update"}
+                          </Button>
+                        </div>
+                        {blocked && (
+                          <p className="text-[11px] text-amber-600 font-medium">
+                            Assign a delivery partner above before marking this order as Out for Delivery or Delivered.
+                          </p>
+                        )}
+                      </>
                     );
                   })()}
                   <div className="flex items-center gap-2">

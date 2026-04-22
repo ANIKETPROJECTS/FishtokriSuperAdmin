@@ -519,6 +519,25 @@ router.put("/:id", async (req, res) => {
     const conn = await getOrdersDb();
     const prev = await conn.db.collection(COLLECTION).findOne({ _id: oid });
     if (!prev) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+
+    // Guard: out_for_delivery / delivered require an assigned delivery partner
+    // (only applies to delivery-type orders, not takeaway).
+    if (status !== undefined && (status === "out_for_delivery" || status === "delivered")) {
+      const effectiveDeliveryType = update.deliveryType ?? prev.deliveryType ?? "delivery";
+      if (effectiveDeliveryType !== "takeaway") {
+        const effectiveAssignee =
+          update.assignedDeliveryPersonId !== undefined
+            ? update.assignedDeliveryPersonId
+            : prev.assignedDeliveryPersonId;
+        if (!effectiveAssignee) {
+          res.status(400).json({
+            error: "DeliveryPartnerRequired",
+            message: "Assign a delivery partner before marking the order as Out for Delivery or Delivered.",
+          });
+          return;
+        }
+      }
+    }
     const result = await conn.db.collection(COLLECTION).findOneAndUpdate(
       { _id: oid },
       { $set: update },
