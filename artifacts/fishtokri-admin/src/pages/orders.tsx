@@ -499,6 +499,27 @@ export default function Orders() {
     });
   }, [coupons]);
 
+  const stockOf = useCallback((productId: string): number => {
+    const p = subHubProducts.find((x) => String(x._id) === productId);
+    if (!p) return Infinity;
+    const q = Number(p.quantity);
+    return Number.isFinite(q) ? q : Infinity;
+  }, [subHubProducts]);
+
+  const isCouponApplicable = useCallback((c: any): boolean => {
+    const apProds = (Array.isArray(c.applicableProducts) ? c.applicableProducts : []).map((x: any) => String(x));
+    const apCats = (Array.isArray(c.applicableCategories) ? c.applicableCategories : []).map((x: any) => String(x).toLowerCase());
+    if (apProds.length === 0 && apCats.length === 0) return true;
+    if (selectedProducts.length === 0) return false;
+    for (const sp of selectedProducts) {
+      if (apProds.includes(String(sp.productId))) return true;
+      const prod = subHubProducts.find((x) => String(x._id) === sp.productId);
+      const cat = String(prod?.category ?? "").toLowerCase();
+      if (cat && apCats.includes(cat)) return true;
+    }
+    return false;
+  }, [selectedProducts, subHubProducts]);
+
   const activeTimeslots = useMemo(() => timeslots.filter((t) => t.isActive !== false), [timeslots]);
 
   const productCategories = useMemo(() => {
@@ -566,6 +587,7 @@ export default function Orders() {
     for (const c of appliedCoupons) {
       const min = Number(c.minOrderAmount) || 0;
       if (itemsSubtotal < min) continue;
+      if (!isCouponApplicable(c)) continue;
       const v = Number(c.discountValue) || 0;
       if (c.type === "percentage") {
         total += Math.round((itemsSubtotal * v) / 100);
@@ -574,7 +596,7 @@ export default function Orders() {
       }
     }
     return Math.min(itemsSubtotal, total);
-  }, [appliedCoupons, itemsSubtotal]);
+  }, [appliedCoupons, itemsSubtotal, isCouponApplicable]);
 
   const selectedTimeslot = useMemo(
     () => activeTimeslots.find((t) => String(t._id) === selectedTimeslotId) || null,
@@ -633,6 +655,7 @@ export default function Orders() {
     if (!code) { setCouponError("Enter a coupon code"); return; }
     const match = activeCoupons.find((c) => String(c.code).toUpperCase() === code);
     if (!match) { setCouponError("Invalid or inactive coupon"); return; }
+    if (!isCouponApplicable(match)) { setCouponError("Coupon not valid for the items in this order"); return; }
     const min = Number(match.minOrderAmount) || 0;
     if (itemsSubtotal < min) { setCouponError(`Min order ₹${min} required`); return; }
     const id = String(match._id);
@@ -2083,7 +2106,18 @@ export default function Orders() {
                             return (
                               <button
                                 key={pid}
+                                disabled={(Number(p.quantity) || 0) <= 0 || (already?.quantity ?? 0) >= (Number(p.quantity) || 0)}
                                 onClick={() => {
+                                  const stock = Number(p.quantity) || 0;
+                                  if (stock <= 0) {
+                                    toast({ title: "Out of stock", description: `${p.name} is unavailable in this sub-hub.`, variant: "destructive" });
+                                    return;
+                                  }
+                                  const current = already?.quantity ?? 0;
+                                  if (current + 1 > stock) {
+                                    toast({ title: "Stock limit reached", description: `Only ${stock} ${p.unit || "unit(s)"} available for ${p.name}.`, variant: "destructive" });
+                                    return;
+                                  }
                                   setSelectedProducts((prev) => {
                                     const exists = prev.find((sp) => sp.productId === pid);
                                     if (exists) {
@@ -2098,7 +2132,7 @@ export default function Orders() {
                                     }];
                                   });
                                 }}
-                                className={`w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 transition-colors text-left ${already ? "bg-blue-50/40" : ""}`}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed ${already ? "bg-blue-50/40" : ""}`}
                               >
                                 {p.imageUrl ? (
                                   <img src={p.imageUrl} alt="" className="w-9 h-9 rounded-lg object-cover bg-gray-100 flex-shrink-0" />
@@ -2165,12 +2199,20 @@ export default function Orders() {
               {/* Selected catalog products */}
               {selectedProducts.length > 0 && (
                 <div className="space-y-1.5">
-                  {selectedProducts.map((p, idx) => (
+                  {selectedProducts.map((p, idx) => {
+                    const stock = stockOf(p.productId);
+                    const atMax = p.quantity >= stock;
+                    return (
                     <div key={p.productId} className="flex items-center gap-2 p-2 rounded-xl border border-blue-100 bg-blue-50/50">
                       <ShoppingBag className="w-3.5 h-3.5 text-[#1A56DB] flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-[#162B4D] truncate">{p.name}</p>
-                        <p className="text-[11px] text-gray-500">{formatRupees(p.price)}{p.unit ? ` / ${p.unit}` : ""}</p>
+                        <p className="text-[11px] text-gray-500">
+                          {formatRupees(p.price)}{p.unit ? ` / ${p.unit}` : ""}
+                          {Number.isFinite(stock) && (
+                            <span className={`ml-1 ${atMax ? "text-amber-600 font-semibold" : "text-gray-400"}`}>· stock {stock}</span>
+                          )}
+                        </p>
                       </div>
                       <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg">
                         <button
@@ -2180,12 +2222,26 @@ export default function Orders() {
                         <Input
                           type="number"
                           value={p.quantity}
-                          onChange={(e) => setSelectedProducts((arr) => arr.map((x, i) => i === idx ? { ...x, quantity: Math.max(1, Number(e.target.value) || 1) } : x))}
+                          onChange={(e) => {
+                            const requested = Math.max(1, Number(e.target.value) || 1);
+                            const clamped = Math.min(requested, stock);
+                            if (requested > stock) {
+                              toast({ title: "Stock limit reached", description: `Only ${stock} ${p.unit || "unit(s)"} available for ${p.name}.`, variant: "destructive" });
+                            }
+                            setSelectedProducts((arr) => arr.map((x, i) => i === idx ? { ...x, quantity: clamped } : x));
+                          }}
                           className="h-7 w-12 text-center text-sm border-0 px-0 focus-visible:ring-0"
                         />
                         <button
-                          onClick={() => setSelectedProducts((arr) => arr.map((x, i) => i === idx ? { ...x, quantity: x.quantity + 1 } : x))}
-                          className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-[#1A56DB]"
+                          disabled={atMax}
+                          onClick={() => {
+                            if (atMax) {
+                              toast({ title: "Stock limit reached", description: `Only ${stock} ${p.unit || "unit(s)"} available for ${p.name}.`, variant: "destructive" });
+                              return;
+                            }
+                            setSelectedProducts((arr) => arr.map((x, i) => i === idx ? { ...x, quantity: x.quantity + 1 } : x));
+                          }}
+                          className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-[#1A56DB] disabled:text-gray-300 disabled:cursor-not-allowed"
                         >+</button>
                       </div>
                       <span className="text-sm font-bold text-[#162B4D] w-16 text-right">{formatRupees(p.price * p.quantity)}</span>
@@ -2196,7 +2252,8 @@ export default function Orders() {
                         <Trash className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -2335,8 +2392,14 @@ export default function Orders() {
                       {activeCoupons.slice(0, 8).map((c) => {
                         const id = String(c._id);
                         const min = Number(c.minOrderAmount) || 0;
-                        const eligible = itemsSubtotal >= min;
+                        const applicable = isCouponApplicable(c);
+                        const eligible = applicable && itemsSubtotal >= min;
                         const isApplied = appliedCouponIds.includes(id);
+                        const reason = !applicable
+                          ? "Not valid for the items in this order"
+                          : !eligible
+                            ? `Min order ₹${min} required`
+                            : (c.title || c.description || "");
                         return (
                           <button
                             key={id}
@@ -2348,9 +2411,9 @@ export default function Orders() {
                                 ? "border-emerald-300 bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
                                 : eligible
                                   ? "border-blue-200 bg-blue-50 text-[#1A56DB] hover:bg-blue-100"
-                                  : "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
+                                  : "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed opacity-60"
                             }`}
-                            title={c.title || c.description || ""}
+                            title={reason}
                           >
                             <Ticket className="w-3 h-3" />
                             {c.code}
