@@ -2403,7 +2403,7 @@ export default function Orders() {
                               ))}
                             </select>
                           </div>
-                          <div className="col-span-4 relative">
+                          <div className="col-span-6 relative">
                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
                             <Input
                               type="number"
@@ -2429,16 +2429,6 @@ export default function Orders() {
                               className="pl-6 h-9 text-sm"
                             />
                           </div>
-                          <Input
-                            value={entry.reference}
-                            onChange={(e) =>
-                              setPaymentEntries((arr) =>
-                                arr.map((p, i) => (i === idx ? { ...p, reference: e.target.value } : p))
-                              )
-                            }
-                            placeholder="Ref / Txn (opt)"
-                            className="col-span-2 h-9 text-sm"
-                          />
                           <button
                             type="button"
                             onClick={() => setPaymentEntries((arr) => arr.filter((_, i) => i !== idx))}
@@ -2661,6 +2651,73 @@ export default function Orders() {
                     </div>
                   )}
                 </div>
+
+                {/* Payment Info */}
+                {(() => {
+                  const pays: any[] = Array.isArray(selectedOrder.payments) ? selectedOrder.payments : [];
+                  const status = String(selectedOrder.paymentStatus || "").toLowerCase();
+                  const paid = Number(selectedOrder.paidAmount) || pays.reduce((s, p) => s + (Number(p?.amount) || 0), 0);
+                  const due = Number(selectedOrder.dueAmount) || 0;
+                  if (!pays.length && !status && !paid) return null;
+                  const statusStyle =
+                    status === "paid"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : status === "partial"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-gray-100 text-gray-600 border-gray-200";
+                  const statusLabel =
+                    status === "paid" ? "Fully Paid" : status === "partial" ? "Partial" : status === "unpaid" ? "Unpaid" : "—";
+                  return (
+                    <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Payment</p>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${statusStyle}`}>
+                          {statusLabel}
+                        </span>
+                      </div>
+
+                      {pays.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {pays.map((p, i) => {
+                            const meta = PAYMENT_MODES.find((m) => m.value === String(p?.mode || "").toLowerCase());
+                            const Icon = meta?.Icon || Tag;
+                            const label = meta?.label || (p?.mode ? String(p.mode) : "Payment");
+                            return (
+                              <div
+                                key={i}
+                                className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
+                                    <Icon className="w-3.5 h-3.5 text-[#1A56DB]" />
+                                  </div>
+                                  <span className="text-sm font-medium text-[#162B4D]">{label}</span>
+                                </div>
+                                <span className="text-sm font-semibold text-[#162B4D]">
+                                  {formatRupees(Number(p?.amount) || 0)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-500 italic">No payments collected yet.</p>
+                      )}
+
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-gray-100">
+                        <span className="text-gray-500">
+                          Paid: <span className="font-semibold text-gray-700">{formatRupees(paid)}</span>
+                        </span>
+                        <span className="text-gray-500">
+                          Due:{" "}
+                          <span className={`font-semibold ${due > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                            {formatRupees(due)}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Delivery Info */}
                 <div className="bg-gray-50 rounded-xl p-4 space-y-1.5">
@@ -2943,7 +3000,7 @@ export default function Orders() {
                               ))}
                             </select>
                           </div>
-                          <div className="col-span-4 relative">
+                          <div className="col-span-6 relative">
                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
                             <Input
                               type="number"
@@ -2969,16 +3026,6 @@ export default function Orders() {
                               className="pl-6 h-9 text-sm"
                             />
                           </div>
-                          <Input
-                            value={entry.reference}
-                            onChange={(e) =>
-                              setDeliverPayEntries((arr) =>
-                                arr.map((p, i) => (i === idx ? { ...p, reference: e.target.value } : p))
-                              )
-                            }
-                            placeholder="Ref (opt)"
-                            className="col-span-2 h-9 text-sm"
-                          />
                           <button
                             type="button"
                             onClick={() => setDeliverPayEntries((arr) => arr.filter((_, i) => i !== idx))}
