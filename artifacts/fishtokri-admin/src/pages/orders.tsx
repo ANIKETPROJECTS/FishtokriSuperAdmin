@@ -5,7 +5,7 @@ import {
   Phone, User, SlidersHorizontal, ArrowUpDown, UserCheck,
   ShoppingBag, Building2, AlertCircle, ChevronDown, Check,
   Pencil, Trash2, Plus, Store, Home, Trash, Mail, Calendar, Tag, Ticket, Zap,
-  Wallet, CreditCard, Banknote, Smartphone, Landmark, FileText, Printer,
+  Wallet, CreditCard, Banknote, Smartphone, Landmark, FileText, Printer, MoreVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 
@@ -1822,34 +1825,38 @@ export default function Orders() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            onClick={() => {
-                              setSelectedOrder(o);
-                              setEditStatus(displayStatus(o.status, o.deliveryType));
-                              setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? "");
-                              setShowAllPersons(false);
-                            }}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-[#1A56DB] hover:text-[#1447B4] bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors"
-                            title="View order"
-                          >
-                            <Eye className="w-3.5 h-3.5" /> View
-                          </button>
-                          <button
-                            onClick={() => openEditOrder(o)}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg transition-colors"
-                            title="Edit order"
-                          >
-                            <Pencil className="w-3.5 h-3.5" /> Edit
-                          </button>
-                          <button
-                            onClick={() => setDeletingOrder(o)}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg transition-colors"
-                            title="Delete order"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" /> Delete
-                          </button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              title="More actions"
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedOrder(o);
+                                setEditStatus(displayStatus(o.status, o.deliveryType));
+                                setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? "");
+                                setShowAllPersons(false);
+                              }}
+                            >
+                              <Eye className="w-4 h-4 mr-2 text-[#1A56DB]" /> View
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditOrder(o)}>
+                              <Pencil className="w-4 h-4 mr-2 text-emerald-600" /> Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => setDeletingOrder(o)}
+                              className="text-red-600 focus:text-red-700"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   );
