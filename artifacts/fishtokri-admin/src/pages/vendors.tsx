@@ -5,7 +5,7 @@ import {
   ShoppingCart, X, ChevronLeft, ChevronRight, RefreshCw, Tag,
   IndianRupee, TrendingUp, Calendar, FileText, ChevronDown, Check,
   Boxes, Hash, History, Filter, LayoutList, AlertTriangle,
-  User, Clock, Layers, Printer, BookOpen,
+  User, Clock, Layers, Printer, BookOpen, MoreVertical,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { ImageUpload } from "@/components/image-upload";
 
@@ -390,31 +393,45 @@ function VendorCard({ vendor, onEdit, onDelete, onView, onAddPurchase, onViewHis
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <div className="flex gap-1.5 min-w-0">
-          <Button size="sm" variant="outline" className="flex-1 min-w-0 h-7 text-xs px-2" onClick={() => onView(vendor)}>
-            <Eye className="w-3 h-3 mr-1 flex-shrink-0" /> View
-          </Button>
-          <Button size="sm" className="flex-1 min-w-0 h-7 text-xs px-2 bg-[#162B4D] hover:bg-[#1e3a6e] text-white" onClick={() => onAddPurchase(vendor)}>
-            <ShoppingCart className="w-3 h-3 mr-1 flex-shrink-0" /> Buy
-          </Button>
-          <Button size="sm" variant="outline" className="flex-1 min-w-0 h-7 text-xs px-2 text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => onViewHistory(vendor)}>
-            <History className="w-3 h-3 mr-1 flex-shrink-0" /> History
-          </Button>
-          <Link href={`/vendor-statement/${vendor.id}`} className="flex-1 min-w-0">
-            <Button size="sm" variant="outline" className="w-full h-7 text-xs px-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
-              <BookOpen className="w-3 h-3 mr-1 flex-shrink-0" /> Statement
+      <div className="flex items-center gap-1.5">
+        <Button size="sm" className="flex-1 min-w-0 h-8 text-xs px-3 bg-[#162B4D] hover:bg-[#1e3a6e] text-white" onClick={() => onAddPurchase(vendor)}>
+          <ShoppingCart className="w-3.5 h-3.5 mr-1 flex-shrink-0" /> Buy
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 p-0 flex-shrink-0 text-gray-500 hover:text-gray-700"
+              title="More actions"
+            >
+              <MoreVertical className="w-4 h-4" />
             </Button>
-          </Link>
-        </div>
-        <div className="flex justify-end gap-1">
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600" onClick={() => onEdit(vendor)}>
-            <Edit2 className="w-3.5 h-3.5" />
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-red-500" onClick={() => onDelete(vendor)}>
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
-        </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onClick={() => onView(vendor)}>
+              <Eye className="w-4 h-4 mr-2 text-[#1A56DB]" /> View
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onViewHistory(vendor)}>
+              <History className="w-4 h-4 mr-2 text-purple-600" /> History
+            </DropdownMenuItem>
+            <Link href={`/vendor-statement/${vendor.id}`}>
+              <DropdownMenuItem>
+                <BookOpen className="w-4 h-4 mr-2 text-emerald-600" /> Statement
+              </DropdownMenuItem>
+            </Link>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onEdit(vendor)}>
+              <Edit2 className="w-4 h-4 mr-2 text-gray-500" /> Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => onDelete(vendor)}
+              className="text-red-600 focus:text-red-700"
+            >
+              <Trash2 className="w-4 h-4 mr-2" /> Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
@@ -452,27 +469,45 @@ function VendorRow({ vendor, onEdit, onDelete, onView, onAddPurchase, onViewHist
           <p className="text-xs text-gray-400">Total Spent</p>
           <p className="font-bold text-[#162B4D] text-sm">{formatRupees(vendor.totalSpent)}</p>
         </div>
-        <div className="flex items-center gap-1">
-          <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={() => onView(vendor)}>
-            <Eye className="w-3 h-3 mr-1" /> View
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" className="h-8 text-xs px-3 bg-[#162B4D] hover:bg-[#1e3a6e] text-white" onClick={() => onAddPurchase(vendor)}>
+            <ShoppingCart className="w-3.5 h-3.5 mr-1" /> Buy
           </Button>
-          <Button size="sm" className="h-7 text-xs px-2 bg-[#162B4D] hover:bg-[#1e3a6e] text-white" onClick={() => onAddPurchase(vendor)}>
-            <ShoppingCart className="w-3 h-3 mr-1" /> Buy
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 text-xs px-2 text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => onViewHistory(vendor)}>
-            <History className="w-3 h-3 mr-1" /> History
-          </Button>
-          <Link href={`/vendor-statement/${vendor.id}`}>
-            <Button size="sm" variant="outline" className="h-7 text-xs px-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
-              <BookOpen className="w-3 h-3 mr-1" /> Statement
-            </Button>
-          </Link>
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600" onClick={() => onEdit(vendor)}>
-            <Edit2 className="w-3.5 h-3.5" />
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-red-500" onClick={() => onDelete(vendor)}>
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
+                title="More actions"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={() => onView(vendor)}>
+                <Eye className="w-4 h-4 mr-2 text-[#1A56DB]" /> View
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onViewHistory(vendor)}>
+                <History className="w-4 h-4 mr-2 text-purple-600" /> History
+              </DropdownMenuItem>
+              <Link href={`/vendor-statement/${vendor.id}`}>
+                <DropdownMenuItem>
+                  <BookOpen className="w-4 h-4 mr-2 text-emerald-600" /> Statement
+                </DropdownMenuItem>
+              </Link>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onEdit(vendor)}>
+                <Edit2 className="w-4 h-4 mr-2 text-gray-500" /> Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onDelete(vendor)}
+                className="text-red-600 focus:text-red-700"
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </div>
