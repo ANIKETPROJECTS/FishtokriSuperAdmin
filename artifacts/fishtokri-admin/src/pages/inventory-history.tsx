@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 
 function getToken() { return localStorage.getItem("fishtokri_token") ?? ""; }
 
@@ -88,6 +90,8 @@ export default function InventoryHistory() {
       );
     });
   }, [movements, search, typeFilter]);
+
+  const pagedMovements = usePaginated(filtered, 20, `${search}|${typeFilter}`);
 
   return (
     <div className="space-y-5">
@@ -181,7 +185,7 @@ export default function InventoryHistory() {
                     <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">Loading...</td></tr>
                   ) : filtered.length === 0 ? (
                     <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">No movements yet</td></tr>
-                  ) : filtered.map((m) => {
+                  ) : pagedMovements.pageItems.map((m) => {
                     const isPositive = m.change >= 0;
                     const typeMeta = m.type === "order_deduct"
                       ? { label: "Order Deduct", icon: <ArrowDownCircle className="w-3.5 h-3.5" />, tone: "bg-red-50 text-red-700" }
@@ -220,6 +224,13 @@ export default function InventoryHistory() {
                 </tbody>
               </table>
             </div>
+            <PaginationBar
+              page={pagedMovements.page}
+              pages={pagedMovements.pages}
+              total={pagedMovements.total}
+              onChange={pagedMovements.setPage}
+              label="movements"
+            />
           </div>
         </>
       )}

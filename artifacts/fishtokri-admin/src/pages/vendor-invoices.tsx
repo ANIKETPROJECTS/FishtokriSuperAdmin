@@ -57,7 +57,7 @@ export default function VendorInvoices() {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const LIMIT = 10;
+  const LIMIT = 20;
 
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");

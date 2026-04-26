@@ -15,6 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
@@ -581,6 +583,8 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
     return items;
   }, [products, search, filters, sortValue]);
 
+  const pagedProducts = usePaginated(processed, 20, `${search}|${JSON.stringify(filters)}|${sortValue}`);
+
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
@@ -919,7 +923,7 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {processed.map((p) => (
+              {pagedProducts.pageItems.map((p) => (
                 <tr key={String(p._id)} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-start gap-2.5">
@@ -978,7 +982,7 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {processed.map((p) => (
+          {pagedProducts.pageItems.map((p) => (
             <div key={String(p._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
               <div className="p-4 space-y-3">
                 {/* Header */}
@@ -1046,6 +1050,14 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
           ))}
         </div>
       )}
+
+      <PaginationBar
+        page={pagedProducts.page}
+        pages={pagedProducts.pages}
+        total={pagedProducts.total}
+        onChange={pagedProducts.setPage}
+        label="products"
+      />
 
       <ProductModal isOpen={modalOpen} onClose={() => setModalOpen(false)} product={editing} subHubId={subHubId} categories={categories} onSaved={load} />
       <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Product" description="This will permanently remove the product from the menu." />
@@ -1160,6 +1172,8 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
     return items;
   }, [categories, search, filters, sortValue]);
 
+  const pagedCategories = usePaginated(processed, 20, `${search}|${JSON.stringify(filters)}|${sortValue}`);
+
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
@@ -1187,7 +1201,7 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
       : processed.length === 0 ? <EmptyState icon={Tag} message="No categories found" />
       : layout === "grid" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {processed.map((c) => (
+          {pagedCategories.pageItems.map((c) => (
             <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
               {c.imageUrl ? <img src={c.imageUrl} alt={c.name} className="w-full h-24 object-cover" /> : <div className="w-full h-24 bg-gradient-to-br from-purple-50 to-indigo-100 flex items-center justify-center"><Tag className="w-7 h-7 text-purple-200" /></div>}
               <div className="p-3 space-y-2">
@@ -1208,7 +1222,7 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
         </div>
       ) : (
         <div className="space-y-2">
-          {processed.map((c) => {
+          {pagedCategories.pageItems.map((c) => {
             const expanded = expandedId === String(c._id);
             return (
               <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden">
@@ -1243,6 +1257,14 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
           })}
         </div>
       )}
+
+      <PaginationBar
+        page={pagedCategories.page}
+        pages={pagedCategories.pages}
+        total={pagedCategories.total}
+        onChange={pagedCategories.setPage}
+        label="categories"
+      />
 
       <CategoryModal isOpen={modalOpen} onClose={() => setModalOpen(false)} category={editing} subHubId={subHubId} onSaved={() => { load(); onRefreshStats(); }} />
       <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Category" description="This will permanently remove the category." />
@@ -1372,6 +1394,8 @@ function CombosTab({ subHubId }: { subHubId: string }) {
     return items;
   }, [combos, search, filters, sortValue]);
 
+  const pagedCombos = usePaginated(processed, 20, `${search}|${JSON.stringify(filters)}|${sortValue}`);
+
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
@@ -1399,7 +1423,7 @@ function CombosTab({ subHubId }: { subHubId: string }) {
       : processed.length === 0 ? <EmptyState icon={ShoppingBag} message="No combos found" />
       : layout === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {processed.map((c) => {
+          {pagedCombos.pageItems.map((c) => {
             const img = Array.isArray(c.images) && c.images.length > 0 ? c.images[0] : null;
             return (
               <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
@@ -1436,7 +1460,7 @@ function CombosTab({ subHubId }: { subHubId: string }) {
               <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Actions</th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
-              {processed.map((c) => {
+              {pagedCombos.pageItems.map((c) => {
                 const img = Array.isArray(c.images) && c.images.length > 0 ? c.images[0] : null;
                 return (
                   <tr key={String(c._id)} className="hover:bg-gray-50/50 transition-colors">
@@ -1461,6 +1485,14 @@ function CombosTab({ subHubId }: { subHubId: string }) {
           </table>
         </div>
       )}
+
+      <PaginationBar
+        page={pagedCombos.page}
+        pages={pagedCombos.pages}
+        total={pagedCombos.total}
+        onChange={pagedCombos.setPage}
+        label="combos"
+      />
 
       <ComboModal isOpen={modalOpen} onClose={() => setModalOpen(false)} combo={editing} subHubId={subHubId} onSaved={load} />
       <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Combo" description="This will permanently remove the combo." />
@@ -1589,6 +1621,8 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
     return items;
   }, [coupons, search, filters, sortValue]);
 
+  const pagedCoupons = usePaginated(processed, 20, `${search}|${JSON.stringify(filters)}|${sortValue}`);
+
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
@@ -1628,7 +1662,7 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
               <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Actions</th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
-              {processed.map((c) => (
+              {pagedCoupons.pageItems.map((c) => (
                 <tr key={String(c._id)} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-4 py-3">
                     <span className="font-mono font-bold text-[#162B4D] text-sm tracking-wider bg-gray-100 px-2 py-0.5 rounded">{c.code}</span>
@@ -1648,7 +1682,7 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {processed.map((c) => (
+          {pagedCoupons.pageItems.map((c) => (
             <div key={String(c._id)} className="border border-dashed border-orange-200 rounded-xl bg-orange-50/30 p-4 hover:shadow-sm transition-shadow relative overflow-hidden">
               <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-400 rounded-l-xl" />
               <div className="pl-2 space-y-2">
@@ -1677,6 +1711,14 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
           ))}
         </div>
       )}
+
+      <PaginationBar
+        page={pagedCoupons.page}
+        pages={pagedCoupons.pages}
+        total={pagedCoupons.total}
+        onChange={pagedCoupons.setPage}
+        label="coupons"
+      />
 
       <CouponModal isOpen={modalOpen} onClose={() => setModalOpen(false)} coupon={editing} subHubId={subHubId} onSaved={load} />
       <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Coupon" description="This will permanently remove the coupon." />
@@ -1731,6 +1773,8 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
     return items;
   }, [carousels, search, filters, sortValue]);
 
+  const pagedCarousels = usePaginated(processed, 20, `${search}|${JSON.stringify(filters)}|${sortValue}`);
+
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
@@ -1766,7 +1810,7 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
       : processed.length === 0 ? <EmptyState icon={Image} message="No banners found" />
       : layout === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {processed.map((c) => (
+          {pagedCarousels.pageItems.map((c) => (
             <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
               <div className="relative h-36 bg-gray-100">
                 {c.imageUrl ? <img src={c.imageUrl} alt={c.title ?? "Banner"} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Image className="w-8 h-8 text-gray-300" /></div>}
@@ -1788,7 +1832,7 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {processed.map((c) => (
+          {pagedCarousels.pageItems.map((c) => (
             <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden flex gap-3 bg-white p-3 hover:shadow-sm transition-shadow items-center">
               <div className="flex items-center gap-2 text-gray-300 flex-shrink-0">
                 <GripVertical className="w-4 h-4" />
@@ -1807,6 +1851,14 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
           ))}
         </div>
       )}
+
+      <PaginationBar
+        page={pagedCarousels.page}
+        pages={pagedCarousels.pages}
+        total={pagedCarousels.total}
+        onChange={pagedCarousels.setPage}
+        label="banners"
+      />
 
       <CarouselModal isOpen={modalOpen} onClose={() => setModalOpen(false)} carousel={editing} subHubId={subHubId} onSaved={load} />
       <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Banner" description="This will permanently remove the banner from the carousel." />
@@ -1920,6 +1972,8 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
     return items;
   }, [sections, search, filters, sortValue]);
 
+  const pagedSections = usePaginated(processed, 20, `${search}|${JSON.stringify(filters)}|${sortValue}`);
+
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
@@ -1947,7 +2001,7 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
       : processed.length === 0 ? <EmptyState icon={LayoutList} message="No sections found" />
       : layout === "list" ? (
         <div className="space-y-2">
-          {processed.map((s) => (
+          {pagedSections.pageItems.map((s) => (
             <div key={String(s._id)} className="flex items-center gap-3 border border-gray-100 rounded-xl px-4 py-3 bg-white hover:bg-gray-50/50 transition-colors">
               <div className="flex items-center gap-2 text-gray-300 flex-shrink-0">
                 <GripVertical className="w-4 h-4" />
@@ -1962,7 +2016,7 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {processed.map((s) => (
+          {pagedSections.pageItems.map((s) => (
             <div key={String(s._id)} className="border border-gray-100 rounded-xl p-4 bg-white hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div>
@@ -1980,6 +2034,14 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
           ))}
         </div>
       )}
+
+      <PaginationBar
+        page={pagedSections.page}
+        pages={pagedSections.pages}
+        total={pagedSections.total}
+        onChange={pagedSections.setPage}
+        label="sections"
+      />
 
       <SectionModal isOpen={modalOpen} onClose={() => setModalOpen(false)} section={editing} subHubId={subHubId} onSaved={load} />
       <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Section" description="This will permanently remove this homepage section." />
@@ -3414,6 +3476,8 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
     return items;
   }, [timeslots, search, filters, sortValue]);
 
+  const pagedTimeslots = usePaginated(processed, 20, `${search}|${JSON.stringify(filters)}|${sortValue}`);
+
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
@@ -3443,7 +3507,7 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
         <EmptyState icon={Clock} message="No time slots found" sub="Try adjusting your search or filters" />
       ) : layout === "list" ? (
         <div className="space-y-2">
-          {processed.map((s) => (
+          {pagedTimeslots.pageItems.map((s) => (
             <div key={String(s._id)} className="flex items-center gap-4 p-3.5 bg-white border border-gray-100 rounded-xl hover:shadow-sm transition-shadow">
               <div className="w-10 h-10 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0">
                 <Clock className="w-5 h-5 text-cyan-500" />
@@ -3463,7 +3527,7 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {processed.map((s) => (
+          {pagedTimeslots.pageItems.map((s) => (
             <div key={String(s._id)} className="border border-gray-100 rounded-xl p-4 bg-white hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between gap-2 mb-3">
                 <div className="w-10 h-10 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0">
@@ -3488,6 +3552,14 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
           ))}
         </div>
       )}
+
+      <PaginationBar
+        page={pagedTimeslots.page}
+        pages={pagedTimeslots.pages}
+        total={pagedTimeslots.total}
+        onChange={pagedTimeslots.setPage}
+        label="time slots"
+      />
 
       <TimeslotModal isOpen={modalOpen} onClose={() => setModalOpen(false)} timeslot={editing} subHubId={subHubId} onSaved={load} />
       <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Time Slot" description="This action cannot be undone." />

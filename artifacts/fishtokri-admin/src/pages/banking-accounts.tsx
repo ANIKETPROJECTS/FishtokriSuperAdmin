@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 
 type BankAccount = {
   id: string;
@@ -155,6 +157,8 @@ export default function BankingAccounts() {
     return [...list].sort(sorts[sortBy]);
   }, [accounts, search, bankFilter, sortBy]);
 
+  const pagedAccounts = usePaginated(filtered, 20, `${search}|${bankFilter}|${sortBy}`);
+
   const totalBalance = accounts.reduce((s, a) => s + (a.balance ?? 0), 0);
   const isFiltered = search || bankFilter !== "all" || sortBy !== "newest";
 
@@ -259,7 +263,7 @@ export default function BankingAccounts() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((acc) => (
+                {pagedAccounts.pageItems.map((acc) => (
                   <tr key={acc.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
@@ -288,7 +292,7 @@ export default function BankingAccounts() {
           </div>
         ) : (
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((acc) => (
+            {pagedAccounts.pageItems.map((acc) => (
               <div key={acc.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50 hover:bg-white hover:shadow-md transition-all flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-3 min-w-0">
@@ -323,6 +327,13 @@ export default function BankingAccounts() {
             ))}
           </div>
         )}
+        <PaginationBar
+          page={pagedAccounts.page}
+          pages={pagedAccounts.pages}
+          total={pagedAccounts.total}
+          onChange={pagedAccounts.setPage}
+          label="accounts"
+        />
       </div>
 
       <AccountModal open={modalOpen} account={editing} onClose={() => setModalOpen(false)} onSaved={() => { setModalOpen(false); setEditing(null); load(); }} />

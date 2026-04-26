@@ -1289,7 +1289,7 @@ function VendorDetailModal({ open, onClose, vendor, onAddPurchase }: {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [activeTab, setActiveTab] = useState<"overview" | "purchases">("overview");
-  const LIMIT = 10;
+  const LIMIT = 20;
 
   const loadPurchases = useCallback(async () => {
     if (!vendor) return;
@@ -2703,7 +2703,7 @@ export default function Vendors() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const LIMIT = 12;
+  const LIMIT = 20;
   const totalPages = Math.ceil(total / LIMIT);
 
   // Filters

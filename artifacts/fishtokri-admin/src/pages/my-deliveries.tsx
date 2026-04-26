@@ -7,6 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -94,6 +96,8 @@ function MyOrdersTab() {
       (o.items ?? []).some((i: any) => i.name?.toLowerCase().includes(q));
   });
 
+  const pagedOrders = usePaginated(filtered, 20, `${search}|${statusFilter}`);
+
   const handleUpdateStatus = async () => {
     if (!selectedOrder || !editStatus) return;
     setSaving(true);
@@ -142,7 +146,7 @@ function MyOrdersTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((o) => {
+          {pagedOrders.pageItems.map((o) => {
             const cfg = STATUS_CONFIG[o.status] ?? STATUS_CONFIG.pending;
             const Icon = cfg.icon;
             return (
@@ -182,6 +186,14 @@ function MyOrdersTab() {
           })}
         </div>
       )}
+
+      <PaginationBar
+        page={pagedOrders.page}
+        pages={pagedOrders.pages}
+        total={pagedOrders.total}
+        onChange={pagedOrders.setPage}
+        label="orders"
+      />
 
       {/* Update Status Modal */}
       <Dialog open={!!selectedOrder} onOpenChange={(o) => !o && setSelectedOrder(null)}>
@@ -272,6 +284,8 @@ function MyHubsTab() {
     return !q || h.name?.toLowerCase().includes(q) || h.location?.toLowerCase().includes(q);
   });
 
+  const pagedHubs = usePaginated(filtered, 20, `${tab}|${search}`);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 items-center">
@@ -301,7 +315,7 @@ function MyHubsTab() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((hub) => (
+          {pagedHubs.pageItems.map((hub) => (
             <div key={hub.id} className={`bg-white rounded-xl border shadow-sm overflow-hidden hover:shadow-md transition-shadow ${tab === "super" ? "border-blue-100" : "border-teal-100"}`}>
               <div className={`h-14 flex items-center px-4 gap-3 ${tab === "super" ? "bg-gradient-to-r from-blue-500 to-blue-700" : "bg-gradient-to-r from-teal-500 to-teal-700"}`}>
                 <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
@@ -326,6 +340,13 @@ function MyHubsTab() {
           ))}
         </div>
       )}
+      <PaginationBar
+        page={pagedHubs.page}
+        pages={pagedHubs.pages}
+        total={pagedHubs.total}
+        onChange={pagedHubs.setPage}
+        label="hubs"
+      />
     </div>
   );
 }

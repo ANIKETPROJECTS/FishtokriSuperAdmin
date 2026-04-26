@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 
 type VendorCategory = {
   id: string;
@@ -122,6 +124,8 @@ export default function VendorItems() {
     });
   }, [items, selectedCategory, selectedType, search, sortBy]);
 
+  const pagedItems = usePaginated(filteredItems, 20, `${search}|${selectedCategory}|${selectedType}|${sortBy}`);
+
   const activeItems = items.filter((i) => i.status === "active").length;
   const categoriesWithItems = new Set(items.map((i) => i.categoryId)).size;
 
@@ -222,7 +226,7 @@ export default function VendorItems() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredItems.map((item) => (
+              {pagedItems.pageItems.map((item) => (
                 <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2 min-w-0">
@@ -271,6 +275,14 @@ export default function VendorItems() {
           )}
           {loading && <div className="text-center py-16 text-sm text-gray-400">Loading items...</div>}
         </div>
+
+        <PaginationBar
+          page={pagedItems.page}
+          pages={pagedItems.pages}
+          total={pagedItems.total}
+          onChange={pagedItems.setPage}
+          label="items"
+        />
 
         <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
           <div className="flex items-center gap-4">

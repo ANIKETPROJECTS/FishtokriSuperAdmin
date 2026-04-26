@@ -16,6 +16,8 @@ import {
   useToggleSubHubStatus,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -95,6 +97,8 @@ export default function HubDetail() {
       if (sort === "status") return a.status.localeCompare(b.status);
       return 0;
     });
+
+  const pagedSubs = usePaginated(filtered, 20, `${search}|${statusFilter}|${sort}`);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -244,28 +248,46 @@ export default function HubDetail() {
           </p>
         </div>
       ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map((sub) => (
-            <SubHubCard
-              key={sub.id}
-              sub={sub as any}
-              onEdit={() => { setEditingSubHub(sub); setIsModalOpen(true); }}
-              onDelete={() => setDeleteId(sub.id)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {pagedSubs.pageItems.map((sub) => (
+              <SubHubCard
+                key={sub.id}
+                sub={sub as any}
+                onEdit={() => { setEditingSubHub(sub); setIsModalOpen(true); }}
+                onDelete={() => setDeleteId(sub.id)}
+              />
+            ))}
+          </div>
+          <PaginationBar
+            page={pagedSubs.page}
+            pages={pagedSubs.pages}
+            total={pagedSubs.total}
+            onChange={pagedSubs.setPage}
+            label="sub hubs"
+          />
+        </>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          {filtered.map((sub, i) => (
-            <SubHubRow
-              key={sub.id}
-              sub={sub as any}
-              isLast={i === filtered.length - 1}
-              onEdit={() => { setEditingSubHub(sub); setIsModalOpen(true); }}
-              onDelete={() => setDeleteId(sub.id)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            {pagedSubs.pageItems.map((sub, i) => (
+              <SubHubRow
+                key={sub.id}
+                sub={sub as any}
+                isLast={i === pagedSubs.pageItems.length - 1}
+                onEdit={() => { setEditingSubHub(sub); setIsModalOpen(true); }}
+                onDelete={() => setDeleteId(sub.id)}
+              />
+            ))}
+          </div>
+          <PaginationBar
+            page={pagedSubs.page}
+            pages={pagedSubs.pages}
+            total={pagedSubs.total}
+            onChange={pagedSubs.setPage}
+            label="sub hubs"
+          />
+        </>
       )}
 
       <SubHubModal

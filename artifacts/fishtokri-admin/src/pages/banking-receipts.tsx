@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 
 type Receipt = {
   id: string;
@@ -182,6 +184,8 @@ export default function BankingReceipts() {
     return [...list].sort(sorts[sortBy]);
   }, [receipts, search, modeFilter, accountFilter, sortBy]);
 
+  const pagedReceipts = usePaginated(filtered, 20, `${search}|${modeFilter}|${accountFilter}|${sortBy}`);
+
   const totalAmount = receipts.reduce((s, r) => s + (r.amount ?? 0), 0);
   const isFiltered = search || modeFilter !== "all" || accountFilter !== "all" || sortBy !== "newest";
   const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
@@ -290,7 +294,7 @@ export default function BankingReceipts() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map(rec => (
+                {pagedReceipts.pageItems.map(rec => (
                   <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-3 text-gray-700 whitespace-nowrap">{fmtDate(rec.date)}</td>
                     <td className="px-5 py-3">
@@ -314,7 +318,7 @@ export default function BankingReceipts() {
           </div>
         ) : (
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map(rec => (
+            {pagedReceipts.pageItems.map(rec => (
               <div key={rec.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50 hover:bg-white hover:shadow-md transition-all flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -346,6 +350,13 @@ export default function BankingReceipts() {
             ))}
           </div>
         )}
+        <PaginationBar
+          page={pagedReceipts.page}
+          pages={pagedReceipts.pages}
+          total={pagedReceipts.total}
+          onChange={pagedReceipts.setPage}
+          label="receipts"
+        />
       </div>
 
       <ReceiptModal open={modalOpen} receipt={editing} accounts={accounts} onClose={() => setModalOpen(false)} onSaved={() => { setModalOpen(false); setEditing(null); load(); }} />

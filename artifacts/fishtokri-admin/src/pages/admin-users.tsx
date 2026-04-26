@@ -3,6 +3,8 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Plus, Search, Edit2, Trash2, Mail, Phone, Eye, EyeOff, ArrowUpDown, SlidersHorizontal, X, LayoutGrid, LayoutList } from "lucide-react";
 import { ImageUpload } from "@/components/image-upload";
 import PasswordResetInbox from "@/components/password-reset-inbox";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 import {
   useGetUsers,
   getGetUsersQueryKey,
@@ -132,6 +134,8 @@ export default function AdminUsers() {
 
   const hasFilters = search || roleFilter !== "all" || statusFilter !== "all";
 
+  const pagedUsers = usePaginated(filteredUsers, 20, `${search}|${roleFilter}|${statusFilter}|${sort}`);
+
   const handleToggleStatus = (id: string) => {
     toggleStatus.mutate({ id }, {
       onSuccess: () => {
@@ -257,17 +261,28 @@ export default function AdminUsers() {
             <p className="text-gray-500 font-medium">No users found.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredUsers.map((user) => (
-              <UserCard
-                key={user.id}
-                user={user}
-                onEdit={() => { setEditingUser(user); setIsModalOpen(true); }}
-                onDelete={() => setDeleteUserId(user.id)}
-                onToggle={() => handleToggleStatus(user.id)}
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {pagedUsers.pageItems.map((user) => (
+                <UserCard
+                  key={user.id}
+                  user={user}
+                  onEdit={() => { setEditingUser(user); setIsModalOpen(true); }}
+                  onDelete={() => setDeleteUserId(user.id)}
+                  onToggle={() => handleToggleStatus(user.id)}
+                />
+              ))}
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mt-4">
+              <PaginationBar
+                page={pagedUsers.page}
+                pages={pagedUsers.pages}
+                total={pagedUsers.total}
+                onChange={pagedUsers.setPage}
+                label="users"
               />
-            ))}
-          </div>
+            </div>
+          </>
         )
       ) : (
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -295,7 +310,7 @@ export default function AdminUsers() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredUsers.map((user) => (
+                pagedUsers.pageItems.map((user) => (
                   <TableRow key={user.id} className="hover:bg-gray-50/40 border-gray-100">
                     <TableCell className="py-4">
                       <div className="flex items-center gap-3">
@@ -415,6 +430,13 @@ export default function AdminUsers() {
             </TableBody>
           </Table>
         )}
+        <PaginationBar
+          page={pagedUsers.page}
+          pages={pagedUsers.pages}
+          total={pagedUsers.total}
+          onChange={pagedUsers.setPage}
+          label="users"
+        />
       </div>
       )}
 

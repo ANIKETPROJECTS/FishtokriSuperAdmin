@@ -11,6 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 
 function getAdminData() {
   try {
@@ -60,6 +62,8 @@ export default function MyHubs() {
       if (sort === "status") return a.status.localeCompare(b.status);
       return 0;
     });
+
+  const pagedHubs = usePaginated(filtered, 20, `${search}|${statusFilter}|${sort}`);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -140,7 +144,7 @@ export default function MyHubs() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {filtered.map((hub) => (
+          {pagedHubs.pageItems.map((hub) => (
             <button
               key={hub.id}
               onClick={() => setLocation(`/my-hub/${hub.id}`)}
@@ -181,6 +185,13 @@ export default function MyHubs() {
           ))}
         </div>
       )}
+      <PaginationBar
+        page={pagedHubs.page}
+        pages={pagedHubs.pages}
+        total={pagedHubs.total}
+        onChange={pagedHubs.setPage}
+        label="hubs"
+      />
     </div>
   );
 }

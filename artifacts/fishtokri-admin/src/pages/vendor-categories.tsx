@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 
 type VendorCategory = {
   id: string;
@@ -92,6 +94,8 @@ export default function VendorCategories() {
     });
     return result;
   }, [categories, search, statusFilter, sortBy, itemCounts]);
+
+  const pagedCategories = usePaginated(filtered, 20, `${search}|${statusFilter}|${sortBy}`);
 
   const handleDelete = async (cat: VendorCategory) => {
     const count = itemCounts[cat.id] ?? 0;
@@ -236,7 +240,7 @@ export default function VendorCategories() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((cat) => {
+                {pagedCategories.pageItems.map((cat) => {
                   const dateAdded = cat.createdAt ? new Date(cat.createdAt) : null;
                   const dateLabel = dateAdded ? dateAdded.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
                   const timeLabel = dateAdded ? dateAdded.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -286,7 +290,7 @@ export default function VendorCategories() {
           </div>
         ) : (
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filtered.map((cat) => {
+            {pagedCategories.pageItems.map((cat) => {
               const dateAdded = cat.createdAt ? new Date(cat.createdAt) : null;
               const dateLabel = dateAdded ? dateAdded.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
               const timeLabel = dateAdded ? dateAdded.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -345,6 +349,13 @@ export default function VendorCategories() {
             })}
           </div>
         )}
+        <PaginationBar
+          page={pagedCategories.page}
+          pages={pagedCategories.pages}
+          total={pagedCategories.total}
+          onChange={pagedCategories.setPage}
+          label="categories"
+        />
       </div>
 
       <CategoryModal

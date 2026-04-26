@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 
 function getToken() { return localStorage.getItem("fishtokri_token") ?? ""; }
 
@@ -309,6 +311,8 @@ export default function InventoryStockAdjustment() {
   }
 
   useEffect(reload, [selectedSubHubId]);
+
+  const pagedAdjustments = usePaginated(adjustments, 20, selectedSubHubId);
 
   function openForm() {
     setFormDate(toInputDate(new Date()));
@@ -645,7 +649,7 @@ export default function InventoryStockAdjustment() {
                   <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-gray-400">Loading...</td></tr>
                 ) : adjustments.length === 0 ? (
                   <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-gray-400">No adjustments yet</td></tr>
-                ) : adjustments.map((a) => (
+                ) : pagedAdjustments.pageItems.map((a) => (
                   <tr key={a._id} className="hover:bg-gray-50/40 align-top">
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{formatDateTime(a.createdAt || a.date)}</td>
                     <td className="px-4 py-3 font-medium text-[#162B4D]">{a.reason}</td>
@@ -672,6 +676,13 @@ export default function InventoryStockAdjustment() {
                 ))}
               </tbody>
             </table>
+            <PaginationBar
+              page={pagedAdjustments.page}
+              pages={pagedAdjustments.pages}
+              total={pagedAdjustments.total}
+              onChange={pagedAdjustments.setPage}
+              label="adjustments"
+            />
           </div>
         </div>
       )}

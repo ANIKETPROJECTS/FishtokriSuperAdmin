@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 
 function getToken() {
   return localStorage.getItem("fishtokri_token") ?? "";
@@ -115,6 +117,8 @@ export default function InventoryPage() {
       );
     });
   }, [products, search, categoryFilter]);
+
+  const pagedProducts = usePaginated(filtered, 20, `${search}|${categoryFilter}`);
 
   const totalValue = filtered.reduce((s, p) => s + p.price * p.quantity, 0);
   const lowStock = filtered.filter((p) => p.quantity > 0 && p.quantity < 5).length;
@@ -236,7 +240,7 @@ export default function InventoryPage() {
                     <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">Loading...</td></tr>
                   ) : filtered.length === 0 ? (
                     <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">No products found</td></tr>
-                  ) : filtered.map((p) => {
+                  ) : pagedProducts.pageItems.map((p) => {
                     const stockTone =
                       p.quantity <= 0 ? "bg-red-50 text-red-700"
                       : p.quantity < 5 ? "bg-amber-50 text-amber-700"
@@ -348,6 +352,13 @@ export default function InventoryPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationBar
+              page={pagedProducts.page}
+              pages={pagedProducts.pages}
+              total={pagedProducts.total}
+              onChange={pagedProducts.setPage}
+              label="products"
+            />
           </div>
         </>
       )}

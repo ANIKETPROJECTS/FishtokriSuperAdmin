@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Edit2, Trash2, MapPin, ChevronDown, ChevronUp, Building2, X, UserPlus, Layers, Search, ArrowUpDown, SlidersHorizontal, LayoutGrid, LayoutList } from "lucide-react";
 import { ImageUpload } from "@/components/image-upload";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 import {
   useGetSuperHubs,
   getGetSuperHubsQueryKey,
@@ -80,6 +82,8 @@ export default function Hubs() {
       if (sort === "status") return a.status.localeCompare(b.status);
       return 0;
     });
+
+  const pagedHubs = usePaginated(filtered, 20, `${search}|${statusFilter}|${sort}`);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -202,27 +206,45 @@ export default function Hubs() {
           <p className="text-gray-400 text-sm mt-1">{search || statusFilter !== "all" ? "Try adjusting your search or filters" : 'Click "Add Super Hub" to get started'}</p>
         </div>
       ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map((hub) => (
-            <SuperHubCard
-              key={hub.id}
-              hub={hub}
-              onEdit={() => { setEditingSuperHub(hub); setIsSuperModalOpen(true); }}
-              onDelete={() => setDeleteSuperHubId(hub.id)}
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {pagedHubs.pageItems.map((hub) => (
+              <SuperHubCard
+                key={hub.id}
+                hub={hub}
+                onEdit={() => { setEditingSuperHub(hub); setIsSuperModalOpen(true); }}
+                onDelete={() => setDeleteSuperHubId(hub.id)}
+              />
+            ))}
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mt-4">
+            <PaginationBar
+              page={pagedHubs.page}
+              pages={pagedHubs.pages}
+              total={pagedHubs.total}
+              onChange={pagedHubs.setPage}
+              label="hubs"
             />
-          ))}
-        </div>
+          </div>
+        </>
       ) : (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          {filtered.map((hub, i) => (
+          {pagedHubs.pageItems.map((hub, i) => (
             <SuperHubRow
               key={hub.id}
               hub={hub}
-              isLast={i === filtered.length - 1}
+              isLast={i === pagedHubs.pageItems.length - 1}
               onEdit={() => { setEditingSuperHub(hub); setIsSuperModalOpen(true); }}
               onDelete={() => setDeleteSuperHubId(hub.id)}
             />
           ))}
+          <PaginationBar
+            page={pagedHubs.page}
+            pages={pagedHubs.pages}
+            total={pagedHubs.total}
+            onChange={pagedHubs.setPage}
+            label="hubs"
+          />
         </div>
       )}
 

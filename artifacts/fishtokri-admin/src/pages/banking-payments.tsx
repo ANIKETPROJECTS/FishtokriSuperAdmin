@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 
 type Payment = {
   id: string;
@@ -182,6 +184,8 @@ export default function BankingPayments() {
     return [...list].sort(sorts[sortBy]);
   }, [payments, search, modeFilter, accountFilter, sortBy]);
 
+  const pagedPayments = usePaginated(filtered, 20, `${search}|${modeFilter}|${accountFilter}|${sortBy}`);
+
   const totalAmount = payments.reduce((s, p) => s + (p.amount ?? 0), 0);
   const isFiltered = search || modeFilter !== "all" || accountFilter !== "all" || sortBy !== "newest";
   const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
@@ -290,7 +294,7 @@ export default function BankingPayments() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map(pay => (
+                {pagedPayments.pageItems.map(pay => (
                   <tr key={pay.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-3 text-gray-700 whitespace-nowrap">{fmtDate(pay.date)}</td>
                     <td className="px-5 py-3">
@@ -314,7 +318,7 @@ export default function BankingPayments() {
           </div>
         ) : (
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map(pay => (
+            {pagedPayments.pageItems.map(pay => (
               <div key={pay.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50 hover:bg-white hover:shadow-md transition-all flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -346,6 +350,13 @@ export default function BankingPayments() {
             ))}
           </div>
         )}
+        <PaginationBar
+          page={pagedPayments.page}
+          pages={pagedPayments.pages}
+          total={pagedPayments.total}
+          onChange={pagedPayments.setPage}
+          label="payments"
+        />
       </div>
 
       <PaymentModal open={modalOpen} payment={editing} accounts={accounts} onClose={() => setModalOpen(false)} onSaved={() => { setModalOpen(false); setEditing(null); load(); }} />

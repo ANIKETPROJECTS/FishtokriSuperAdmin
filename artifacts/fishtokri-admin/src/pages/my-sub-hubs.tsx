@@ -11,6 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PaginationBar } from "@/components/pagination-bar";
+import { usePaginated } from "@/hooks/use-paginated";
 
 function getAdminData() {
   try {
@@ -77,6 +79,8 @@ export default function MySubHubs() {
       if (sort === "status") return (a.status || "").localeCompare(b.status || "");
       return 0;
     });
+
+  const pagedSubs = usePaginated(filtered, 20, `${search}|${statusFilter}|${sort}`);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -164,11 +168,19 @@ export default function MySubHubs() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filtered.map((sub) => (
+          {pagedSubs.pageItems.map((sub) => (
             <SubHubCard key={sub.id} sub={sub} />
           ))}
         </div>
       )}
+
+      <PaginationBar
+        page={pagedSubs.page}
+        pages={pagedSubs.pages}
+        total={pagedSubs.total}
+        onChange={pagedSubs.setPage}
+        label="sub hubs"
+      />
 
       {/* Table view */}
       {!isLoading && filtered.length > 0 && (
@@ -190,7 +202,7 @@ export default function MySubHubs() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map((sub) => (
+                {pagedSubs.pageItems.map((sub) => (
                   <TableSubHubRow key={sub.id} sub={sub} />
                 ))}
               </tbody>
