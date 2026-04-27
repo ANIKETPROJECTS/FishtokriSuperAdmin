@@ -761,7 +761,12 @@ function VoucherPreviewDialog({ invoice, onClose }: { invoice: Invoice | null; o
 // ---------------- Add Receipt ----------------
 
 const PAYMENT_MODES = ["Cash", "UPI", "Bank Transfer", "Cheque", "Card", "Other"];
-const DEPOSIT_OPTIONS = ["IndusInd Bank", "HDFC Bank", "ICICI Bank", "SBI", "Cash on Hand"];
+
+type BankAccount = {
+  id: string;
+  accountName: string;
+  bankName: string;
+};
 
 function AddReceiptDialog({
   invoice, onClose, onSaved,
@@ -772,7 +777,9 @@ function AddReceiptDialog({
 }) {
   const { toast } = useToast();
   const [date, setDate] = useState("");
-  const [depositTo, setDepositTo] = useState(DEPOSIT_OPTIONS[0]);
+  const [depositTo, setDepositTo] = useState("");
+  const [depositOptions, setDepositOptions] = useState<BankAccount[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [receivedFrom, setReceivedFrom] = useState("");
   const [paymentMode, setPaymentMode] = useState("");
   const [amount, setAmount] = useState("");
@@ -803,10 +810,23 @@ function AddReceiptDialog({
     setPaymentMode("");
     setReference(""); setRemarks("");
     setLumpSum(false); setMarkAllPaid(false);
-    setDepositTo(DEPOSIT_OPTIONS[0]);
+    setDepositTo("");
     setAllocations({});
     setVendorInvoices([]);
     setLoadingInvoices(true);
+    setLoadingAccounts(true);
+
+    (async () => {
+      try {
+        const accounts: BankAccount[] = await apiFetch(`/api/banking/accounts`);
+        setDepositOptions(accounts);
+        if (accounts.length > 0) setDepositTo(accounts[0].accountName);
+      } catch (e: any) {
+        toast({ title: "Failed to load bank accounts", description: e.message, variant: "destructive" });
+      } finally {
+        setLoadingAccounts(false);
+      }
+    })();
 
     (async () => {
       try {
@@ -882,10 +902,22 @@ function AddReceiptDialog({
             </div>
             <div>
               <Label className="text-xs">Deposit To <span className="text-red-500">*</span></Label>
-              <Select value={depositTo} onValueChange={setDepositTo}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select value={depositTo} onValueChange={setDepositTo} disabled={loadingAccounts || depositOptions.length === 0}>
+                <SelectTrigger>
+                  <SelectValue placeholder={
+                    loadingAccounts
+                      ? "Loading accounts..."
+                      : depositOptions.length === 0
+                        ? "No accounts — add one in Banking"
+                        : "Choose Account"
+                  } />
+                </SelectTrigger>
                 <SelectContent>
-                  {DEPOSIT_OPTIONS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  {depositOptions.map(a => (
+                    <SelectItem key={a.id} value={a.accountName}>
+                      {a.accountName}{a.bankName ? ` — ${a.bankName}` : ""}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
