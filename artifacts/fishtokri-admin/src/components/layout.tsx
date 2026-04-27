@@ -225,7 +225,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const deliveryNavItems = [
     { href: "/delivery-dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/my-deliveries", label: "My Hubs", icon: Truck },
+    { href: "/my-deliveries", label: "Orders", icon: Truck },
+    { href: "/my-deliveries-hubs", label: "My Hubs", icon: Building2 },
   ];
 
   const navItems = isSuperHub ? superHubNavItems : isSubHub ? subHubNavItems : isDelivery ? deliveryNavItems : masterAdminNavItems;

@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  Truck, MapPin, Building2, Store, Search, ArrowUpDown, SlidersHorizontal,
+  Truck, MapPin, Search, SlidersHorizontal,
   X, Clock, CheckCircle2, Package, XCircle, Phone, User, RefreshCw,
+  ShoppingBag, History, CalendarDays, CircleDollarSign, Eye,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -40,7 +41,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   cancelled:        { label: "Cancelled",        color: "text-red-600",     bg: "bg-red-50 border-red-200",       icon: XCircle,       next: [] },
 };
 
-const DELIVERY_STATUSES = ["pending", "confirmed", "preparing", "out_for_delivery", "delivered", "cancelled"];
+const ACTIVE_STATUSES  = ["pending", "confirmed", "preparing", "out_for_delivery"];
+const HISTORY_STATUSES = ["delivered", "cancelled"];
 
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? { label: status, color: "text-gray-600", bg: "bg-gray-50 border-gray-200", icon: Clock };
@@ -56,15 +58,71 @@ function formatDate(d: any) {
   if (!d) return "—";
   return new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
-
 function formatRupees(n: number) { return `₹${Number(n || 0).toLocaleString("en-IN")}`; }
-function orderTotal(items: any[]) { return (items ?? []).reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0); }
+function orderTotal(o: any) {
+  if (Number(o?.total) > 0) return Number(o.total);
+  return (o?.items ?? []).reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+}
 
-// ─── MY ORDERS TAB ─────────────────────────────────────────────────────────────
+// ─── ORDER DETAIL DIALOG ──────────────────────────────────────────────────────
 
-function MyOrdersTab() {
+function OrderDetailDialog({ order, onClose }: { order: any; onClose: () => void; }) {
+  if (!order) return null;
+  const total = orderTotal(order);
+  const paid = Number(order.paidAmount || 0);
+  const due = Math.max(0, total - paid);
+  return (
+    <Dialog open={!!order} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-[520px]">
+        <DialogHeader>
+          <DialogTitle className="text-[#162B4D] flex items-center gap-2">
+            <ShoppingBag className="w-4 h-4 text-orange-500" /> Order #{String(order._id).slice(-6).toUpperCase()}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 pt-1 text-sm">
+          <div className="flex items-center justify-between">
+            <StatusBadge status={order.status} />
+            <span className="text-[10px] text-gray-400">{formatDate(order.createdAt)}</span>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-3 space-y-1">
+            <div className="flex items-center gap-2"><User className="w-4 h-4 text-gray-400" /><span className="font-semibold text-[#162B4D]">{order.customerName}</span></div>
+            {order.phone && <div className="flex items-center gap-2 text-xs text-gray-500"><Phone className="w-3.5 h-3.5 text-gray-400" />{order.phone}</div>}
+            {order.address && <div className="flex items-start gap-2 text-xs text-gray-500"><MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />{order.address}{order.deliveryArea ? `, ${order.deliveryArea}` : ""}</div>}
+            {order.timeslotLabel && <div className="text-xs text-indigo-600 font-medium">Slot: {order.timeslotLabel}</div>}
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Items</p>
+            <div className="space-y-1">
+              {(order.items ?? []).map((i: any, idx: number) => (
+                <div key={idx} className="flex items-center justify-between text-xs border-b border-gray-100 last:border-0 py-1.5">
+                  <span className="text-[#162B4D]">{i.name} <span className="text-gray-400">× {i.quantity}{i.unit ? ` ${i.unit}` : ""}</span></span>
+                  <span className="font-semibold">{formatRupees(Number(i.price || 0) * Number(i.quantity || 1))}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="border-t border-gray-100 pt-2.5 space-y-1">
+            <div className="flex justify-between text-xs"><span className="text-gray-500">Total</span><span className="font-bold text-[#162B4D]">{formatRupees(total)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-gray-500">Paid</span><span className="font-semibold text-green-600">{formatRupees(paid)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-gray-500">Due</span><span className={`font-semibold ${due > 0 ? "text-amber-600" : "text-gray-500"}`}>{formatRupees(due)}</span></div>
+          </div>
+          {order.notes && <p className="text-[11px] text-gray-500 italic border-l-2 border-gray-200 pl-2">{order.notes}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} className="h-9">Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── ORDERS LIST (shared by both tabs) ────────────────────────────────────────
+
+function OrdersList({ mode }: { mode: "active" | "history" }) {
   const { toast } = useToast();
   const admin = getAdminData();
+
+  const allowedStatuses = mode === "active" ? ACTIVE_STATUSES : HISTORY_STATUSES;
 
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,6 +131,7 @@ function MyOrdersTab() {
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [editStatus, setEditStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [detail, setDetail] = useState<any>(null);
 
   const loadOrders = useCallback(async () => {
     if (!admin?.id) return;
@@ -80,23 +139,25 @@ function MyOrdersTab() {
     try {
       const params = new URLSearchParams({ assignedTo: admin.id, limit: "100" });
       if (statusFilter) params.set("status", statusFilter);
+      else params.set("status", allowedStatuses.join(","));
       const data = await apiFetch(`/api/orders?${params}`);
       setOrders(data.orders ?? []);
     } catch { } finally { setLoading(false); }
-  }, [admin?.id, statusFilter]);
+  }, [admin?.id, statusFilter, allowedStatuses.join(",")]);
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 
-  const filtered = orders.filter((o) => {
+  const filtered = useMemo(() => orders.filter((o) => {
     if (!search) return true;
     const q = search.toLowerCase();
     return o.customerName?.toLowerCase().includes(q) ||
       o.phone?.includes(q) ||
       o.deliveryArea?.toLowerCase().includes(q) ||
+      String(o._id).toLowerCase().includes(q.replace(/^#/, "")) ||
       (o.items ?? []).some((i: any) => i.name?.toLowerCase().includes(q));
-  });
+  }), [orders, search]);
 
-  const pagedOrders = usePaginated(filtered, 20, `${search}|${statusFilter}`);
+  const pagedOrders = usePaginated(filtered, 20, `${mode}|${search}|${statusFilter}`);
 
   const handleUpdateStatus = async () => {
     if (!selectedOrder || !editStatus) return;
@@ -104,20 +165,27 @@ function MyOrdersTab() {
     try {
       await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify({ status: editStatus }) });
       toast({ title: "Status updated successfully" });
-      setSelectedOrder((o: any) => ({ ...o, status: editStatus }));
-      setOrders((prev) => prev.map((o) => String(o._id) === String(selectedOrder._id) ? { ...o, status: editStatus } : o));
+      setSelectedOrder(null);
+      loadOrders();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally { setSaving(false); }
   };
 
+  // Summary stats for the active tab
+  const summary = useMemo(() => {
+    const totalRevenue = filtered.reduce((s, o) => s + Number(o.paidAmount || 0), 0);
+    const totalValue   = filtered.reduce((s, o) => s + orderTotal(o), 0);
+    return { count: filtered.length, totalRevenue, totalValue };
+  }, [filtered]);
+
   return (
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap gap-2 items-center">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search orders..." className="pl-8 h-9 text-sm" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by customer, phone, area, item or order #" className="pl-8 h-9 text-sm" />
           {search && <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="w-3.5 h-3.5" /></button>}
         </div>
         <Select value={statusFilter || "_all"} onValueChange={(v) => setStatusFilter(v === "_all" ? "" : v)}>
@@ -126,29 +194,51 @@ function MyOrdersTab() {
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="_all">All statuses</SelectItem>
-            {DELIVERY_STATUSES.map((s) => <SelectItem key={s} value={s}>{STATUS_CONFIG[s].label}</SelectItem>)}
+            <SelectItem value="_all">All {mode === "active" ? "active" : "history"}</SelectItem>
+            {allowedStatuses.map((s) => <SelectItem key={s} value={s}>{STATUS_CONFIG[s].label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <button onClick={loadOrders} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#1A56DB] border border-gray-200 rounded-lg px-3 py-1.5 hover:border-[#1A56DB] transition-colors">
-          <RefreshCw className="w-3.5 h-3.5" />
-        </button>
+        <Button variant="outline" size="sm" onClick={loadOrders} className="h-9 gap-1.5 text-gray-500">
+          <RefreshCw className="w-3.5 h-3.5" /> Refresh
+        </Button>
         <span className="text-xs text-gray-400 ml-auto">{filtered.length} order{filtered.length !== 1 ? "s" : ""}</span>
       </div>
+
+      {/* Summary cards */}
+      {mode === "history" && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center"><History className="w-4 h-4 text-blue-600" /></div>
+            <div><p className="text-xs text-gray-500">Total Past Orders</p><p className="text-lg font-bold text-[#162B4D]">{summary.count}</p></div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center"><CircleDollarSign className="w-4 h-4 text-green-600" /></div>
+            <div><p className="text-xs text-gray-500">Revenue Collected</p><p className="text-lg font-bold text-[#162B4D]">{formatRupees(summary.totalRevenue)}</p></div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center"><CalendarDays className="w-4 h-4 text-purple-600" /></div>
+            <div><p className="text-xs text-gray-500">Order Value</p><p className="text-lg font-bold text-[#162B4D]">{formatRupees(summary.totalValue)}</p></div>
+          </div>
+        </div>
+      )}
 
       {/* Orders list */}
       {loading ? (
         <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 py-20 text-center">
-          <Truck className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 font-medium">No orders assigned to you yet</p>
+          {mode === "active" ? <Truck className="w-10 h-10 text-gray-200 mx-auto mb-3" /> : <History className="w-10 h-10 text-gray-200 mx-auto mb-3" />}
+          <p className="text-gray-400 font-medium">{mode === "active" ? "No active orders assigned to you" : "No past orders yet"}</p>
+          <p className="text-xs text-gray-300 mt-1">{mode === "active" ? "Orders will appear here once admin assigns them" : "Completed and cancelled orders will appear here"}</p>
         </div>
       ) : (
         <div className="space-y-2">
           {pagedOrders.pageItems.map((o) => {
             const cfg = STATUS_CONFIG[o.status] ?? STATUS_CONFIG.pending;
             const Icon = cfg.icon;
+            const total = orderTotal(o);
+            const paid = Number(o.paidAmount || 0);
+            const due = Math.max(0, total - paid);
             return (
               <div key={String(o._id)} className="bg-white border border-gray-100 rounded-xl p-4 hover:shadow-sm transition-shadow">
                 <div className="flex items-start justify-between gap-3">
@@ -159,26 +249,40 @@ function MyOrdersTab() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-[#162B4D] text-sm">{o.customerName}</p>
+                        <span className="text-[10px] text-gray-400">#{String(o._id).slice(-6).toUpperCase()}</span>
                         <StatusBadge status={o.status} />
                       </div>
-                      <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5"><Phone className="w-3 h-3" />{o.phone}</p>
+                      {o.phone && <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5"><Phone className="w-3 h-3" />{o.phone}</p>}
                       {o.address && <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3 text-gray-400" />{o.address}</p>}
                       {o.deliveryArea && <p className="text-[10px] text-gray-400">{o.deliveryArea}</p>}
                       <p className="text-xs text-gray-500 mt-1 truncate">{(o.items ?? []).map((i: any) => i.name).join(", ")}</p>
-                      {o.timeslotLabel && <p className="text-[10px] text-indigo-500 font-medium mt-0.5">{o.timeslotLabel}</p>}
+                      <div className="flex items-center gap-3 mt-1">
+                        {o.timeslotLabel && <p className="text-[10px] text-indigo-500 font-medium">{o.timeslotLabel}</p>}
+                        {mode === "history" && (
+                          <p className="text-[10px] text-gray-400">Paid {formatRupees(paid)} {due > 0 && <span className="text-amber-500">• Due {formatRupees(due)}</span>}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                    <p className="font-bold text-[#162B4D]">{formatRupees(orderTotal(o.items))}</p>
+                    <p className="font-bold text-[#162B4D]">{formatRupees(total)}</p>
                     <p className="text-[10px] text-gray-400">{formatDate(o.createdAt)}</p>
-                    {(cfg.next?.length ?? 0) > 0 && (
+                    <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => { setSelectedOrder(o); setEditStatus(o.status); }}
-                        className="text-xs font-semibold text-[#1A56DB] bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors"
+                        onClick={() => setDetail(o)}
+                        className="text-[11px] font-semibold text-gray-500 hover:text-[#1A56DB] bg-gray-50 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors flex items-center gap-1"
                       >
-                        Update Status
+                        <Eye className="w-3 h-3" /> View
                       </button>
-                    )}
+                      {(cfg.next?.length ?? 0) > 0 && (
+                        <button
+                          onClick={() => { setSelectedOrder(o); setEditStatus(o.status); }}
+                          className="text-[11px] font-semibold text-[#1A56DB] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors"
+                        >
+                          Update Status
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -197,7 +301,7 @@ function MyOrdersTab() {
 
       {/* Update Status Modal */}
       <Dialog open={!!selectedOrder} onOpenChange={(o) => !o && setSelectedOrder(null)}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent className="sm:max-w-[420px]">
           {selectedOrder && (
             <>
               <DialogHeader>
@@ -255,98 +359,8 @@ function MyOrdersTab() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
 
-// ─── MY HUBS TAB ───────────────────────────────────────────────────────────────
-
-function MyHubsTab() {
-  const admin = getAdminData();
-  const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"super" | "sub">("super");
-  const [superHubs, setSuperHubs] = useState<any[]>([]);
-  const [subHubs, setSubHubs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const superHubIds: string[] = admin?.superHubIds?.length > 0 ? admin.superHubIds : admin?.superHubId ? [admin.superHubId] : [];
-  const subHubIds: string[] = admin?.subHubIds?.length > 0 ? admin.subHubIds : admin?.subHubId ? [admin.subHubId] : [];
-
-  useEffect(() => {
-    Promise.all([
-      apiFetch("/api/super-hubs").then((d) => setSuperHubs((d.superHubs ?? []).filter((s: any) => superHubIds.includes(s.id)))).catch(() => {}),
-      apiFetch("/api/sub-hubs").then((d) => setSubHubs((d.subHubs ?? []).filter((s: any) => subHubIds.includes(s.id)))).catch(() => {}),
-    ]).finally(() => setLoading(false));
-  }, []);
-
-  const filtered = (tab === "super" ? superHubs : subHubs).filter((h) => {
-    const q = search.toLowerCase();
-    return !q || h.name?.toLowerCase().includes(q) || h.location?.toLowerCase().includes(q);
-  });
-
-  const pagedHubs = usePaginated(filtered, 20, `${tab}|${search}`);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2 items-center">
-        <div className="flex gap-1 p-0.5 bg-gray-100 rounded-lg">
-          <button onClick={() => setTab("super")} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${tab === "super" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-            <Building2 className="w-3.5 h-3.5" /> Super Hubs
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">{superHubs.length}</span>
-          </button>
-          <button onClick={() => setTab("sub")} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${tab === "sub" ? "bg-white text-[#162B4D] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-            <Store className="w-3.5 h-3.5" /> Sub Hubs
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal-50 text-teal-600">{subHubs.length}</span>
-          </button>
-        </div>
-        <div className="relative flex-1 min-w-[180px] max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search hubs..." className="pl-8 h-9 text-sm" />
-          {search && <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300"><X className="w-3.5 h-3.5" /></button>}
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-36 rounded-xl" />)}</div>
-      ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 py-16 text-center">
-          <Building2 className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 font-medium">No {tab === "super" ? "super" : "sub"} hubs assigned</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {pagedHubs.pageItems.map((hub) => (
-            <div key={hub.id} className={`bg-white rounded-xl border shadow-sm overflow-hidden hover:shadow-md transition-shadow ${tab === "super" ? "border-blue-100" : "border-teal-100"}`}>
-              <div className={`h-14 flex items-center px-4 gap-3 ${tab === "super" ? "bg-gradient-to-r from-blue-500 to-blue-700" : "bg-gradient-to-r from-teal-500 to-teal-700"}`}>
-                <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
-                  {tab === "super" ? <Building2 className="w-3.5 h-3.5 text-white" /> : <Store className="w-3.5 h-3.5 text-white" />}
-                </div>
-                <p className="text-white font-bold text-sm truncate flex-1">{hub.name}</p>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${hub.status === "Active" ? "bg-green-400/90 text-white" : "bg-red-400/90 text-white"}`}>{hub.status}</span>
-              </div>
-              <div className="p-3 space-y-1">
-                {hub.location && <p className="text-xs text-gray-500 flex items-center gap-1.5"><MapPin className="w-3 h-3 text-gray-400" />{hub.location}</p>}
-                {hub.superHubName && <p className="text-xs text-gray-400">Under: {hub.superHubName}</p>}
-                {hub.pincodes?.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {(hub.pincodes as string[]).slice(0, 4).map((p: string) => (
-                      <span key={p} className="bg-purple-50 text-purple-600 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">{p}</span>
-                    ))}
-                    {hub.pincodes.length > 4 && <span className="text-[10px] text-gray-400">+{hub.pincodes.length - 4}</span>}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      <PaginationBar
-        page={pagedHubs.page}
-        pages={pagedHubs.pages}
-        total={pagedHubs.total}
-        onChange={pagedHubs.setPage}
-        label="hubs"
-      />
+      <OrderDetailDialog order={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }
@@ -354,32 +368,37 @@ function MyHubsTab() {
 // ─── MAIN PAGE ─────────────────────────────────────────────────────────────────
 
 export default function MyDeliveries() {
-  const [activeTab, setActiveTab] = useState<"orders" | "hubs">("orders");
+  const [activeTab, setActiveTab] = useState<"active" | "history">("active");
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h2 className="text-2xl font-bold text-[#162B4D]">My Deliveries</h2>
-        <p className="text-gray-500 text-sm mt-1">Manage your assigned orders and hub coverage.</p>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
+          <Truck className="w-5 h-5 text-orange-500" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-[#162B4D]">My Orders</h2>
+          <p className="text-gray-500 text-sm mt-0.5">Manage active deliveries and review past orders.</p>
+        </div>
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-gray-100 bg-white rounded-t-xl">
         <button
-          onClick={() => setActiveTab("orders")}
-          className={`flex items-center gap-2 px-5 py-3.5 text-sm font-semibold border-b-2 transition-colors ${activeTab === "orders" ? "border-[#1A56DB] text-[#1A56DB] bg-blue-50/40" : "border-transparent text-gray-400 hover:text-gray-600"}`}
+          onClick={() => setActiveTab("active")}
+          className={`flex items-center gap-2 px-5 py-3.5 text-sm font-semibold border-b-2 transition-colors ${activeTab === "active" ? "border-[#1A56DB] text-[#1A56DB] bg-blue-50/40" : "border-transparent text-gray-400 hover:text-gray-600"}`}
         >
-          <Truck className="w-4 h-4" /> My Orders
+          <Truck className="w-4 h-4" /> Active Orders
         </button>
         <button
-          onClick={() => setActiveTab("hubs")}
-          className={`flex items-center gap-2 px-5 py-3.5 text-sm font-semibold border-b-2 transition-colors ${activeTab === "hubs" ? "border-[#1A56DB] text-[#1A56DB] bg-blue-50/40" : "border-transparent text-gray-400 hover:text-gray-600"}`}
+          onClick={() => setActiveTab("history")}
+          className={`flex items-center gap-2 px-5 py-3.5 text-sm font-semibold border-b-2 transition-colors ${activeTab === "history" ? "border-[#1A56DB] text-[#1A56DB] bg-blue-50/40" : "border-transparent text-gray-400 hover:text-gray-600"}`}
         >
-          <Building2 className="w-4 h-4" /> My Hubs
+          <History className="w-4 h-4" /> Order History
         </button>
       </div>
 
-      {activeTab === "orders" ? <MyOrdersTab /> : <MyHubsTab />}
+      {activeTab === "active" ? <OrdersList mode="active" /> : <OrdersList mode="history" />}
     </div>
   );
 }

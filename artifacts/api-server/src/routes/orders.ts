@@ -191,6 +191,180 @@ router.get("/stats", async (req, res) => {
   }
 });
 
+// GET /api/orders/delivery-stats?assignedTo=ID — scoped stats for a delivery person
+router.get("/delivery-stats", async (req, res) => {
+  try {
+    const { assignedTo = "" } = req.query as Record<string, string>;
+    if (!assignedTo) {
+      res.status(400).json({ error: "ValidationError", message: "assignedTo is required" });
+      return;
+    }
+
+    const conn = await getOrdersDb();
+    const col = conn.db.collection(COLLECTION);
+    const baseFilter = { assignedDeliveryPersonId: assignedTo };
+
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(startOfDay);
+    startOfWeek.setDate(startOfDay.getDate() - 6); // last 7 days inclusive
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
+    function totalExpr() {
+      // Prefer order.total when present; otherwise sum items.price * items.quantity.
+      return {
+        $cond: [
+          { $gt: [{ $ifNull: ["$total", 0] }, 0] },
+          "$total",
+          {
+            $sum: {
+              $map: {
+                input: { $ifNull: ["$items", []] },
+                as: "i",
+                in: {
+                  $multiply: [
+                    { $ifNull: ["$$i.price", 0] },
+                    { $ifNull: ["$$i.quantity", 1] },
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      };
+    }
+
+    const [statusAgg, todayAgg, weekAgg, monthAgg, totalsAgg, monthlyAgg, recent] = await Promise.all([
+      // status counts
+      col.aggregate([
+        { $match: baseFilter },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]).toArray(),
+
+      // today delivered (count + revenue collected)
+      col.aggregate([
+        { $match: { ...baseFilter, status: "delivered", updatedAt: { $gte: startOfDay } } },
+        { $group: {
+            _id: null,
+            count: { $sum: 1 },
+            revenue: { $sum: { $ifNull: ["$paidAmount", 0] } },
+            total:   { $sum: totalExpr() },
+        } },
+      ]).toArray(),
+
+      // last 7 days delivered
+      col.aggregate([
+        { $match: { ...baseFilter, status: "delivered", updatedAt: { $gte: startOfWeek } } },
+        { $group: {
+            _id: null,
+            count: { $sum: 1 },
+            revenue: { $sum: { $ifNull: ["$paidAmount", 0] } },
+            total:   { $sum: totalExpr() },
+        } },
+      ]).toArray(),
+
+      // current month delivered
+      col.aggregate([
+        { $match: { ...baseFilter, status: "delivered", updatedAt: { $gte: startOfMonth } } },
+        { $group: {
+            _id: null,
+            count: { $sum: 1 },
+            revenue: { $sum: { $ifNull: ["$paidAmount", 0] } },
+            total:   { $sum: totalExpr() },
+        } },
+      ]).toArray(),
+
+      // all-time delivered totals
+      col.aggregate([
+        { $match: { ...baseFilter, status: "delivered" } },
+        { $group: {
+            _id: null,
+            count: { $sum: 1 },
+            revenue: { $sum: { $ifNull: ["$paidAmount", 0] } },
+            total:   { $sum: totalExpr() },
+        } },
+      ]).toArray(),
+
+      // monthly trend (last 6 months) — delivered count + revenue collected
+      col.aggregate([
+        { $match: { ...baseFilter, status: "delivered", updatedAt: { $gte: sixMonthsAgo } } },
+        { $group: {
+            _id: { y: { $year: "$updatedAt" }, m: { $month: "$updatedAt" } },
+            count:   { $sum: 1 },
+            revenue: { $sum: { $ifNull: ["$paidAmount", 0] } },
+            total:   { $sum: totalExpr() },
+        } },
+        { $sort: { "_id.y": 1, "_id.m": 1 } },
+      ]).toArray(),
+
+      // recent 5 orders (any status)
+      col.find(baseFilter).sort({ createdAt: -1 }).limit(5).toArray(),
+    ]);
+
+    const statusCounts: Record<string, number> = {
+      pending: 0, confirmed: 0, preparing: 0, out_for_delivery: 0, delivered: 0, cancelled: 0,
+    };
+    for (const row of statusAgg) {
+      const k = String((row as any)._id ?? "unknown");
+      statusCounts[k] = (statusCounts[k] ?? 0) + ((row as any).count ?? 0);
+    }
+    const totalAssigned = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+    const activeCount =
+      statusCounts.pending + statusCounts.confirmed +
+      statusCounts.preparing + statusCounts.out_for_delivery;
+
+    function pickAgg(rows: any[]) {
+      const r = rows[0] ?? {};
+      return {
+        count:   Number(r.count   ?? 0),
+        revenue: Number(r.revenue ?? 0),
+        total:   Number(r.total   ?? 0),
+      };
+    }
+
+    // Build a 6-month window (fill empty months with zeros).
+    const monthlyMap = new Map<string, { count: number; revenue: number; total: number }>();
+    for (const row of monthlyAgg) {
+      const id: any = (row as any)._id;
+      const key = `${id.y}-${String(id.m).padStart(2, "0")}`;
+      monthlyMap.set(key, {
+        count:   Number((row as any).count   ?? 0),
+        revenue: Number((row as any).revenue ?? 0),
+        total:   Number((row as any).total   ?? 0),
+      });
+    }
+    const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthly: any[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const v = monthlyMap.get(key) ?? { count: 0, revenue: 0, total: 0 };
+      monthly.push({
+        month: `${monthLabels[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`,
+        delivered: v.count,
+        revenue:   v.revenue,
+        total:     v.total,
+      });
+    }
+
+    res.json({
+      statusCounts,
+      totalAssigned,
+      activeCount,
+      today:  pickAgg(todayAgg),
+      week:   pickAgg(weekAgg),
+      month:  pickAgg(monthAgg),
+      allTime: pickAgg(totalsAgg),
+      monthly,
+      recent,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get delivery stats");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch delivery stats" });
+  }
+});
+
 // POST /api/orders — create new order manually (admin)
 router.post("/", async (req, res) => {
   try {

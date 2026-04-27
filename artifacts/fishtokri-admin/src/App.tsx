@@ -13,6 +13,7 @@ import MySubHubs from "@/pages/my-sub-hubs";
 import MySubHubDetail from "@/pages/my-sub-hub-detail";
 import DeliveryDashboard from "@/pages/delivery-dashboard";
 import MyDeliveries from "@/pages/my-deliveries";
+import DeliveryHubs from "@/pages/delivery-hubs";
 import Hubs from "@/pages/hubs";
 import HubDetail from "@/pages/hub-detail";
 import AdminUsers from "@/pages/admin-users";
@@ -222,6 +223,9 @@ function App() {
             </Route>
             <Route path="/my-deliveries">
               <ProtectedRoute component={MyDeliveries} requiredRole="delivery_person" />
+            </Route>
+            <Route path="/my-deliveries-hubs">
+              <ProtectedRoute component={DeliveryHubs} requiredRole="delivery_person" />
             </Route>
 
             <Route component={NotFound} />

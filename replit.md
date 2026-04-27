@@ -72,10 +72,15 @@ artifacts/
       pages/
         role-select.tsx     Role selection landing page
         login.tsx           Login form
-        dashboard.tsx       Stats overview
+        dashboard.tsx       Master Admin stats overview
         super-hubs/         Super Hub list + detail pages
         sub-hubs/           Sub Hub pages
         admin-users/        Admin Users table
+        delivery-dashboard.tsx  Delivery Person dashboard (mirrors Master Admin style:
+                                today/week/month/lifetime delivered, status bar chart,
+                                recent orders, monthly trend area chart, hub coverage)
+        my-deliveries.tsx       Delivery Person Orders page (Active + History tabs)
+        delivery-hubs.tsx       Delivery Person hubs page (assigned super/sub hubs)
         coming-soon.tsx     Placeholder for future sections
 
 lib/
@@ -161,6 +166,10 @@ DELETE /api/users/:id
 PATCH  /api/users/:id/toggle-status
 
 GET    /api/stats/summary
+
+GET    /api/orders                       # list/filter/paginate; supports ?assignedTo=ID
+GET    /api/orders/stats                 # global per-status counts
+GET    /api/orders/delivery-stats        # scoped stats for one delivery person (?assignedTo=ID)
 
 GET    /api/vendors/analytics/summary
 
