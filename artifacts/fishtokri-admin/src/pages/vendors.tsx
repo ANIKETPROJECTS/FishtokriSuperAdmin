@@ -971,17 +971,14 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
     } catch { setSubHubs([]); }
   };
 
-  // Auto-select hub for super_hub users with only one assigned hub.
+  // Auto-select hub for super_hub users when only one option is available.
   const adminScope = useMemo(() => getCurrentAdminScope(), []);
   useEffect(() => {
     if (!open) return;
     if (superHubId) return;
     if (adminScope.role !== "super_hub") return;
-    if (adminScope.superHubIds.length !== 1) return;
-    const id = adminScope.superHubIds[0];
-    if (superHubs.some((h: any) => h._id === id)) {
-      handleSuperHubChange(id);
-    }
+    if (superHubs.length !== 1) return;
+    handleSuperHubChange(superHubs[0]._id);
   }, [open, superHubs, superHubId, adminScope]);
   useEffect(() => {
     if (!open) return;

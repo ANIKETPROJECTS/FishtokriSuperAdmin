@@ -68,14 +68,14 @@ export default function InventoryHistory() {
     setSelectedSubHubId("");
   }, [selectedSuperHubId, toast]);
 
-  // Auto-select hub for super_hub users with only one assigned hub.
+  // Auto-select hub for super_hub users when only one option is available
+  // (the API already filters super-hubs and sub-hubs to the user's scope).
   const adminScope = useMemo(() => getCurrentAdminScope(), []);
   useEffect(() => {
     if (selectedSuperHubId) return;
     if (adminScope.role !== "super_hub") return;
-    if (adminScope.superHubIds.length !== 1) return;
-    const id = adminScope.superHubIds[0];
-    if (superHubs.some((h) => h.id === id)) setSelectedSuperHubId(id);
+    if (superHubs.length !== 1) return;
+    setSelectedSuperHubId(superHubs[0].id);
   }, [superHubs, selectedSuperHubId, adminScope]);
   useEffect(() => {
     if (selectedSubHubId) return;

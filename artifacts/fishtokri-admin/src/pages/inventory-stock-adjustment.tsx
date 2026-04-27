@@ -296,13 +296,13 @@ export default function InventoryStockAdjustment() {
     setSelectedSubHubId("");
   }, [selectedSuperHubId, toast]);
 
+  // Auto-select hub for super_hub users when only one option is available.
   const adminScope = useMemo(() => getCurrentAdminScope(), []);
   useEffect(() => {
     if (selectedSuperHubId) return;
     if (adminScope.role !== "super_hub") return;
-    if (adminScope.superHubIds.length !== 1) return;
-    const id = adminScope.superHubIds[0];
-    if (superHubs.some((h) => h.id === id)) setSelectedSuperHubId(id);
+    if (superHubs.length !== 1) return;
+    setSelectedSuperHubId(superHubs[0].id);
   }, [superHubs, selectedSuperHubId, adminScope]);
   useEffect(() => {
     if (selectedSubHubId) return;
