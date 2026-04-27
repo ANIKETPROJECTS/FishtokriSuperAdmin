@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { getCurrentAdminScope } from "@/lib/api";
 
 function getToken() {
   return localStorage.getItem("fishtokri_token") || "";
@@ -665,6 +666,21 @@ export default function Orders() {
   const skipMenuResetRef = useRef(false);
 
   // Load sub-hubs when super-hub changes
+  const adminScope = useMemo(() => getCurrentAdminScope(), []);
+  useEffect(() => {
+    if (selectedSuperHubId) return;
+    if (adminScope.role !== "super_hub") return;
+    if (adminScope.superHubIds.length !== 1) return;
+    const id = adminScope.superHubIds[0];
+    if (superHubs.some((h) => h.id === id)) setSelectedSuperHubId(id);
+  }, [superHubs, selectedSuperHubId, adminScope]);
+  useEffect(() => {
+    if (selectedSubHubId) return;
+    if (adminScope.role !== "super_hub") return;
+    if (subHubs.length !== 1) return;
+    setSelectedSubHubId(subHubs[0].id);
+  }, [subHubs, selectedSubHubId, adminScope]);
+
   useEffect(() => {
     if (!selectedSuperHubId) { setSubHubs([]); setSelectedSubHubId(""); return; }
     setLoadingSubHubs(true);

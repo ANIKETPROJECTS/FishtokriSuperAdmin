@@ -10,6 +10,27 @@ export function getCurrentAdmin(): { name: string; email: string } {
   }
 }
 
+export function getCurrentAdminScope(): {
+  role: string;
+  superHubIds: string[];
+  subHubIds: string[];
+} {
+  try {
+    const a = JSON.parse(localStorage.getItem("fishtokri_admin") || "{}");
+    return {
+      role: typeof a.role === "string" ? a.role : "",
+      superHubIds: Array.isArray(a.superHubIds)
+        ? a.superHubIds.filter((x: any) => typeof x === "string")
+        : [],
+      subHubIds: Array.isArray(a.subHubIds)
+        ? a.subHubIds.filter((x: any) => typeof x === "string")
+        : [],
+    };
+  } catch {
+    return { role: "", superHubIds: [], subHubIds: [] };
+  }
+}
+
 export async function apiFetch(path: string, opts: RequestInit = {}) {
   const res = await fetch(`${getBase()}${path}`, {
     ...opts,

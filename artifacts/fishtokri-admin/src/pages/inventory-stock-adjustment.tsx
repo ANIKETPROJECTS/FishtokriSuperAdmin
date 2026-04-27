@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { PaginationBar } from "@/components/pagination-bar";
 import { usePaginated } from "@/hooks/use-paginated";
+import { getCurrentAdminScope } from "@/lib/api";
 
 function getToken() { return localStorage.getItem("fishtokri_token") ?? ""; }
 
@@ -294,6 +295,21 @@ export default function InventoryStockAdjustment() {
       .catch((err) => toast({ title: "Failed to load sub hubs", description: err.message, variant: "destructive" }));
     setSelectedSubHubId("");
   }, [selectedSuperHubId, toast]);
+
+  const adminScope = useMemo(() => getCurrentAdminScope(), []);
+  useEffect(() => {
+    if (selectedSuperHubId) return;
+    if (adminScope.role !== "super_hub") return;
+    if (adminScope.superHubIds.length !== 1) return;
+    const id = adminScope.superHubIds[0];
+    if (superHubs.some((h) => h.id === id)) setSelectedSuperHubId(id);
+  }, [superHubs, selectedSuperHubId, adminScope]);
+  useEffect(() => {
+    if (selectedSubHubId) return;
+    if (adminScope.role !== "super_hub") return;
+    if (subHubs.length !== 1) return;
+    setSelectedSubHubId(subHubs[0].id);
+  }, [subHubs, selectedSubHubId, adminScope]);
 
   function reload() {
     if (!selectedSubHubId) { setProducts([]); setAdjustments([]); return; }

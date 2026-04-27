@@ -21,6 +21,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { getCurrentAdminScope } from "@/lib/api";
 import { ImageUpload } from "@/components/image-upload";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -969,6 +970,26 @@ function AddPurchaseModal({ open, onClose, vendor, onSaved }: {
       setSubHubs(d.subHubs || []);
     } catch { setSubHubs([]); }
   };
+
+  // Auto-select hub for super_hub users with only one assigned hub.
+  const adminScope = useMemo(() => getCurrentAdminScope(), []);
+  useEffect(() => {
+    if (!open) return;
+    if (superHubId) return;
+    if (adminScope.role !== "super_hub") return;
+    if (adminScope.superHubIds.length !== 1) return;
+    const id = adminScope.superHubIds[0];
+    if (superHubs.some((h: any) => h._id === id)) {
+      handleSuperHubChange(id);
+    }
+  }, [open, superHubs, superHubId, adminScope]);
+  useEffect(() => {
+    if (!open) return;
+    if (subHubId) return;
+    if (adminScope.role !== "super_hub") return;
+    if (subHubs.length !== 1) return;
+    setSubHubId(subHubs[0]._id);
+  }, [open, subHubs, subHubId, adminScope]);
 
   const setField = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
