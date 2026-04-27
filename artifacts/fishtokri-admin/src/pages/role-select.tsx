@@ -42,9 +42,7 @@ export default function RoleSelect() {
       const admin = (() => {
         try { return JSON.parse(localStorage.getItem("fishtokri_admin") || "{}"); } catch { return {}; }
       })();
-      if (admin?.role === "super_hub") setLocation("/super-hub-dashboard");
-      else if (admin?.role === "sub_hub") setLocation("/sub-hub-dashboard");
-      else if (admin?.role === "delivery_person") setLocation("/delivery-dashboard");
+      if (admin?.role === "delivery_person") setLocation("/delivery-dashboard");
       else setLocation("/dashboard");
     }
   }, [setLocation]);

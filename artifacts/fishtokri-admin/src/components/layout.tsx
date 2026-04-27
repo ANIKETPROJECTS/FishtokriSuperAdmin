@@ -226,26 +226,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isSubHub = role === "sub_hub";
   const isDelivery = role === "delivery_person";
 
-  const superHubIds: string[] = admin?.superHubIds?.length > 0
-    ? admin.superHubIds
-    : admin?.superHubId ? [admin.superHubId] : [];
-  const myHubHref = superHubIds.length === 1
-    ? `/my-hub/${superHubIds[0]}`
-    : "/my-hubs";
+  // Super Hub & Sub Hub now share the same Master Admin sidebar UI,
+  // filtered to the sections allotted to that role.
+  // Allotted sections per role (matches App.tsx route permissions):
+  //   Super Hub: Dashboard, Hubs, Orders, Vendor Management, Inventory Management, Banking, Customers
+  //   Sub Hub:   Dashboard, Orders, Inventory Management, Customers (+ Menu shortcut)
+  const superHubAllowedHrefs = new Set([
+    "/dashboard",
+    "/hubs",
+    "/orders",
+    "/vendor-management",
+    "/inventory",
+    "/banking",
+    "/customers",
+  ]);
+  const subHubAllowedHrefs = new Set([
+    "/dashboard",
+    "/orders",
+    "/inventory",
+    "/customers",
+  ]);
 
-  const superHubNavItems = [
-    { href: "/super-hub-dashboard", label: "Dashboard", icon: LayoutDashboard },
-    {
-      href: myHubHref,
-      label: "Super Hub",
-      icon: Building2,
-      matchPrefix: "/my-hub",
-    },
-  ];
+  const filterNavByHrefs = (items: any[], allowed: Set<string>) =>
+    items.filter((it) => allowed.has(it.href));
 
   const subHubNavItems = [
-    { href: "/sub-hub-dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/my-sub-hubs", label: "My Sub Hubs", icon: Store },
+    ...filterNavByHrefs(masterAdminNavItems, subHubAllowedHrefs),
+    // Sub Hub menu shortcut → resolves to first assigned sub hub's menu admin
+    { href: "/menu", label: "Menu", icon: Store },
   ];
 
   const deliveryNavItems = [
@@ -254,7 +262,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/my-deliveries-hubs", label: "My Hubs", icon: Building2 },
   ];
 
-  const navItems = isSuperHub ? superHubNavItems : isSubHub ? subHubNavItems : isDelivery ? deliveryNavItems : masterAdminNavItems;
+  const navItems = isSuperHub
+    ? filterNavByHrefs(masterAdminNavItems, superHubAllowedHrefs)
+    : isSubHub
+    ? subHubNavItems
+    : isDelivery
+    ? deliveryNavItems
+    : masterAdminNavItems;
   const roleLabel = isSuperHub ? "Super Hub" : isSubHub ? "Sub Hub" : isDelivery ? "Delivery" : "Master Admin";
 
   const sidebarW = sidebarOpen ? "220px" : "56px";

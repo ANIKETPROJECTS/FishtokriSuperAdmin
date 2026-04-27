@@ -44,6 +44,33 @@ Sensitive runtime values are read from Replit Secrets/environment variables. Imp
 
 ---
 
+## Role-Based Section Access
+
+All admin roles (`master_admin`, `super_hub`, `sub_hub`) share the **same UI shell**
+(same sidebar component, same routes, same page components). Each role just sees
+the subset of sections allotted to it. Delivery Person has its own dedicated UI.
+
+| Section | Route(s) | Master Admin | Super Hub | Sub Hub |
+|---------|----------|:-:|:-:|:-:|
+| Dashboard | `/dashboard` | ✓ | ✓ | ✓ |
+| Hubs | `/hubs`, `/hubs/:id` | ✓ | ✓ | – |
+| Orders | `/orders`, `/orders/new`, `/orders/edit/:id` | ✓ | ✓ | ✓ |
+| Vendor Management | `/vendor-management`, `/vendors`, `/vendor-invoices`, `/vendor-items`, `/vendor-categories`, `/stock-adjustment`, `/vendor-statement/:id` | ✓ | ✓ | – |
+| Inventory Management | `/inventory`, `/inventory/products`, `/inventory/history`, `/inventory/adjustment` | ✓ | ✓ | ✓ |
+| Banking | `/banking`, `/banking/accounts`, `/banking/receipts`, `/banking/payments` | ✓ | ✓ | – |
+| Customers | `/customers` | ✓ | ✓ | ✓ |
+| Admin Users | `/admin-users` | ✓ | – | – |
+| Sub Hub Menu | `/sub-hub-menu/:id` (and `/menu` shortcut for sub_hub) | ✓ | ✓ | ✓ |
+
+Legacy routes (`/super-hub-dashboard`, `/sub-hub-dashboard`, `/my-hubs`,
+`/my-sub-hubs`, `/my-hub/:id`, `/my-sub-hub/:id`) redirect to their unified
+equivalents. Login + role-select redirect every admin role to `/dashboard`
+(delivery to `/delivery-dashboard`). Route role-checking is centralized in
+`App.tsx` via `<ProtectedRoute allowedRoles=[...] />`. Sidebar nav filtering
+lives in `components/layout.tsx` (`superHubAllowedHrefs` / `subHubAllowedHrefs`).
+
+---
+
 ## Project Structure
 
 ```
@@ -72,7 +99,7 @@ artifacts/
       pages/
         role-select.tsx     Role selection landing page
         login.tsx           Login form
-        dashboard.tsx       Master Admin stats overview
+        dashboard.tsx       Unified admin dashboard (Master Admin + Super Hub + Sub Hub)
         super-hubs/         Super Hub list + detail pages
         sub-hubs/           Sub Hub pages
         admin-users/        Admin Users table

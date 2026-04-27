@@ -7,10 +7,6 @@ import NotFound from "@/pages/not-found";
 import RoleSelect from "@/pages/role-select";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
-import SuperHubDashboard from "@/pages/super-hub-dashboard";
-import SubHubDashboard from "@/pages/sub-hub-dashboard";
-import MySubHubs from "@/pages/my-sub-hubs";
-import MySubHubDetail from "@/pages/my-sub-hub-detail";
 import DeliveryDashboard from "@/pages/delivery-dashboard";
 import MyDeliveries from "@/pages/my-deliveries";
 import DeliveryHubs from "@/pages/delivery-hubs";
@@ -20,7 +16,6 @@ import AdminUsers from "@/pages/admin-users";
 import Customers from "@/pages/customers";
 import Orders from "@/pages/orders";
 import ComingSoon from "@/pages/coming-soon";
-import MyHubs from "@/pages/my-hubs";
 import SubHubMenuAdmin from "@/pages/sub-hub-menu-admin";
 import Vendors from "@/pages/vendors";
 import VendorInvoices from "@/pages/vendor-invoices";
@@ -57,31 +52,38 @@ function getStoredAdmin() {
   }
 }
 
-function ProtectedRoute({ component: Component, requiredRole }: { component: React.ComponentType; requiredRole?: string }) {
+// Default landing route for each role.
+function homeFor(role?: string) {
+  if (role === "delivery_person") return "/delivery-dashboard";
+  // master_admin, super_hub, sub_hub all share the same unified shell
+  return "/dashboard";
+}
+
+function ProtectedRoute({
+  component: Component,
+  allowedRoles,
+}: {
+  component: React.ComponentType;
+  // If undefined → any authenticated user. If provided → only listed roles.
+  allowedRoles?: string[];
+}) {
   const [, setLocation] = useLocation();
   const token = localStorage.getItem("fishtokri_token");
   const admin = getStoredAdmin();
+  const role: string | undefined = admin?.role;
 
   useEffect(() => {
     if (!token) {
       setLocation("/");
       return;
     }
-    if (requiredRole && admin?.role !== requiredRole) {
-      if (admin?.role === "super_hub") {
-        setLocation("/super-hub-dashboard");
-      } else if (admin?.role === "sub_hub") {
-        setLocation("/sub-hub-dashboard");
-      } else if (admin?.role === "delivery_person") {
-        setLocation("/delivery-dashboard");
-      } else {
-        setLocation("/dashboard");
-      }
+    if (allowedRoles && (!role || !allowedRoles.includes(role))) {
+      setLocation(homeFor(role));
     }
-  }, [token, admin?.role, requiredRole, setLocation]);
+  }, [token, role, allowedRoles, setLocation]);
 
   if (!token) return null;
-  if (requiredRole && admin?.role !== requiredRole) return null;
+  if (allowedRoles && (!role || !allowedRoles.includes(role))) return null;
 
   return (
     <Layout>
@@ -90,16 +92,35 @@ function ProtectedRoute({ component: Component, requiredRole }: { component: Rea
   );
 }
 
-function MyHubRedirect() {
+// Sub-hub Menu shortcut: redirect /menu to the menu admin for the user's
+// first assigned sub hub.
+function MenuRedirect() {
   const [, setLocation] = useLocation();
   const admin = getStoredAdmin();
+  const subHubIds: string[] =
+    admin?.subHubIds?.length > 0 ? admin.subHubIds : admin?.subHubId ? [admin.subHubId] : [];
   useEffect(() => {
-    if (admin?.superHubId) {
-      setLocation(`/my-hub/${admin.superHubId}`);
+    if (subHubIds.length > 0) {
+      setLocation(`/sub-hub-menu/${subHubIds[0]}`);
+    } else {
+      setLocation("/dashboard");
     }
-  }, [admin?.superHubId, setLocation]);
+  }, [subHubIds.join(",")]);
   return null;
 }
+
+// Generic redirect helper used for legacy (super-hub-dashboard etc.) routes.
+function RedirectTo({ to }: { to: string }) {
+  const [, setLocation] = useLocation();
+  useEffect(() => { setLocation(to); }, [to]);
+  return null;
+}
+
+// Role groups used across many routes.
+const ALL_ADMIN_ROLES = ["master_admin", "super_hub", "sub_hub"];
+const HUB_OWNERS = ["master_admin", "super_hub"]; // can manage vendors, banking, hubs
+const MASTER_ONLY = ["master_admin"];
+const SUB_HUB_ONLY = ["sub_hub"];
 
 function App() {
   return (
@@ -110,122 +131,141 @@ function App() {
             <Route path="/" component={RoleSelect} />
             <Route path="/login" component={Login} />
 
-            {/* Master Admin routes */}
+            {/* ── Unified admin routes ───────────────────────────────────── */}
+            {/* Dashboard — every admin role lands here */}
             <Route path="/dashboard">
-              <ProtectedRoute component={Dashboard} requiredRole="master_admin" />
+              <ProtectedRoute component={Dashboard} allowedRoles={ALL_ADMIN_ROLES} />
             </Route>
+
+            {/* Hubs — Master Admin & Super Hub */}
             <Route path="/hubs">
-              <ProtectedRoute component={Hubs} requiredRole="master_admin" />
+              <ProtectedRoute component={Hubs} allowedRoles={HUB_OWNERS} />
             </Route>
             <Route path="/hubs/:id">
-              <ProtectedRoute component={HubDetail} requiredRole="master_admin" />
+              <ProtectedRoute component={HubDetail} allowedRoles={HUB_OWNERS} />
             </Route>
-            <Route path="/admin-users">
-              <ProtectedRoute component={AdminUsers} requiredRole="master_admin" />
-            </Route>
-            <Route path="/pincodes">
-              <ProtectedRoute component={ComingSoon} requiredRole="master_admin" />
-            </Route>
-            <Route path="/customers">
-              <ProtectedRoute component={Customers} requiredRole="master_admin" />
-            </Route>
+
+            {/* Orders — all admin roles */}
             <Route path="/orders">
-              <ProtectedRoute component={Orders} requiredRole="master_admin" />
+              <ProtectedRoute component={Orders} allowedRoles={ALL_ADMIN_ROLES} />
             </Route>
             <Route path="/orders/new">
-              <ProtectedRoute component={Orders} requiredRole="master_admin" />
+              <ProtectedRoute component={Orders} allowedRoles={ALL_ADMIN_ROLES} />
             </Route>
             <Route path="/orders/edit/:id">
-              <ProtectedRoute component={Orders} requiredRole="master_admin" />
+              <ProtectedRoute component={Orders} allowedRoles={ALL_ADMIN_ROLES} />
             </Route>
+
+            {/* Vendor Management — Master Admin & Super Hub */}
             <Route path="/vendor-management">
-              <ProtectedRoute component={VendorManagementOverview} requiredRole="master_admin" />
+              <ProtectedRoute component={VendorManagementOverview} allowedRoles={HUB_OWNERS} />
             </Route>
             <Route path="/vendors">
-              <ProtectedRoute component={Vendors} requiredRole="master_admin" />
+              <ProtectedRoute component={Vendors} allowedRoles={HUB_OWNERS} />
             </Route>
             <Route path="/vendor-statement/:vendorId">
-              <ProtectedRoute component={VendorStatement} requiredRole="master_admin" />
+              <ProtectedRoute component={VendorStatement} allowedRoles={HUB_OWNERS} />
             </Route>
             <Route path="/vendor-invoices">
-              <ProtectedRoute component={VendorInvoices} requiredRole="master_admin" />
+              <ProtectedRoute component={VendorInvoices} allowedRoles={HUB_OWNERS} />
             </Route>
             <Route path="/vendor-items">
-              <ProtectedRoute component={VendorItems} requiredRole="master_admin" />
+              <ProtectedRoute component={VendorItems} allowedRoles={HUB_OWNERS} />
             </Route>
             <Route path="/vendor-categories">
-              <ProtectedRoute component={VendorCategories} requiredRole="master_admin" />
+              <ProtectedRoute component={VendorCategories} allowedRoles={HUB_OWNERS} />
             </Route>
             <Route path="/stock-adjustment">
-              <ProtectedRoute component={StockAdjustmentPage} requiredRole="master_admin" />
+              <ProtectedRoute component={StockAdjustmentPage} allowedRoles={HUB_OWNERS} />
             </Route>
+
+            {/* Inventory — all admin roles */}
             <Route path="/inventory">
-              <ProtectedRoute component={InventoryOverview} requiredRole="master_admin" />
+              <ProtectedRoute component={InventoryOverview} allowedRoles={ALL_ADMIN_ROLES} />
             </Route>
             <Route path="/inventory/products">
-              <ProtectedRoute component={InventoryPage} requiredRole="master_admin" />
+              <ProtectedRoute component={InventoryPage} allowedRoles={ALL_ADMIN_ROLES} />
             </Route>
             <Route path="/inventory/history">
-              <ProtectedRoute component={InventoryHistoryPage} requiredRole="master_admin" />
+              <ProtectedRoute component={InventoryHistoryPage} allowedRoles={ALL_ADMIN_ROLES} />
             </Route>
             <Route path="/inventory/adjustment">
-              <ProtectedRoute component={InventoryStockAdjustmentPage} requiredRole="master_admin" />
+              <ProtectedRoute component={InventoryStockAdjustmentPage} allowedRoles={ALL_ADMIN_ROLES} />
             </Route>
+
+            {/* Banking — Master Admin & Super Hub */}
             <Route path="/banking">
-              <ProtectedRoute component={BankingOverview} requiredRole="master_admin" />
+              <ProtectedRoute component={BankingOverview} allowedRoles={HUB_OWNERS} />
             </Route>
             <Route path="/banking/accounts">
-              <ProtectedRoute component={BankingAccounts} requiredRole="master_admin" />
+              <ProtectedRoute component={BankingAccounts} allowedRoles={HUB_OWNERS} />
             </Route>
             <Route path="/banking/receipts">
-              <ProtectedRoute component={BankingReceipts} requiredRole="master_admin" />
+              <ProtectedRoute component={BankingReceipts} allowedRoles={HUB_OWNERS} />
             </Route>
             <Route path="/banking/payments">
-              <ProtectedRoute component={BankingPayments} requiredRole="master_admin" />
+              <ProtectedRoute component={BankingPayments} allowedRoles={HUB_OWNERS} />
+            </Route>
+
+            {/* Admin Users — Master Admin only */}
+            <Route path="/admin-users">
+              <ProtectedRoute component={AdminUsers} allowedRoles={MASTER_ONLY} />
+            </Route>
+
+            {/* Customers — all admin roles */}
+            <Route path="/customers">
+              <ProtectedRoute component={Customers} allowedRoles={ALL_ADMIN_ROLES} />
+            </Route>
+
+            {/* Pincodes / Coupons placeholders */}
+            <Route path="/pincodes">
+              <ProtectedRoute component={ComingSoon} allowedRoles={MASTER_ONLY} />
             </Route>
             <Route path="/coupons">
-              <ProtectedRoute component={ComingSoon} requiredRole="master_admin" />
+              <ProtectedRoute component={ComingSoon} allowedRoles={MASTER_ONLY} />
             </Route>
 
-            {/* Sub Hub Menu Admin (accessible to master_admin and super_hub) */}
+            {/* Sub-hub menu admin (per sub hub) */}
             <Route path="/sub-hub-menu/:id">
-              <ProtectedRoute component={SubHubMenuAdmin} />
+              <ProtectedRoute component={SubHubMenuAdmin} allowedRoles={ALL_ADMIN_ROLES} />
+            </Route>
+            {/* Sub Hub menu shortcut → resolves to first sub hub's menu */}
+            <Route path="/menu">
+              <ProtectedRoute component={MenuRedirect} allowedRoles={SUB_HUB_ONLY} />
             </Route>
 
-            {/* Super Hub routes */}
+            {/* ── Legacy redirects (preserve old bookmarks) ──────────────── */}
             <Route path="/super-hub-dashboard">
-              <ProtectedRoute component={SuperHubDashboard} requiredRole="super_hub" />
+              <RedirectTo to="/dashboard" />
+            </Route>
+            <Route path="/sub-hub-dashboard">
+              <RedirectTo to="/dashboard" />
             </Route>
             <Route path="/my-hubs">
-              <ProtectedRoute component={MyHubs} requiredRole="super_hub" />
-            </Route>
-            <Route path="/my-hub">
-              <ProtectedRoute component={MyHubRedirect} requiredRole="super_hub" />
-            </Route>
-            <Route path="/my-hub/:id">
-              <ProtectedRoute component={HubDetail} requiredRole="super_hub" />
-            </Route>
-
-            {/* Sub Hub routes */}
-            <Route path="/sub-hub-dashboard">
-              <ProtectedRoute component={SubHubDashboard} requiredRole="sub_hub" />
+              <RedirectTo to="/hubs" />
             </Route>
             <Route path="/my-sub-hubs">
-              <ProtectedRoute component={MySubHubs} requiredRole="sub_hub" />
+              <RedirectTo to="/dashboard" />
+            </Route>
+            <Route path="/my-hub/:id">
+              {(params) => <RedirectTo to={`/hubs/${params.id}`} />}
             </Route>
             <Route path="/my-sub-hub/:id">
-              <ProtectedRoute component={MySubHubDetail} requiredRole="sub_hub" />
+              {(params) => <RedirectTo to={`/hubs/${params.id}`} />}
+            </Route>
+            <Route path="/my-hub">
+              <RedirectTo to="/hubs" />
             </Route>
 
-            {/* Delivery Person routes */}
+            {/* Delivery Person routes (unchanged) */}
             <Route path="/delivery-dashboard">
-              <ProtectedRoute component={DeliveryDashboard} requiredRole="delivery_person" />
+              <ProtectedRoute component={DeliveryDashboard} allowedRoles={["delivery_person"]} />
             </Route>
             <Route path="/my-deliveries">
-              <ProtectedRoute component={MyDeliveries} requiredRole="delivery_person" />
+              <ProtectedRoute component={MyDeliveries} allowedRoles={["delivery_person"]} />
             </Route>
             <Route path="/my-deliveries-hubs">
-              <ProtectedRoute component={DeliveryHubs} requiredRole="delivery_person" />
+              <ProtectedRoute component={DeliveryHubs} allowedRoles={["delivery_person"]} />
             </Route>
 
             <Route component={NotFound} />
