@@ -4,9 +4,11 @@ import { SubHub } from "../db/models/sub-hub.js";
 import { SuperHub } from "../db/models/super-hub.js";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
+router.use(loadScope as any);
 
 const MOVEMENTS_COLLECTION = "inventory_movements";
 const ADJUSTMENTS_COLLECTION = "inventory_adjustments";
@@ -15,7 +17,22 @@ function toId(id: string) {
   try { return new mongoose.Types.ObjectId(id); } catch { return null; }
 }
 
-async function getCtx(subHubId: string, res: any) {
+/**
+ * Returns true if the request user is allowed to access the given sub hub.
+ * Master admins always have access; non-master users must have the sub hub
+ * in their resolved scope.
+ */
+function userCanAccessSubHub(req: ScopedRequest, subHubId: string): boolean {
+  const scope = req.scope;
+  if (!scope || scope.isMaster) return true;
+  return scope.subHubIds.includes(String(subHubId));
+}
+
+async function getCtx(subHubId: string, res: any, req?: ScopedRequest) {
+  if (req && !userCanAccessSubHub(req, subHubId)) {
+    res.status(403).json({ error: "Forbidden", message: "You do not have access to this sub hub" });
+    return null;
+  }
   const sub = await SubHub.findById(subHubId);
   if (!sub) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return null; }
   if (!sub.dbName) { res.status(400).json({ error: "NoDB", message: "Sub hub has no database linked" }); return null; }
@@ -119,10 +136,30 @@ async function persistBatches(productsCol: any, productId: any, batches: Batch[]
   return { batches: normalized, quantity: total };
 }
 
-// ─── ANALYTICS SUMMARY (across all sub-hubs) ─────────────────────────────────
-router.get("/analytics/summary", async (_req, res) => {
+// ─── ANALYTICS SUMMARY (across sub-hubs in the user's scope) ─────────────────
+router.get("/analytics/summary", async (req: ScopedRequest, res) => {
   try {
-    const subs = await SubHub.find({}).lean();
+    const scope = req.scope;
+    const subFilter: any = {};
+    if (scope && !scope.isMaster) {
+      const ids = scope.subHubIds.map((id) => {
+        try { return new mongoose.Types.ObjectId(id); } catch { return null; }
+      }).filter(Boolean) as mongoose.Types.ObjectId[];
+      if (ids.length === 0) {
+        res.json({
+          overview: {
+            totalSubHubs: 0, trackedSubHubs: 0, totalProducts: 0, activeProducts: 0,
+            outOfStockCount: 0, lowStockCount: 0, expiringSoonCount: 0, expiredCount: 0,
+            totalStockValue: 0, totalQuantity: 0, categoryCount: 0,
+            movementsTotal: 0, movements30d: 0, adjustmentsTotal: 0, adjustments30d: 0,
+          },
+          lowStock: [], expiringBatches: [], recentMovements: [], subHubBreakdown: [],
+        });
+        return;
+      }
+      subFilter._id = { $in: ids };
+    }
+    const subs = await SubHub.find(subFilter).lean();
     let totalProducts = 0;
     let activeProducts = 0;
     let outOfStockCount = 0;
@@ -268,7 +305,7 @@ router.get("/products", async (req, res) => {
   try {
     const subHubId = String(req.query.subHubId || "");
     if (!subHubId) { res.status(400).json({ error: "ValidationError", message: "subHubId is required" }); return; }
-    const ctx = await getCtx(subHubId, res);
+    const ctx = await getCtx(subHubId, res, req as ScopedRequest);
     if (!ctx) return;
     const search = String(req.query.search || "");
     const query: any = search ? { name: { $regex: search, $options: "i" } } : {};
@@ -313,7 +350,7 @@ router.get("/movements", async (req, res) => {
   try {
     const subHubId = String(req.query.subHubId || "");
     if (!subHubId) { res.status(400).json({ error: "ValidationError", message: "subHubId is required" }); return; }
-    const ctx = await getCtx(subHubId, res);
+    const ctx = await getCtx(subHubId, res, req as ScopedRequest);
     if (!ctx) return;
     const productId = String(req.query.productId || "");
     const orderId = String(req.query.orderId || "");
@@ -341,7 +378,7 @@ router.get("/adjustments", async (req, res) => {
   try {
     const subHubId = String(req.query.subHubId || "");
     if (!subHubId) { res.status(400).json({ error: "ValidationError", message: "subHubId is required" }); return; }
-    const ctx = await getCtx(subHubId, res);
+    const ctx = await getCtx(subHubId, res, req as ScopedRequest);
     if (!ctx) return;
     const rows = await ctx.conn.db
       .collection(ADJUSTMENTS_COLLECTION)
@@ -366,7 +403,7 @@ router.post("/adjustments", async (req, res) => {
     if (!reason || !String(reason).trim()) {
       res.status(400).json({ error: "ValidationError", message: "Reason is required" }); return;
     }
-    const ctx = await getCtx(subHubId, res);
+    const ctx = await getCtx(subHubId, res, req as ScopedRequest);
     if (!ctx) return;
 
     const superHub = superHubId ? await SuperHub.findById(superHubId) : null;
@@ -509,7 +546,7 @@ router.get("/products/:productId/batches", async (req, res) => {
   try {
     const subHubId = String(req.query.subHubId || "");
     if (!subHubId) { res.status(400).json({ error: "ValidationError", message: "subHubId is required" }); return; }
-    const ctx = await getCtx(subHubId, res);
+    const ctx = await getCtx(subHubId, res, req as ScopedRequest);
     if (!ctx) return;
     const pid = toId(req.params.productId);
     if (!pid) { res.status(400).json({ error: "InvalidId", message: "Invalid product id" }); return; }
@@ -533,7 +570,7 @@ router.delete("/products/:productId/batches/:batchId", async (req, res) => {
   try {
     const subHubId = String(req.query.subHubId || "");
     if (!subHubId) { res.status(400).json({ error: "ValidationError", message: "subHubId is required" }); return; }
-    const ctx = await getCtx(subHubId, res);
+    const ctx = await getCtx(subHubId, res, req as ScopedRequest);
     if (!ctx) return;
     const pid = toId(req.params.productId);
     if (!pid) { res.status(400).json({ error: "InvalidId", message: "Invalid product id" }); return; }
@@ -554,7 +591,7 @@ router.put("/products/:productId/batches", async (req, res) => {
   try {
     const subHubId = String(req.query.subHubId || "");
     if (!subHubId) { res.status(400).json({ error: "ValidationError", message: "subHubId is required" }); return; }
-    const ctx = await getCtx(subHubId, res);
+    const ctx = await getCtx(subHubId, res, req as ScopedRequest);
     if (!ctx) return;
     const pid = toId(req.params.productId);
     if (!pid) { res.status(400).json({ error: "InvalidId", message: "Invalid product id" }); return; }
@@ -574,7 +611,7 @@ router.post("/init-product-batches", async (req, res) => {
   try {
     const subHubId = String((req.body as any)?.subHubId || req.query.subHubId || "");
     if (!subHubId) { res.status(400).json({ error: "ValidationError", message: "subHubId is required" }); return; }
-    const ctx = await getCtx(subHubId, res);
+    const ctx = await getCtx(subHubId, res, req as ScopedRequest);
     if (!ctx) return;
     const productsCol = ctx.conn.db.collection("products");
     const allProducts = await productsCol.find({}).toArray();

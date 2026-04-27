@@ -8,8 +8,41 @@ import {
   applyOrderInventoryOnUpdate,
   applyOrderInventoryOnDelete,
 } from "./inventory.js";
+import { requireAuth } from "../middlewares/auth.js";
+import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 
 const router = Router();
+router.use(requireAuth as any);
+router.use(loadScope as any);
+
+/**
+ * Returns a filter clause to scope orders to the user's hub set.
+ * Master admins get an empty clause (no filtering). Non-master users without
+ * any sub hubs get a filter that matches no documents.
+ */
+function scopeOrderFilter(req: ScopedRequest): Record<string, any> | null {
+  const scope = req.scope;
+  if (!scope || scope.isMaster) return {};
+  if (scope.subHubIds.length === 0) return null; // sentinel: match nothing
+  return { subHubId: { $in: scope.subHubIds } };
+}
+
+/** Combines an existing filter with the scope filter. Returns null when the
+ *  scope is empty for a non-master user (caller should respond with empty). */
+function applyOrderScope(filter: any, req: ScopedRequest): any | null {
+  const scopeClause = scopeOrderFilter(req);
+  if (scopeClause === null) return null;
+  if (Object.keys(scopeClause).length === 0) return filter;
+  if (filter.$and) {
+    return { ...filter, $and: [...filter.$and, scopeClause] };
+  }
+  if (filter.$or) {
+    // Wrap existing $or with $and so we don't lose either constraint.
+    const { $or, ...rest } = filter;
+    return { ...rest, $and: [{ $or }, scopeClause] };
+  }
+  return { ...filter, ...scopeClause };
+}
 
 async function getCustomersCollection() {
   const conn = await getCustomersConnection();
@@ -28,7 +61,7 @@ function toId(id: string): mongoose.mongo.BSON.ObjectId | null {
 }
 
 // GET /api/orders — list with search, filter, sort, pagination
-router.get("/", async (req, res) => {
+router.get("/", async (req: ScopedRequest, res) => {
   try {
     const conn = await getOrdersDb();
     const db = conn.db;
@@ -129,9 +162,15 @@ router.get("/", async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
     const skip = (pageNum - 1) * limitNum;
 
+    const scopedFilter = applyOrderScope(filter, req);
+    if (scopedFilter === null) {
+      res.json({ orders: [], total: 0, page: pageNum, limit: limitNum, pages: 0 });
+      return;
+    }
+
     const [orders, total] = await Promise.all([
-      db.collection(COLLECTION).find(filter).sort(sortObj).skip(skip).limit(limitNum).toArray(),
-      db.collection(COLLECTION).countDocuments(filter),
+      db.collection(COLLECTION).find(scopedFilter).sort(sortObj).skip(skip).limit(limitNum).toArray(),
+      db.collection(COLLECTION).countDocuments(scopedFilter),
     ]);
 
     res.json({ orders, total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) });
@@ -142,12 +181,18 @@ router.get("/", async (req, res) => {
 });
 
 // GET /api/orders/stats — summary counts per status
-router.get("/stats", async (req, res) => {
+router.get("/stats", async (req: ScopedRequest, res) => {
   try {
     const conn = await getOrdersDb();
-    const agg = await conn.db.collection(COLLECTION).aggregate([
-      { $group: { _id: { status: "$status", deliveryType: "$deliveryType" }, count: { $sum: 1 } } },
-    ]).toArray();
+    const scopeClause = scopeOrderFilter(req);
+    if (scopeClause === null) {
+      res.json({ stats: {}, rawStats: {}, total: 0, currentTotal: 0, historyTotal: 0 });
+      return;
+    }
+    const pipeline: any[] = [];
+    if (Object.keys(scopeClause).length > 0) pipeline.push({ $match: scopeClause });
+    pipeline.push({ $group: { _id: { status: "$status", deliveryType: "$deliveryType" }, count: { $sum: 1 } } });
+    const agg = await conn.db.collection(COLLECTION).aggregate(pipeline).toArray();
 
     const ACTIVE = ["pending", "confirmed", "preparing", "out_for_delivery"];
     const HISTORY = ["delivered", "cancelled"];
@@ -192,7 +237,7 @@ router.get("/stats", async (req, res) => {
 });
 
 // GET /api/orders/delivery-stats?assignedTo=ID — scoped stats for a delivery person
-router.get("/delivery-stats", async (req, res) => {
+router.get("/delivery-stats", async (req: ScopedRequest, res) => {
   try {
     const { assignedTo = "" } = req.query as Record<string, string>;
     if (!assignedTo) {
@@ -202,7 +247,24 @@ router.get("/delivery-stats", async (req, res) => {
 
     const conn = await getOrdersDb();
     const col = conn.db.collection(COLLECTION);
-    const baseFilter = { assignedDeliveryPersonId: assignedTo };
+    // Hub admins (super_hub / sub_hub) see only delivery stats from their own
+    // hubs. Master admin and the delivery person themself see everything for
+    // the assigned ID.
+    const baseFilter: any = { assignedDeliveryPersonId: assignedTo };
+    const scope = req.scope;
+    if (scope && !scope.isMaster && scope.role !== "delivery_person") {
+      if (scope.subHubIds.length === 0) {
+        res.json({
+          statusCounts: { pending: 0, confirmed: 0, preparing: 0, out_for_delivery: 0, delivered: 0, cancelled: 0 },
+          totalAssigned: 0, activeCount: 0,
+          today: { count: 0, revenue: 0, total: 0 }, week: { count: 0, revenue: 0, total: 0 },
+          month: { count: 0, revenue: 0, total: 0 }, allTime: { count: 0, revenue: 0, total: 0 },
+          monthly: [], recent: [],
+        });
+        return;
+      }
+      baseFilter.subHubId = { $in: scope.subHubIds };
+    }
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -365,8 +427,15 @@ router.get("/delivery-stats", async (req, res) => {
   }
 });
 
+/** Returns true if the order document is in the request user's scope. */
+function isOrderInScope(scope: ScopedRequest["scope"], order: any): boolean {
+  if (!scope || scope.isMaster) return true;
+  const subId = order?.subHubId ? String(order.subHubId) : "";
+  return !!subId && scope.subHubIds.includes(subId);
+}
+
 // POST /api/orders — create new order manually (admin)
-router.post("/", async (req, res) => {
+router.post("/", async (req: ScopedRequest, res) => {
   try {
     const {
       customerId,
@@ -433,6 +502,16 @@ router.post("/", async (req, res) => {
     if (cleanItems.length === 0) {
       res.status(400).json({ error: "ValidationError", message: "Items must have a name" });
       return;
+    }
+
+    // Enforce hub scope on order creation: hub admins can only create orders
+    // inside their own sub hubs.
+    if (req.scope && !req.scope.isMaster) {
+      const reqSub = subHubId ? String(subHubId) : "";
+      if (!reqSub || !req.scope.subHubIds.includes(reqSub)) {
+        res.status(403).json({ error: "Forbidden", message: "You can only create orders for your assigned sub hubs." });
+        return;
+      }
     }
 
     let resolvedCustomerId: string | undefined = customerId ? String(customerId) : undefined;
@@ -585,13 +664,15 @@ router.post("/", async (req, res) => {
 });
 
 // GET /api/orders/:id — single order
-router.get("/:id", async (req, res) => {
+router.get("/:id", async (req: ScopedRequest, res) => {
   try {
     const oid = toId(req.params.id);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
     const conn = await getOrdersDb();
     const order = await conn.db.collection(COLLECTION).findOne({ _id: oid });
-    if (!order) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+    if (!order || !isOrderInScope(req.scope, order)) {
+      res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
+    }
     res.json({ order });
   } catch (err) {
     req.log.error({ err }, "Failed to get order");
@@ -600,7 +681,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // PUT /api/orders/:id — update status / notes / customer info
-router.put("/:id", async (req, res) => {
+router.put("/:id", async (req: ScopedRequest, res) => {
   try {
     const oid = toId(req.params.id);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
@@ -692,7 +773,17 @@ router.put("/:id", async (req, res) => {
     }
     const conn = await getOrdersDb();
     const prev = await conn.db.collection(COLLECTION).findOne({ _id: oid });
-    if (!prev) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+    if (!prev || !isOrderInScope(req.scope, prev)) {
+      res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
+    }
+    // Hub admins cannot reassign an order to a sub hub outside their scope.
+    if (req.scope && !req.scope.isMaster && update.subHubId !== undefined) {
+      const targetSub = update.subHubId ? String(update.subHubId) : "";
+      if (!targetSub || !req.scope.subHubIds.includes(targetSub)) {
+        res.status(403).json({ error: "Forbidden", message: "You cannot reassign this order to a sub hub outside your scope." });
+        return;
+      }
+    }
 
     // Guard: out_for_delivery / delivered require an assigned delivery partner
     // (only applies to delivery-type orders, not takeaway).
@@ -781,14 +872,16 @@ router.put("/:id", async (req, res) => {
 });
 
 // DELETE /api/orders/:id — delete an order
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req: ScopedRequest, res) => {
   try {
     const oid = toId(req.params.id);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
     const conn = await getOrdersDb();
     req.log.info({ id: req.params.id, oid: oid.toHexString() }, "Attempting to delete order");
     const existing = await conn.db.collection(COLLECTION).findOne({ _id: oid });
-    if (!existing) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+    if (!existing || !isOrderInScope(req.scope, existing)) {
+      res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
+    }
     const result = await conn.db.collection(COLLECTION).deleteOne({ _id: oid });
     req.log.info({ deletedCount: result.deletedCount }, "Delete result");
     if (result.deletedCount === 0) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }

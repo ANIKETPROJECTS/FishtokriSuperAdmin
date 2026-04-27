@@ -44,6 +44,37 @@ Sensitive runtime values are read from Replit Secrets/environment variables. Imp
 
 ---
 
+## API Data Scoping (per-role)
+
+In addition to frontend route gating, the API enforces hub scope on every
+request. The `loadScope` middleware (`artifacts/api-server/src/middlewares/scope.ts`)
+populates `req.scope = { isMaster, superHubIds[], subHubIds[] }` from the
+authenticated user. `denyIfNotMaster` (Express middleware) and the inline
+helper `rejectIfNotMaster(scope, res)` reject non-master requests with 403.
+
+| Resource | Master Admin | Super Hub | Sub Hub |
+|---|---|---|---|
+| Super Hubs CRUD | full | read-only (own hubs) | – |
+| Sub Hubs CRUD | full | read-only (own hubs); writes 403 | read-only (own sub hub); writes 403 |
+| Sub Hub Menu (`/sub-hubs/:id/menu/*`) | any sub hub | only sub hubs in scope | only assigned sub hub |
+| Users (`/users`) | full | 403 | 403 |
+| Stats (`/stats/*`) | global | scoped to own hubs | scoped to own sub hub |
+| Orders | global | scoped via `subHubId`/`superHubId` | scoped via `subHubId` |
+| Customers | global | scoped via order/sub-hub keys | scoped via sub-hub keys |
+| Inventory (`/inventory/*`) | any sub hub via `subHubId` query | only sub hubs in scope (else 403) | only assigned sub hub |
+| Banking accounts/payments | full | hidden + writes 403 | hidden + writes 403 |
+| Banking receipts | full | filtered to receipts whose `sourceOrderId` is in scope | same |
+| Vendors (catalogue) | CRUD | read-only, list filtered to vendors with at least one in-scope purchase; writes 403 | same |
+| Vendor purchases / receipts / statement | full | scoped via purchase `superHubId`/`subHubId`; writes restricted to in-scope hubs | same |
+| Vendor categories / items (global) | CRUD | read-only; writes 403 | read-only; writes 403 |
+| Vendor stock-adjustments | full | scoped via `superHubId`/`subHubId`; writes restricted to in-scope hubs | same |
+| Vendor hub-products | all sub hubs aggregated | aggregated only over in-scope sub hubs | only assigned sub hub |
+
+Master Admin always has unrestricted access. Out-of-scope reads return 404
+(treated as "not found") and out-of-scope writes return 403.
+
+---
+
 ## Role-Based Section Access
 
 All admin roles (`master_admin`, `super_hub`, `sub_hub`) share the **same UI shell**

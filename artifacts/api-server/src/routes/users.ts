@@ -4,9 +4,13 @@ import { HubUser } from "../db/models/hub-user.js";
 import { SuperHub } from "../db/models/super-hub.js";
 import { SubHub } from "../db/models/sub-hub.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { denyIfNotMaster, loadScope } from "../middlewares/scope.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
+router.use(loadScope as any);
+// User administration is restricted to the Master Admin only.
+router.use(denyIfNotMaster as any);
 
 const PHONE_REGEX = /^\d{10}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

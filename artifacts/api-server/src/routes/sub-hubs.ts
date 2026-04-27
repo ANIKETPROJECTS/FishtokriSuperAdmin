@@ -2,9 +2,17 @@ import { Router, type IRouter } from "express";
 import { SubHub } from "../db/models/sub-hub.js";
 import { SuperHub } from "../db/models/super-hub.js";
 import { requireAuth } from "../middlewares/auth.js";
+import {
+  loadScope,
+  toObjectIds,
+  canAccessSubHub,
+  rejectIfNotMaster,
+  type ScopedRequest,
+} from "../middlewares/scope.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
+router.use(loadScope as any);
 
 function subHubToJson(sub: any, superHubName: string) {
   return {
@@ -21,9 +29,14 @@ function subHubToJson(sub: any, superHubName: string) {
   };
 }
 
-router.get("/", async (req, res) => {
+router.get("/", async (req: ScopedRequest, res) => {
   try {
-    const subs = await SubHub.find({}).sort({ createdAt: 1 });
+    const scope = req.scope!;
+    const filter = scope.isMaster
+      ? {}
+      : { _id: { $in: toObjectIds(scope.subHubIds) } };
+
+    const subs = await SubHub.find(filter).sort({ createdAt: 1 });
     const superHubIds = [...new Set(subs.map((s) => String(s.superHubId)))];
     const superHubs = await SuperHub.find({ _id: { $in: superHubIds } });
     const superHubMap: Record<string, string> = {};
@@ -35,7 +48,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", async (req: ScopedRequest, res) => {
+  if (rejectIfNotMaster(req.scope, res)) return;
   try {
     const sub = await SubHub.findById(req.params.id);
     if (!sub) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
@@ -65,7 +79,8 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req: ScopedRequest, res) => {
+  if (rejectIfNotMaster(req.scope, res)) return;
   try {
     const sub = await SubHub.findById(req.params.id);
     if (!sub) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
@@ -77,7 +92,8 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-router.patch("/:id/toggle-status", async (req, res) => {
+router.patch("/:id/toggle-status", async (req: ScopedRequest, res) => {
+  if (rejectIfNotMaster(req.scope, res)) return;
   try {
     const sub = await SubHub.findById(req.params.id);
     if (!sub) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
@@ -91,4 +107,6 @@ router.patch("/:id/toggle-status", async (req, res) => {
   }
 });
 
+// Re-export so the sub-hub-menu router can also call canAccessSubHub
+export { canAccessSubHub };
 export default router;

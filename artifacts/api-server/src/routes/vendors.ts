@@ -1,9 +1,58 @@
 import { Router, type IRouter } from "express";
 import { mongoose } from "../db/index.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { denyIfNotMaster, loadScope, type ScopedRequest } from "../middlewares/scope.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
+router.use(loadScope as any);
+
+/**
+ * Returns a Mongo filter that restricts vendor purchase queries to the
+ * request user's hub scope. Returns null for master users (no scoping
+ * needed). Returns a filter that matches nothing when the user has no hubs.
+ */
+function purchaseScopeFilter(scope: ScopedRequest["scope"]): Record<string, any> | null {
+  if (!scope || scope.isMaster) return null;
+  if (scope.subHubIds.length === 0 && scope.superHubIds.length === 0) {
+    // No hubs — match nothing.
+    return { _id: { $in: [] } };
+  }
+  const or: any[] = [];
+  if (scope.subHubIds.length) or.push({ subHubId: { $in: scope.subHubIds } });
+  if (scope.superHubIds.length) or.push({ superHubId: { $in: scope.superHubIds } });
+  return { $or: or };
+}
+
+/**
+ * Returns the set of vendorIds (as strings) referenced by purchases inside
+ * the request user's scope. Returns null when the caller is master.
+ */
+async function loadScopedVendorIds(scope: ScopedRequest["scope"]): Promise<Set<string> | null> {
+  if (!scope || scope.isMaster) return null;
+  const filter = purchaseScopeFilter(scope);
+  if (!filter) return null;
+  const Purchase = getPurchaseModel() as any;
+  const ids = await Purchase.distinct("vendorId", filter);
+  const set = new Set<string>();
+  for (const id of ids) set.add(String(id));
+  return set;
+}
+
+/**
+ * Returns the set of purchase _ids (as strings) inside the user's scope, or
+ * null for master callers.
+ */
+async function loadScopedPurchaseIds(scope: ScopedRequest["scope"]): Promise<Set<string> | null> {
+  if (!scope || scope.isMaster) return null;
+  const filter = purchaseScopeFilter(scope);
+  if (!filter) return null;
+  const Purchase = getPurchaseModel() as any;
+  const docs = await Purchase.find(filter).select({ _id: 1 }).lean();
+  const set = new Set<string>();
+  for (const d of docs) set.add(String(d._id));
+  return set;
+}
 
 // ─── SCHEMAS ──────────────────────────────────────────────────────────────────
 
@@ -262,7 +311,7 @@ function serializeInventory(doc: any) {
 
 // ─── VENDOR ROUTES ────────────────────────────────────────────────────────────
 
-router.get("/", async (req, res) => {
+router.get("/", async (req: ScopedRequest, res) => {
   try {
     const Vendor = getVendorModel();
     const { search, category, status, sort = "createdAt_desc", page = "1", limit = "20" } = req.query as Record<string, string>;
@@ -274,6 +323,22 @@ router.get("/", async (req, res) => {
     }
     if (category && category !== "all") filter.category = new RegExp(`^${category}$`, "i");
     if (status && status !== "all") filter.status = status;
+
+    // Non-master users only see vendors who have at least one purchase tied
+    // to a hub in their scope.
+    const scopedVendorIds = await loadScopedVendorIds(req.scope);
+    if (scopedVendorIds !== null) {
+      if (scopedVendorIds.size === 0) {
+        const pageNumEmpty = Math.max(1, parseInt(page, 10));
+        const limitNumEmpty = Math.min(100, Math.max(1, parseInt(limit, 10)));
+        res.json({ vendors: [], total: 0, page: pageNumEmpty, limit: limitNumEmpty });
+        return;
+      }
+      const vendorObjectIds = [...scopedVendorIds]
+        .map((id) => { try { return new mongoose.Types.ObjectId(id); } catch { return null; } })
+        .filter(Boolean);
+      filter._id = { $in: vendorObjectIds };
+    }
 
     let sortObj: Record<string, 1 | -1> = { createdAt: -1 };
     if (sort === "name_asc") sortObj = { name: 1 };
@@ -299,7 +364,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", denyIfNotMaster as any, async (req, res) => {
   try {
     const Vendor = getVendorModel();
     const { name, phone, email, address, category, status, notes } = req.body;
@@ -326,7 +391,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const Vendor = getVendorModel();
     const vendor = await Vendor.findById(req.params.id);
@@ -349,7 +414,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const Vendor = getVendorModel();
     const vendor = await Vendor.findById(req.params.id);
@@ -389,7 +454,7 @@ router.get("/next-invoice-number", async (req, res) => {
   }
 });
 
-router.get("/all-purchases", async (req, res) => {
+router.get("/all-purchases", async (req: ScopedRequest, res) => {
   try {
     const Purchase = getPurchaseModel();
     const { page = "1", limit = "30", search, vendorId, sort = "date_desc", dateFrom, dateTo } = req.query as Record<string, string>;
@@ -407,6 +472,13 @@ router.get("/all-purchases", async (req, res) => {
       filter.purchaseDate = {};
       if (dateFrom) filter.purchaseDate.$gte = new Date(dateFrom);
       if (dateTo) { const d = new Date(dateTo); d.setHours(23, 59, 59, 999); filter.purchaseDate.$lte = d; }
+    }
+
+    const scopeFilter = purchaseScopeFilter(req.scope);
+    if (scopeFilter) {
+      const ands: any[] = [scopeFilter];
+      if (filter.$or) { ands.push({ $or: filter.$or }); delete filter.$or; }
+      filter.$and = ands;
     }
 
     const sortMap: Record<string, Record<string, 1 | -1>> = {
@@ -443,7 +515,7 @@ router.get("/all-purchases", async (req, res) => {
   }
 });
 
-router.get("/analytics/summary", async (req, res) => {
+router.get("/analytics/summary", async (req: ScopedRequest, res) => {
   try {
     const Vendor = getVendorModel();
     const Purchase = getPurchaseModel();
@@ -453,6 +525,24 @@ router.get("/analytics/summary", async (req, res) => {
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // Build scoped filters once.
+    const purchaseScope = purchaseScopeFilter(req.scope);
+    const scopedVendorIds = await loadScopedVendorIds(req.scope);
+    const vendorScope: Record<string, any> = {};
+    if (scopedVendorIds !== null) {
+      const ids = [...scopedVendorIds]
+        .map((id) => { try { return new mongoose.Types.ObjectId(id); } catch { return null; } })
+        .filter(Boolean);
+      vendorScope._id = { $in: ids };
+    }
+    // Vendor item catalogue is global → only show counts to master.
+    const showCatalogue = !req.scope || req.scope.isMaster;
+
+    const purchaseMatch = purchaseScope ?? {};
+    const purchaseRecentMatch = purchaseScope
+      ? { $and: [purchaseScope, { purchaseDate: { $gte: thirtyDaysAgo } }] }
+      : { purchaseDate: { $gte: thirtyDaysAgo } };
 
     const [
       totalVendors,
@@ -469,24 +559,26 @@ router.get("/analytics/summary", async (req, res) => {
       recentPurchases,
       spendByCategory,
     ] = await Promise.all([
-      Vendor.countDocuments({}),
-      Vendor.countDocuments({ status: "active" }),
-      Vendor.countDocuments({ status: "inactive" }),
+      Vendor.countDocuments(vendorScope),
+      Vendor.countDocuments({ ...vendorScope, status: "active" }),
+      Vendor.countDocuments({ ...vendorScope, status: "inactive" }),
       Purchase.aggregate([
+        ...(purchaseScope ? [{ $match: purchaseScope }] : []),
         { $group: { _id: null, totalTransactions: { $sum: 1 }, totalSpent: { $sum: "$totalAmount" }, averagePurchase: { $avg: "$totalAmount" } } },
       ]),
       Purchase.aggregate([
-        { $match: { purchaseDate: { $gte: thirtyDaysAgo } } },
+        { $match: purchaseRecentMatch },
         { $group: { _id: null, transactions: { $sum: 1 }, spent: { $sum: "$totalAmount" } } },
       ]),
-      vendorItemCategories.countDocuments({}),
-      vendorItemCategories.countDocuments({ status: "active" }),
-      vendorItems.countDocuments({}),
-      vendorItems.countDocuments({ status: "active" }),
-      Inventory.countDocuments({}),
-      Vendor.find({}).sort({ totalSpent: -1 }).limit(5),
-      Purchase.find({}).sort({ purchaseDate: -1 }).limit(5),
+      showCatalogue ? vendorItemCategories.countDocuments({}) : Promise.resolve(0),
+      showCatalogue ? vendorItemCategories.countDocuments({ status: "active" }) : Promise.resolve(0),
+      showCatalogue ? vendorItems.countDocuments({}) : Promise.resolve(0),
+      showCatalogue ? vendorItems.countDocuments({ status: "active" }) : Promise.resolve(0),
+      showCatalogue ? Inventory.countDocuments({}) : Promise.resolve(0),
+      Vendor.find(vendorScope).sort({ totalSpent: -1 }).limit(5),
+      Purchase.find(purchaseMatch).sort({ purchaseDate: -1 }).limit(5),
       Purchase.aggregate([
+        ...(purchaseScope ? [{ $match: purchaseScope }] : []),
         { $unwind: "$items" },
         {
           $group: {
@@ -533,11 +625,18 @@ router.get("/analytics/summary", async (req, res) => {
   }
 });
 
-router.put("/purchases/:purchaseId", async (req, res) => {
+router.put("/purchases/:purchaseId", async (req: ScopedRequest, res) => {
   try {
     const Purchase = getPurchaseModel();
     const purchase = await Purchase.findById(req.params.purchaseId);
     if (!purchase) { res.status(404).json({ error: "NotFound", message: "Purchase not found" }); return; }
+    if (req.scope && !req.scope.isMaster) {
+      const inSubScope = req.scope.subHubIds.includes(String((purchase as any).subHubId || ""));
+      const inSuperScope = req.scope.superHubIds.includes(String((purchase as any).superHubId || ""));
+      if (!inSubScope && !inSuperScope) {
+        res.status(404).json({ error: "NotFound", message: "Purchase not found" }); return;
+      }
+    }
 
     const { invoiceNumber, purchaseDate, notes } = req.body;
     if (invoiceNumber !== undefined) (purchase as any).invoiceNumber = invoiceNumber.trim();
@@ -552,12 +651,19 @@ router.put("/purchases/:purchaseId", async (req, res) => {
   }
 });
 
-router.delete("/purchases/:purchaseId", async (req, res) => {
+router.delete("/purchases/:purchaseId", async (req: ScopedRequest, res) => {
   try {
     const Purchase = getPurchaseModel();
     const Vendor = getVendorModel();
     const purchase = await Purchase.findById(req.params.purchaseId);
     if (!purchase) { res.status(404).json({ error: "NotFound", message: "Purchase not found" }); return; }
+    if (req.scope && !req.scope.isMaster) {
+      const inSubScope = req.scope.subHubIds.includes(String((purchase as any).subHubId || ""));
+      const inSuperScope = req.scope.superHubIds.includes(String((purchase as any).superHubId || ""));
+      if (!inSubScope && !inSuperScope) {
+        res.status(404).json({ error: "NotFound", message: "Purchase not found" }); return;
+      }
+    }
 
     const vendor = await Vendor.findById((purchase as any).vendorId);
     if (vendor) {
@@ -574,7 +680,7 @@ router.delete("/purchases/:purchaseId", async (req, res) => {
   }
 });
 
-router.get("/:vendorId/purchases", async (req, res) => {
+router.get("/:vendorId/purchases", async (req: ScopedRequest, res) => {
   try {
     const Purchase = getPurchaseModel();
     const { page = "1", limit = "20" } = req.query as Record<string, string>;
@@ -582,9 +688,13 @@ router.get("/:vendorId/purchases", async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
     const skip = (pageNum - 1) * limitNum;
 
+    const filter: Record<string, any> = { vendorId: req.params.vendorId };
+    const scopeFilter = purchaseScopeFilter(req.scope);
+    if (scopeFilter) Object.assign(filter, scopeFilter);
+
     const [purchases, total] = await Promise.all([
-      Purchase.find({ vendorId: req.params.vendorId }).sort({ purchaseDate: -1 }).skip(skip).limit(limitNum),
-      Purchase.countDocuments({ vendorId: req.params.vendorId }),
+      Purchase.find(filter).sort({ purchaseDate: -1 }).skip(skip).limit(limitNum),
+      Purchase.countDocuments(filter),
     ]);
 
     res.json({ purchases: purchases.map(serializePurchase), total, page: pageNum, limit: limitNum });
@@ -594,7 +704,7 @@ router.get("/:vendorId/purchases", async (req, res) => {
   }
 });
 
-router.post("/:vendorId/purchases", async (req, res) => {
+router.post("/:vendorId/purchases", async (req: ScopedRequest, res) => {
   try {
     const Vendor = getVendorModel();
     const Purchase = getPurchaseModel();
@@ -605,6 +715,18 @@ router.post("/:vendorId/purchases", async (req, res) => {
 
     const { invoiceNumber, purchaseDate, items, notes, subHubId, subHubName, superHubId, superHubName, createdByName, createdByEmail, status } = req.body;
     const purchaseStatus: "saved" | "draft" = status === "draft" ? "draft" : "saved";
+
+    // Non-master users may only create purchases for hubs in their scope.
+    if (req.scope && !req.scope.isMaster) {
+      const sub = String(subHubId || "");
+      const sup = String(superHubId || "");
+      const subOk = sub && req.scope.subHubIds.includes(sub);
+      const supOk = sup && req.scope.superHubIds.includes(sup);
+      if (!subOk && !supOk) {
+        res.status(403).json({ error: "Forbidden", message: "You may only create purchases for hubs in your scope" });
+        return;
+      }
+    }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: "ValidationError", message: "At least one item is required" });
@@ -746,12 +868,19 @@ router.get("/inventory/all", async (req, res) => {
 
 // ─── RECEIPTS ─────────────────────────────────────────────────────────────────
 
-router.post("/purchases/:id/receipts", async (req, res) => {
+router.post("/purchases/:id/receipts", async (req: ScopedRequest, res) => {
   try {
     const Purchase = getPurchaseModel();
     const Receipt = getReceiptModel();
     const purchase = await Purchase.findById(req.params.id);
     if (!purchase) return res.status(404).json({ error: "NotFound", message: "Invoice not found" });
+    if (req.scope && !req.scope.isMaster) {
+      const inSubScope = req.scope.subHubIds.includes(String((purchase as any).subHubId || ""));
+      const inSuperScope = req.scope.superHubIds.includes(String((purchase as any).superHubId || ""));
+      if (!inSubScope && !inSuperScope) {
+        return res.status(404).json({ error: "NotFound", message: "Invoice not found" });
+      }
+    }
 
     const body = req.body || {};
     const allocations = Array.isArray(body.allocations) ? body.allocations : [];
@@ -826,7 +955,7 @@ router.post("/purchases/:id/receipts", async (req, res) => {
   }
 });
 
-router.get("/receipts", async (req, res) => {
+router.get("/receipts", async (req: ScopedRequest, res) => {
   try {
     const Receipt = getReceiptModel();
     const { vendorId, page = "1", limit = "30", search, dateFrom, dateTo } = req.query as Record<string, string>;
@@ -844,6 +973,17 @@ router.get("/receipts", async (req, res) => {
       if (dateFrom) filter.date.$gte = new Date(dateFrom);
       if (dateTo) { const d = new Date(dateTo); d.setHours(23, 59, 59, 999); filter.date.$lte = d; }
     }
+
+    // Non-master users only see receipts for invoices in their hub scope.
+    const scopedPurchaseIds = await loadScopedPurchaseIds(req.scope);
+    if (scopedPurchaseIds !== null) {
+      if (scopedPurchaseIds.size === 0) {
+        res.json({ receipts: [], total: 0, page: pageNum, limit: limitNum });
+        return;
+      }
+      filter.invoiceId = { $in: [...scopedPurchaseIds] };
+    }
+
     const [receipts, total] = await Promise.all([
       Receipt.find(filter).sort({ date: -1, createdAt: -1 }).skip(skip).limit(limitNum),
       Receipt.countDocuments(filter),
@@ -855,9 +995,17 @@ router.get("/receipts", async (req, res) => {
   }
 });
 
-router.delete("/receipts/:id", async (req, res) => {
+router.delete("/receipts/:id", async (req: ScopedRequest, res) => {
   try {
     const Receipt = getReceiptModel();
+    if (req.scope && !req.scope.isMaster) {
+      const existing = await Receipt.findById(req.params.id);
+      if (!existing) return res.status(404).json({ error: "NotFound", message: "Receipt not found" });
+      const scopedPurchaseIds = await loadScopedPurchaseIds(req.scope);
+      if (!scopedPurchaseIds || !scopedPurchaseIds.has(String((existing as any).invoiceId || ""))) {
+        return res.status(404).json({ error: "NotFound", message: "Receipt not found" });
+      }
+    }
     const r = await Receipt.findByIdAndDelete(req.params.id);
     if (!r) return res.status(404).json({ error: "NotFound", message: "Receipt not found" });
     if ((r as any).bankPaymentId) {
@@ -886,7 +1034,7 @@ router.delete("/receipts/:id", async (req, res) => {
 
 // ─── VENDOR STATEMENT ─────────────────────────────────────────────────────────
 
-router.get("/:vendorId/statement", async (req, res) => {
+router.get("/:vendorId/statement", async (req: ScopedRequest, res) => {
   try {
     const Vendor = getVendorModel();
     const Purchase = getPurchaseModel();
@@ -904,6 +1052,23 @@ router.get("/:vendorId/statement", async (req, res) => {
     if (Object.keys(dateFilter).length) purchaseFilter.purchaseDate = dateFilter;
     const receiptFilter: Record<string, any> = { vendorId: req.params.vendorId };
     if (Object.keys(dateFilter).length) receiptFilter.date = dateFilter;
+
+    // Apply hub scope to both purchases and receipts.
+    const scopeFilter = purchaseScopeFilter(req.scope);
+    if (scopeFilter) Object.assign(purchaseFilter, scopeFilter);
+    const scopedPurchaseIds = await loadScopedPurchaseIds(req.scope);
+    if (scopedPurchaseIds !== null) {
+      if (scopedPurchaseIds.size === 0) {
+        res.json({
+          vendor: serializeVendor(vendor),
+          invoices: [],
+          receipts: [],
+          totals: { invoiced: 0, received: 0, outstanding: 0 },
+        });
+        return;
+      }
+      receiptFilter.invoiceId = { $in: [...scopedPurchaseIds] };
+    }
 
     const [purchases, receipts] = await Promise.all([
       Purchase.find(purchaseFilter).sort({ purchaseDate: 1, createdAt: 1 }),

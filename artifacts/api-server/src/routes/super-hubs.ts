@@ -2,10 +2,18 @@ import { Router, type IRouter } from "express";
 import { SuperHub } from "../db/models/super-hub.js";
 import { SubHub } from "../db/models/sub-hub.js";
 import { requireAuth } from "../middlewares/auth.js";
+import {
+  loadScope,
+  toObjectIds,
+  canAccessSuperHub,
+  rejectIfNotMaster,
+  type ScopedRequest,
+} from "../middlewares/scope.js";
 import { generateDbName, getSubHubDbConnection } from "../db/sub-hub-connections.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
+router.use(loadScope as any);
 
 function subHubToJson(s: any, superHubName: string) {
   return {
@@ -22,12 +30,21 @@ function subHubToJson(s: any, superHubName: string) {
   };
 }
 
-router.get("/", async (req, res) => {
+router.get("/", async (req: ScopedRequest, res) => {
   try {
-    const superHubs = await SuperHub.find().sort({ createdAt: 1 });
+    const scope = req.scope!;
+    const filter = scope.isMaster
+      ? {}
+      : { _id: { $in: toObjectIds(scope.superHubIds) } };
+
+    const superHubs = await SuperHub.find(filter).sort({ createdAt: 1 });
     const result = await Promise.all(
       superHubs.map(async (h) => {
-        const subHubCount = await SubHub.countDocuments({ superHubId: h._id });
+        const subFilter: any = { superHubId: h._id };
+        if (!scope.isMaster) {
+          subFilter._id = { $in: toObjectIds(scope.subHubIds) };
+        }
+        const subHubCount = await SubHub.countDocuments(subFilter);
         return {
           id: String(h._id),
           name: h.name,
@@ -46,11 +63,20 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.get("/:id/sub-hubs", async (req, res) => {
+router.get("/:id/sub-hubs", async (req: ScopedRequest, res) => {
   try {
+    const scope = req.scope!;
+    if (!canAccessSuperHub(scope, req.params.id)) {
+      res.status(404).json({ error: "NotFound", message: "Super hub not found" });
+      return;
+    }
+
     const superHub = await SuperHub.findById(req.params.id);
     if (!superHub) { res.status(404).json({ error: "NotFound", message: "Super hub not found" }); return; }
-    const subHubs = await SubHub.find({ superHubId: superHub._id }).sort({ createdAt: 1 });
+
+    const subFilter: any = { superHubId: superHub._id };
+    if (!scope.isMaster) subFilter._id = { $in: toObjectIds(scope.subHubIds) };
+    const subHubs = await SubHub.find(subFilter).sort({ createdAt: 1 });
     res.json({ subHubs: subHubs.map((s) => subHubToJson(s, superHub.name)), total: subHubs.length });
   } catch (err) {
     req.log.error({ err }, "Failed to get sub hubs");
@@ -58,11 +84,20 @@ router.get("/:id/sub-hubs", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", async (req: ScopedRequest, res) => {
   try {
+    const scope = req.scope!;
+    if (!canAccessSuperHub(scope, req.params.id)) {
+      res.status(404).json({ error: "NotFound", message: "Super hub not found" });
+      return;
+    }
+
     const superHub = await SuperHub.findById(req.params.id);
     if (!superHub) { res.status(404).json({ error: "NotFound", message: "Super hub not found" }); return; }
-    const subHubs = await SubHub.find({ superHubId: superHub._id }).sort({ createdAt: 1 });
+
+    const subFilter: any = { superHubId: superHub._id };
+    if (!scope.isMaster) subFilter._id = { $in: toObjectIds(scope.subHubIds) };
+    const subHubs = await SubHub.find(subFilter).sort({ createdAt: 1 });
     const sh = {
       id: String(superHub._id),
       name: superHub.name,
@@ -79,7 +114,8 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", async (req: ScopedRequest, res) => {
+  if (rejectIfNotMaster(req.scope, res)) return;
   try {
     const { name, location, imageUrl, status } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
@@ -98,7 +134,8 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.post("/:id/sub-hubs", async (req, res) => {
+router.post("/:id/sub-hubs", async (req: ScopedRequest, res) => {
+  if (rejectIfNotMaster(req.scope, res)) return;
   try {
     const superHub = await SuperHub.findById(req.params.id);
     if (!superHub) { res.status(404).json({ error: "NotFound", message: "Super hub not found" }); return; }
@@ -143,7 +180,8 @@ router.post("/:id/sub-hubs", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", async (req: ScopedRequest, res) => {
+  if (rejectIfNotMaster(req.scope, res)) return;
   try {
     const superHub = await SuperHub.findById(req.params.id);
     if (!superHub) { res.status(404).json({ error: "NotFound", message: "Super hub not found" }); return; }
@@ -162,7 +200,8 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req: ScopedRequest, res) => {
+  if (rejectIfNotMaster(req.scope, res)) return;
   try {
     const superHub = await SuperHub.findById(req.params.id);
     if (!superHub) { res.status(404).json({ error: "NotFound", message: "Super hub not found" }); return; }
@@ -175,7 +214,8 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-router.patch("/:id/toggle-status", async (req, res) => {
+router.patch("/:id/toggle-status", async (req: ScopedRequest, res) => {
+  if (rejectIfNotMaster(req.scope, res)) return;
   try {
     const superHub = await SuperHub.findById(req.params.id);
     if (!superHub) { res.status(404).json({ error: "NotFound", message: "Super hub not found" }); return; }

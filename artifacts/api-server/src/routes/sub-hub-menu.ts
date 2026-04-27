@@ -3,15 +3,29 @@ import mongoose from "mongoose";
 import { SubHub } from "../db/models/sub-hub.js";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 
 const router: IRouter = Router({ mergeParams: true });
 router.use(requireAuth as any);
+router.use(loadScope as any);
 
-async function getSubHubDb(subHubId: string, res: any) {
+async function getSubHubDb(subHubId: string, res: any, req?: ScopedRequest) {
   const sub = await SubHub.findById(subHubId);
   if (!sub) {
     res.status(404).json({ error: "NotFound", message: "Sub hub not found" });
     return null;
+  }
+  // Enforce hub scope: non-master users may only access sub hubs in their scope
+  // (either directly assigned or under one of their assigned super hubs).
+  if (req && req.scope && !req.scope.isMaster) {
+    const subId = String(sub._id);
+    const subSuperId = sub.superHubId ? String(sub.superHubId) : "";
+    const inSubScope = req.scope.subHubIds.includes(subId);
+    const inSuperScope = subSuperId && req.scope.superHubIds.includes(subSuperId);
+    if (!inSubScope && !inSuperScope) {
+      res.status(404).json({ error: "NotFound", message: "Sub hub not found" });
+      return null;
+    }
   }
   if (!sub.dbName) {
     res.status(400).json({ error: "NoDB", message: "This sub hub has no database linked. Edit the sub hub and set a database name." });
@@ -38,7 +52,7 @@ function normalizeIdList(values: any) {
 // ─── STATS ────────────────────────────────────────────────────────────────────
 router.get("/stats", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const db = ctx.conn.db;
     const [products, categories, coupons, combos, carousels, pincodes, sections, timeslots] = await Promise.all([
@@ -61,7 +75,7 @@ router.get("/stats", async (req, res) => {
 // ─── PRODUCTS ─────────────────────────────────────────────────────────────────
 router.get("/products", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const search = String(req.query.search || "");
     const query: any = search ? { name: { $regex: search, $options: "i" } } : {};
@@ -82,7 +96,7 @@ router.get("/products", async (req, res) => {
 
 router.post("/products", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const {
       name, description, category, subCategory,
@@ -129,7 +143,7 @@ router.post("/products", async (req, res) => {
 
 router.put("/products/:productId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.productId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid product ID" }); return; }
@@ -173,7 +187,7 @@ router.put("/products/:productId", async (req, res) => {
 
 router.delete("/products/:productId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.productId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid product ID" }); return; }
@@ -188,7 +202,7 @@ router.delete("/products/:productId", async (req, res) => {
 // ─── PRODUCTS BULK UPSERT ─────────────────────────────────────────────────────
 router.post("/products/bulk-upsert", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const rows: any[] = Array.isArray(req.body.products) ? req.body.products : [];
     if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No products provided" }); return; }
@@ -247,7 +261,7 @@ router.post("/products/bulk-upsert", async (req, res) => {
 // ─── CATEGORIES ───────────────────────────────────────────────────────────────
 router.get("/categories", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const categories = await ctx.conn.db.collection("categories").find({}).sort({ sortOrder: 1, name: 1 }).toArray();
     res.json({ categories, total: categories.length });
@@ -259,7 +273,7 @@ router.get("/categories", async (req, res) => {
 
 router.post("/categories", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const { name, imageUrl, isActive, sortOrder, subCategories } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
@@ -282,7 +296,7 @@ router.post("/categories", async (req, res) => {
 
 router.put("/categories/:catId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.catId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid category ID" }); return; }
@@ -304,7 +318,7 @@ router.put("/categories/:catId", async (req, res) => {
 
 router.delete("/categories/:catId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.catId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid category ID" }); return; }
@@ -319,7 +333,7 @@ router.delete("/categories/:catId", async (req, res) => {
 // ─── COUPONS ──────────────────────────────────────────────────────────────────
 router.get("/coupons", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const coupons = await ctx.conn.db.collection("coupons").find({}).sort({ createdAt: -1 }).toArray();
     res.json({ coupons, total: coupons.length });
@@ -331,7 +345,7 @@ router.get("/coupons", async (req, res) => {
 
 router.post("/coupons", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const { code, title, description, type, discountValue, minOrderAmount, maxUsage, isFirstTimeOnly, applicableCategories, applicableProducts, color, isActive, expiresAt } = req.body;
     if (!code) { res.status(400).json({ error: "ValidationError", message: "Code is required" }); return; }
@@ -365,7 +379,7 @@ router.post("/coupons", async (req, res) => {
 
 router.put("/coupons/:couponId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.couponId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid coupon ID" }); return; }
@@ -395,7 +409,7 @@ router.put("/coupons/:couponId", async (req, res) => {
 
 router.delete("/coupons/:couponId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.couponId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid coupon ID" }); return; }
@@ -410,7 +424,7 @@ router.delete("/coupons/:couponId", async (req, res) => {
 // ─── COMBOS ───────────────────────────────────────────────────────────────────
 router.get("/combos", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const combos = await ctx.conn.db.collection("combos").find({}).sort({ sortOrder: 1, name: 1 }).toArray();
     res.json({ combos, total: combos.length });
@@ -422,7 +436,7 @@ router.get("/combos", async (req, res) => {
 
 router.post("/combos", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const { name, description, fullDescription, serves, weight, discountedPrice, originalPrice, discount, includes, tags, nutrition, isActive, sortOrder } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
@@ -455,7 +469,7 @@ router.post("/combos", async (req, res) => {
 
 router.put("/combos/:comboId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.comboId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid combo ID" }); return; }
@@ -485,7 +499,7 @@ router.put("/combos/:comboId", async (req, res) => {
 
 router.delete("/combos/:comboId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.comboId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid combo ID" }); return; }
@@ -500,7 +514,7 @@ router.delete("/combos/:comboId", async (req, res) => {
 // ─── CAROUSELS ────────────────────────────────────────────────────────────────
 router.get("/carousels", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const carousels = await ctx.conn.db.collection("carousels").find({}).sort({ order: 1 }).toArray();
     res.json({ carousels, total: carousels.length });
@@ -512,7 +526,7 @@ router.get("/carousels", async (req, res) => {
 
 router.post("/carousels", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const { imageUrl, title, linkUrl, order, isActive } = req.body;
     if (!imageUrl) { res.status(400).json({ error: "ValidationError", message: "Image URL is required" }); return; }
@@ -533,7 +547,7 @@ router.post("/carousels", async (req, res) => {
 
 router.put("/carousels/:carouselId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.carouselId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid carousel ID" }); return; }
@@ -555,7 +569,7 @@ router.put("/carousels/:carouselId", async (req, res) => {
 
 router.delete("/carousels/:carouselId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.carouselId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid carousel ID" }); return; }
@@ -570,7 +584,7 @@ router.delete("/carousels/:carouselId", async (req, res) => {
 // ─── SECTIONS ─────────────────────────────────────────────────────────────────
 router.get("/sections", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const sections = await ctx.conn.db.collection("sections").find({}).sort({ sortOrder: 1 }).toArray();
     res.json({ sections, total: sections.length });
@@ -582,7 +596,7 @@ router.get("/sections", async (req, res) => {
 
 router.post("/sections", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const { title, type, sortOrder, isActive } = req.body;
     if (!title) { res.status(400).json({ error: "ValidationError", message: "Title is required" }); return; }
@@ -602,7 +616,7 @@ router.post("/sections", async (req, res) => {
 
 router.put("/sections/:sectionId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.sectionId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid section ID" }); return; }
@@ -623,7 +637,7 @@ router.put("/sections/:sectionId", async (req, res) => {
 
 router.delete("/sections/:sectionId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.sectionId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid section ID" }); return; }
@@ -638,7 +652,7 @@ router.delete("/sections/:sectionId", async (req, res) => {
 // ─── PINCODES ─────────────────────────────────────────────────────────────────
 router.get("/pincodes", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const pincodes = await ctx.conn.db.collection("pincodes").find({}).sort({ pincode: 1 }).toArray();
     res.json({ pincodes, total: pincodes.length });
@@ -650,7 +664,7 @@ router.get("/pincodes", async (req, res) => {
 
 router.post("/pincodes", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const { pincode, area, city, isActive } = req.body;
     if (!pincode) { res.status(400).json({ error: "ValidationError", message: "Pincode is required" }); return; }
@@ -674,7 +688,7 @@ router.post("/pincodes", async (req, res) => {
 
 router.put("/pincodes/:pincodeId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.pincodeId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid pincode ID" }); return; }
@@ -695,7 +709,7 @@ router.put("/pincodes/:pincodeId", async (req, res) => {
 
 router.delete("/pincodes/:pincodeId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.pincodeId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid pincode ID" }); return; }
@@ -710,7 +724,7 @@ router.delete("/pincodes/:pincodeId", async (req, res) => {
 // ─── TIMESLOTS ─────────────────────────────────────────────────────────────────
 router.get("/timeslots", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const timeslots = await ctx.conn.db.collection("timeslots").find({}).sort({ sortOrder: 1, startTime: 1 }).toArray();
     res.json({ timeslots, total: timeslots.length });
@@ -722,7 +736,7 @@ router.get("/timeslots", async (req, res) => {
 
 router.post("/timeslots", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const { label, startTime, endTime, isInstant, extraCharge, isActive, sortOrder } = req.body;
     if (!label) { res.status(400).json({ error: "ValidationError", message: "Label is required" }); return; }
@@ -748,7 +762,7 @@ router.post("/timeslots", async (req, res) => {
 
 router.put("/timeslots/:timeslotId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.timeslotId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid timeslot ID" }); return; }
@@ -772,7 +786,7 @@ router.put("/timeslots/:timeslotId", async (req, res) => {
 
 router.delete("/timeslots/:timeslotId", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const oid = toId(req.params.timeslotId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid timeslot ID" }); return; }
@@ -788,7 +802,7 @@ router.delete("/timeslots/:timeslotId", async (req, res) => {
 
 router.post("/categories/bulk-upsert", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const rows: any[] = Array.isArray(req.body.items) ? req.body.items : [];
     if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No items provided" }); return; }
@@ -810,7 +824,7 @@ router.post("/categories/bulk-upsert", async (req, res) => {
 
 router.post("/combos/bulk-upsert", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const rows: any[] = Array.isArray(req.body.items) ? req.body.items : [];
     if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No items provided" }); return; }
@@ -841,7 +855,7 @@ router.post("/combos/bulk-upsert", async (req, res) => {
 
 router.post("/coupons/bulk-upsert", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const rows: any[] = Array.isArray(req.body.items) ? req.body.items : [];
     if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No items provided" }); return; }
@@ -876,7 +890,7 @@ router.post("/coupons/bulk-upsert", async (req, res) => {
 
 router.post("/sections/bulk-upsert", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const rows: any[] = Array.isArray(req.body.items) ? req.body.items : [];
     if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No items provided" }); return; }
@@ -896,7 +910,7 @@ router.post("/sections/bulk-upsert", async (req, res) => {
 
 router.post("/timeslots/bulk-upsert", async (req, res) => {
   try {
-    const ctx = await getSubHubDb(req.params.id, res);
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const rows: any[] = Array.isArray(req.body.items) ? req.body.items : [];
     if (rows.length === 0) { res.status(400).json({ error: "ValidationError", message: "No items provided" }); return; }

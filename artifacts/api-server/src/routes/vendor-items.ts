@@ -4,9 +4,11 @@ import { requireAuth } from "../middlewares/auth.js";
 import { SuperHub } from "../db/models/super-hub.js";
 import { SubHub } from "../db/models/sub-hub.js";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
+import { denyIfNotMaster, loadScope, type ScopedRequest } from "../middlewares/scope.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
+router.use(loadScope as any);
 
 const categorySchema = new mongoose.Schema(
   {
@@ -183,7 +185,7 @@ router.get("/categories", async (req, res) => {
   }
 });
 
-router.post("/categories", async (req, res) => {
+router.post("/categories", denyIfNotMaster as any, async (req, res) => {
   try {
     const Category = getCategoryModel();
     const name = String(req.body.name ?? "").trim();
@@ -206,7 +208,7 @@ router.post("/categories", async (req, res) => {
   }
 });
 
-router.put("/categories/:id", async (req, res) => {
+router.put("/categories/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const oid = toId(req.params.id);
     if (!oid) {
@@ -241,7 +243,7 @@ router.put("/categories/:id", async (req, res) => {
   }
 });
 
-router.delete("/categories/:id", async (req, res) => {
+router.delete("/categories/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const oid = toId(req.params.id);
     if (!oid) {
@@ -284,7 +286,7 @@ router.get("/items", async (req, res) => {
   }
 });
 
-router.post("/items", async (req, res) => {
+router.post("/items", denyIfNotMaster as any, async (req, res) => {
   try {
     const name = String(req.body.name ?? "").trim();
     const categoryId = toId(String(req.body.categoryId ?? ""));
@@ -325,7 +327,7 @@ router.post("/items", async (req, res) => {
   }
 });
 
-router.put("/items/:id", async (req, res) => {
+router.put("/items/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const oid = toId(req.params.id);
     if (!oid) {
@@ -376,7 +378,7 @@ router.put("/items/:id", async (req, res) => {
   }
 });
 
-router.delete("/items/:id", async (req, res) => {
+router.delete("/items/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const oid = toId(req.params.id);
     if (!oid) {
@@ -392,9 +394,23 @@ router.delete("/items/:id", async (req, res) => {
   }
 });
 
-router.get("/hub-products", async (req, res) => {
+router.get("/hub-products", async (req: ScopedRequest, res) => {
   try {
-    const subHubs = await SubHub.find({ dbName: { $ne: "" } }).lean();
+    const subHubFilter: Record<string, any> = { dbName: { $ne: "" } };
+    if (req.scope && !req.scope.isMaster) {
+      const ids = new Set<string>();
+      for (const id of req.scope.subHubIds) ids.add(id);
+      if (req.scope.superHubIds.length > 0) {
+        const subsUnderSuper = await SubHub.find({ superHubId: { $in: req.scope.superHubIds } }, { _id: 1 }).lean();
+        for (const s of subsUnderSuper) ids.add(String(s._id));
+      }
+      if (ids.size === 0) {
+        res.json({ products: [], total: 0 });
+        return;
+      }
+      subHubFilter._id = { $in: [...ids] };
+    }
+    const subHubs = await SubHub.find(subHubFilter).lean();
     const productMap = new Map<string, {
       name: string;
       category: string;
@@ -442,12 +458,22 @@ router.get("/hub-products", async (req, res) => {
   }
 });
 
-router.put("/hub-products/:subHubId/:productId", async (req, res) => {
+router.put("/hub-products/:subHubId/:productId", async (req: ScopedRequest, res) => {
   try {
     const subHub = await SubHub.findById(req.params.subHubId).lean() as any;
     if (!subHub || !subHub.dbName) {
       res.status(404).json({ error: "NotFound", message: "Sub hub not found or has no database" });
       return;
+    }
+    if (req.scope && !req.scope.isMaster) {
+      const subId = String(subHub._id);
+      const supId = subHub.superHubId ? String(subHub.superHubId) : "";
+      const inSubScope = req.scope.subHubIds.includes(subId);
+      const inSuperScope = supId && req.scope.superHubIds.includes(supId);
+      if (!inSubScope && !inSuperScope) {
+        res.status(404).json({ error: "NotFound", message: "Sub hub not found or has no database" });
+        return;
+      }
     }
     const oid = toId(req.params.productId);
     if (!oid) {
@@ -636,7 +662,23 @@ async function applyAdjustmentInput(ri: any, Item: any, selectedSubHubId: string
   };
 }
 
-router.get("/stock-adjustments", async (req, res) => {
+function adjustmentScopeFilter(scope: ScopedRequest["scope"]): Record<string, any> | null {
+  if (!scope || scope.isMaster) return null;
+  const ors: Record<string, any>[] = [];
+  if (scope.subHubIds.length > 0) ors.push({ subHubId: { $in: scope.subHubIds } });
+  if (scope.superHubIds.length > 0) ors.push({ superHubId: { $in: scope.superHubIds } });
+  if (ors.length === 0) return { _id: { $in: [] } };
+  return { $or: ors };
+}
+
+function isAdjustmentInScope(scope: ScopedRequest["scope"], adj: any): boolean {
+  if (!scope || scope.isMaster) return true;
+  const sub = String(adj.subHubId || "");
+  const sup = String(adj.superHubId || "");
+  return (sub && scope.subHubIds.includes(sub)) || (sup && scope.superHubIds.includes(sup));
+}
+
+router.get("/stock-adjustments", async (req: ScopedRequest, res) => {
   try {
     const StockAdjustment = getStockAdjustmentModel();
     const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
@@ -646,6 +688,16 @@ router.get("/stock-adjustments", async (req, res) => {
     if (req.query.search) {
       const regex = { $regex: String(req.query.search), $options: "i" };
       query.$or = [{ reason: regex }, { createdBy: regex }];
+    }
+    const scopeFilter = adjustmentScopeFilter(req.scope);
+    if (scopeFilter) {
+      // Combine with existing $or via $and so search and scope both apply.
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, scopeFilter];
+        delete query.$or;
+      } else {
+        Object.assign(query, scopeFilter);
+      }
     }
     const [docs, total] = await Promise.all([
       StockAdjustment.find(query).sort({ voucherNumber: -1 }).skip(skip).limit(limit),
@@ -658,7 +710,7 @@ router.get("/stock-adjustments", async (req, res) => {
   }
 });
 
-router.post("/stock-adjustments", async (req, res) => {
+router.post("/stock-adjustments", async (req: ScopedRequest, res) => {
   try {
     const StockAdjustment = getStockAdjustmentModel();
     const Item = getItemModel();
@@ -669,6 +721,11 @@ router.post("/stock-adjustments", async (req, res) => {
     const rawItems: any[] = Array.isArray(req.body.items) ? req.body.items : [];
     const adjustmentItems: any[] = [];
     const hubContext = await resolveStockAdjustmentHubContext(String(req.body.superHubId ?? ""), String(req.body.subHubId ?? ""));
+
+    if (!isAdjustmentInScope(req.scope, hubContext)) {
+      res.status(403).json({ error: "Forbidden", message: "You may only create stock adjustments for hubs in your scope" });
+      return;
+    }
 
     for (const ri of rawItems) {
       const adjustmentItem = await applyAdjustmentInput(ri, Item, String(hubContext.subHubId));
@@ -693,7 +750,7 @@ router.post("/stock-adjustments", async (req, res) => {
   }
 });
 
-router.put("/stock-adjustments/:id", async (req, res) => {
+router.put("/stock-adjustments/:id", async (req: ScopedRequest, res) => {
   try {
     const oid = toId(req.params.id);
     if (!oid) {
@@ -709,6 +766,11 @@ router.put("/stock-adjustments/:id", async (req, res) => {
       return;
     }
 
+    if (!isAdjustmentInScope(req.scope, existing)) {
+      res.status(404).json({ error: "NotFound", message: "Stock adjustment not found" });
+      return;
+    }
+
     for (const oldItem of (existing.items ?? []) as any[]) {
       await restoreAdjustmentItem(oldItem, Item);
     }
@@ -716,6 +778,11 @@ router.put("/stock-adjustments/:id", async (req, res) => {
     const rawItems: any[] = Array.isArray(req.body.items) ? req.body.items : [];
     const adjustmentItems: any[] = [];
     const hubContext = await resolveStockAdjustmentHubContext(String(req.body.superHubId ?? ""), String(req.body.subHubId ?? ""));
+
+    if (!isAdjustmentInScope(req.scope, hubContext)) {
+      res.status(403).json({ error: "Forbidden", message: "You may only assign stock adjustments to hubs in your scope" });
+      return;
+    }
 
     for (const ri of rawItems) {
       const adjustmentItem = await applyAdjustmentInput(ri, Item, String(hubContext.subHubId));
@@ -740,7 +807,7 @@ router.put("/stock-adjustments/:id", async (req, res) => {
   }
 });
 
-router.delete("/stock-adjustments/:id", async (req, res) => {
+router.delete("/stock-adjustments/:id", async (req: ScopedRequest, res) => {
   try {
     const oid = toId(req.params.id);
     if (!oid) {
@@ -752,6 +819,11 @@ router.delete("/stock-adjustments/:id", async (req, res) => {
 
     const existing = await StockAdjustment.findById(oid);
     if (!existing) {
+      res.status(404).json({ error: "NotFound", message: "Stock adjustment not found" });
+      return;
+    }
+
+    if (!isAdjustmentInScope(req.scope, existing)) {
       res.status(404).json({ error: "NotFound", message: "Stock adjustment not found" });
       return;
     }

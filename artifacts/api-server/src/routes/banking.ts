@@ -1,9 +1,12 @@
 import { Router, type IRouter } from "express";
 import { mongoose } from "../db/index.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { denyIfNotMaster, loadScope, type ScopedRequest } from "../middlewares/scope.js";
+import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
+router.use(loadScope as any);
 
 // ── Schemas ────────────────────────────────────────────────────────────────
 
@@ -90,10 +93,30 @@ function serializeTx(doc: any) {
   };
 }
 
-// ── Accounts ───────────────────────────────────────────────────────────────
+/**
+ * Returns the set of orderIds (as strings) that fall within the request
+ * user's scope. Returns null when the caller is master (no scoping needed).
+ * Returns an empty Set when the caller has no hubs assigned.
+ */
+async function loadScopedOrderIds(scope: ScopedRequest["scope"]): Promise<Set<string> | null> {
+  if (!scope || scope.isMaster) return null;
+  if (scope.subHubIds.length === 0) return new Set();
+  const ordersConn = await getSubHubDbConnection("orders");
+  const orders = await ordersConn.db
+    .collection("orders")
+    .find({ subHubId: { $in: scope.subHubIds } })
+    .project({ _id: 1 })
+    .toArray();
+  const set = new Set<string>();
+  for (const o of orders) set.add(String(o._id));
+  return set;
+}
 
-router.get("/accounts", async (_req, res) => {
+// ── Accounts (master-managed; non-master users see nothing) ────────────────
+
+router.get("/accounts", async (req: ScopedRequest, res) => {
   try {
+    if (req.scope && !req.scope.isMaster) { res.json([]); return; }
     const Account = getAccountModel();
     const docs = await Account.find().sort({ createdAt: -1 });
     res.json(docs.map(serializeAccount));
@@ -102,7 +125,7 @@ router.get("/accounts", async (_req, res) => {
   }
 });
 
-router.post("/accounts", async (req, res) => {
+router.post("/accounts", denyIfNotMaster as any, async (req, res) => {
   try {
     const Account = getAccountModel();
     const doc = await Account.create(req.body);
@@ -112,7 +135,7 @@ router.post("/accounts", async (req, res) => {
   }
 });
 
-router.put("/accounts/:id", async (req, res) => {
+router.put("/accounts/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const Account = getAccountModel();
     const oid = toId(req.params.id);
@@ -125,7 +148,7 @@ router.put("/accounts/:id", async (req, res) => {
   }
 });
 
-router.delete("/accounts/:id", async (req, res) => {
+router.delete("/accounts/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const Account = getAccountModel();
     const oid = toId(req.params.id);
@@ -138,19 +161,27 @@ router.delete("/accounts/:id", async (req, res) => {
   }
 });
 
-// ── Receipts ───────────────────────────────────────────────────────────────
+// ── Receipts (scoped by source order for non-master users) ─────────────────
 
-router.get("/receipts", async (_req, res) => {
+router.get("/receipts", async (req: ScopedRequest, res) => {
   try {
     const Receipt = getReceiptModel();
-    const docs = await Receipt.find().sort({ date: -1, createdAt: -1 });
+    const scopedOrderIds = await loadScopedOrderIds(req.scope);
+    let filter: any = {};
+    if (scopedOrderIds !== null) {
+      // Non-master users only see receipts that originated from one of their
+      // sub hub orders. Receipts without a source order are master-only.
+      if (scopedOrderIds.size === 0) { res.json([]); return; }
+      filter = { sourceType: "order", sourceOrderId: { $in: [...scopedOrderIds] } };
+    }
+    const docs = await Receipt.find(filter).sort({ date: -1, createdAt: -1 });
     res.json(docs.map(serializeTx));
   } catch (e: any) {
     res.status(500).json({ message: e.message });
   }
 });
 
-router.post("/receipts", async (req, res) => {
+router.post("/receipts", denyIfNotMaster as any, async (req, res) => {
   try {
     const Receipt = getReceiptModel();
     const doc = await Receipt.create(req.body);
@@ -160,7 +191,7 @@ router.post("/receipts", async (req, res) => {
   }
 });
 
-router.put("/receipts/:id", async (req, res) => {
+router.put("/receipts/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const Receipt = getReceiptModel();
     const oid = toId(req.params.id);
@@ -173,7 +204,7 @@ router.put("/receipts/:id", async (req, res) => {
   }
 });
 
-router.delete("/receipts/:id", async (req, res) => {
+router.delete("/receipts/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const Receipt = getReceiptModel();
     const oid = toId(req.params.id);
@@ -186,10 +217,11 @@ router.delete("/receipts/:id", async (req, res) => {
   }
 });
 
-// ── Payments ───────────────────────────────────────────────────────────────
+// ── Payments (master-only ledger) ──────────────────────────────────────────
 
-router.get("/payments", async (_req, res) => {
+router.get("/payments", async (req: ScopedRequest, res) => {
   try {
+    if (req.scope && !req.scope.isMaster) { res.json([]); return; }
     const Payment = getPaymentModel();
     const docs = await Payment.find().sort({ date: -1, createdAt: -1 });
     res.json(docs.map(serializeTx));
@@ -198,7 +230,7 @@ router.get("/payments", async (_req, res) => {
   }
 });
 
-router.post("/payments", async (req, res) => {
+router.post("/payments", denyIfNotMaster as any, async (req, res) => {
   try {
     const Payment = getPaymentModel();
     const doc = await Payment.create(req.body);
@@ -208,7 +240,7 @@ router.post("/payments", async (req, res) => {
   }
 });
 
-router.put("/payments/:id", async (req, res) => {
+router.put("/payments/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const Payment = getPaymentModel();
     const oid = toId(req.params.id);
@@ -221,7 +253,7 @@ router.put("/payments/:id", async (req, res) => {
   }
 });
 
-router.delete("/payments/:id", async (req, res) => {
+router.delete("/payments/:id", denyIfNotMaster as any, async (req, res) => {
   try {
     const Payment = getPaymentModel();
     const oid = toId(req.params.id);

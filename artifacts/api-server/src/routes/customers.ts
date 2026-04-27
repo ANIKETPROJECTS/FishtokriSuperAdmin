@@ -3,9 +3,78 @@ import mongoose from "mongoose";
 import { getCustomersConnection } from "../db/customers-connection.js";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
+router.use(loadScope as any);
+
+/**
+ * For a non-master user, returns the set of customer identifiers (phones,
+ * emails, customerIds, and customer ObjectIds) that appear on at least one
+ * order in their hub scope. Returns null when no scoping is needed (master).
+ * Returns an empty bundle (all empty arrays) when the user has no hubs.
+ */
+async function loadCustomerScopeKeys(
+  scope: ScopedRequest["scope"],
+): Promise<null | { phones: string[]; emails: string[]; customerIds: string[]; objectIds: mongoose.Types.ObjectId[] }> {
+  if (!scope || scope.isMaster) return null;
+  if (scope.subHubIds.length === 0) {
+    return { phones: [], emails: [], customerIds: [], objectIds: [] };
+  }
+  const ordersConn = await getSubHubDbConnection("orders");
+  const projection = {
+    phone: 1, email: 1, customerName: 1, customerId: 1,
+    customerPhone: 1, customerEmail: 1, userId: 1,
+    "customer.phone": 1, "customer.email": 1, "customer.id": 1, "customer._id": 1,
+  };
+  const orders = await ordersConn.db
+    .collection("orders")
+    .find({ subHubId: { $in: scope.subHubIds } })
+    .project(projection)
+    .toArray();
+
+  const phoneSet = new Set<string>();
+  const emailSet = new Set<string>();
+  const customerIdSet = new Set<string>();
+
+  for (const o of orders) {
+    const phones = [o.phone, o.customerPhone, (o as any).customer?.phone];
+    const emails = [o.email, o.customerEmail, (o as any).customer?.email];
+    const ids = [o.customerId, o.userId, (o as any).customer?.id, (o as any).customer?._id];
+    for (const p of phones) if (p) phoneSet.add(String(p).trim().toLowerCase());
+    for (const e of emails) if (e) emailSet.add(String(e).trim().toLowerCase());
+    for (const id of ids) if (id) customerIdSet.add(String(id).trim());
+  }
+
+  const objectIds: mongoose.Types.ObjectId[] = [];
+  for (const id of customerIdSet) {
+    if (mongoose.isValidObjectId(id)) objectIds.push(new mongoose.Types.ObjectId(id));
+  }
+
+  return {
+    phones: [...phoneSet],
+    emails: [...emailSet],
+    customerIds: [...customerIdSet],
+    objectIds,
+  };
+}
+
+/** Returns true if the customer document is in the request user's scope. */
+function isCustomerInScope(
+  scope: ScopedRequest["scope"],
+  scopeKeys: Awaited<ReturnType<typeof loadCustomerScopeKeys>>,
+  customer: any,
+): boolean {
+  if (!scope || scope.isMaster || !scopeKeys) return true;
+  const phone = String(customer?.phone ?? "").trim().toLowerCase();
+  const email = String(customer?.email ?? "").trim().toLowerCase();
+  const id = String(customer?._id ?? customer?.id ?? "").trim();
+  if (phone && scopeKeys.phones.includes(phone)) return true;
+  if (email && scopeKeys.emails.includes(email)) return true;
+  if (id && scopeKeys.customerIds.includes(id)) return true;
+  return false;
+}
 
 const ACTIVE_ORDER_STATUSES = new Set(["pending", "confirmed", "preparing", "out_for_delivery"]);
 
@@ -188,7 +257,7 @@ async function enrichCustomers(customers: any[], log?: any) {
   });
 }
 
-router.get("/", async (req, res) => {
+router.get("/", async (req: ScopedRequest, res) => {
   try {
     const Customer = await getCustomerModel();
     const { search, sort = "createdAt_desc", page = "1", limit = "20" } = req.query as Record<string, string>;
@@ -197,6 +266,31 @@ router.get("/", async (req, res) => {
     if (search) {
       const regex = new RegExp(search, "i");
       filter.$or = [{ name: regex }, { email: regex }, { phone: regex }];
+    }
+
+    // Apply hub scope: non-master users only see customers who placed at
+    // least one order in their sub hubs.
+    const scopeKeys = await loadCustomerScopeKeys(req.scope);
+    if (scopeKeys) {
+      const hasAnyKeys =
+        scopeKeys.phones.length > 0 || scopeKeys.emails.length > 0 || scopeKeys.objectIds.length > 0;
+      if (!hasAnyKeys) {
+        const pageNumEmpty = Math.max(1, parseInt(page, 10));
+        const limitNumEmpty = Math.min(100, Math.max(1, parseInt(limit, 10)));
+        res.json({ customers: [], total: 0, page: pageNumEmpty, limit: limitNumEmpty });
+        return;
+      }
+      const scopeOr: any[] = [];
+      if (scopeKeys.phones.length) scopeOr.push({ phone: { $in: scopeKeys.phones } });
+      if (scopeKeys.emails.length) scopeOr.push({ email: { $in: scopeKeys.emails } });
+      if (scopeKeys.objectIds.length) scopeOr.push({ _id: { $in: scopeKeys.objectIds } });
+      const scopeClause = { $or: scopeOr };
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, scopeClause];
+        delete filter.$or;
+      } else {
+        Object.assign(filter, scopeClause);
+      }
     }
 
     let sortObj: Record<string, 1 | -1> = { createdAt: -1 };
@@ -224,11 +318,15 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", async (req: ScopedRequest, res) => {
   try {
     const Customer = await getCustomerModel();
     const customer = await Customer.findById(req.params.id);
     if (!customer) { res.status(404).json({ error: "NotFound", message: "Customer not found" }); return; }
+    const scopeKeys = await loadCustomerScopeKeys(req.scope);
+    if (!isCustomerInScope(req.scope, scopeKeys, customer)) {
+      res.status(404).json({ error: "NotFound", message: "Customer not found" }); return;
+    }
     const [enriched] = await enrichCustomers([serializeCustomer(customer)], req.log);
     res.json({ customer: enriched });
   } catch (err) {
@@ -290,11 +388,15 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", async (req: ScopedRequest, res) => {
   try {
     const Customer = await getCustomerModel();
     const customer = await Customer.findById(req.params.id);
     if (!customer) { res.status(404).json({ error: "NotFound", message: "Customer not found" }); return; }
+    const scopeKeys = await loadCustomerScopeKeys(req.scope);
+    if (!isCustomerInScope(req.scope, scopeKeys, customer)) {
+      res.status(404).json({ error: "NotFound", message: "Customer not found" }); return;
+    }
 
     const { name, email, phone, alternatePhone, dateOfBirth, gender, notes, addresses } = req.body;
 
@@ -334,11 +436,15 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req: ScopedRequest, res) => {
   try {
     const Customer = await getCustomerModel();
     const customer = await Customer.findById(req.params.id);
     if (!customer) { res.status(404).json({ error: "NotFound", message: "Customer not found" }); return; }
+    const scopeKeys = await loadCustomerScopeKeys(req.scope);
+    if (!isCustomerInScope(req.scope, scopeKeys, customer)) {
+      res.status(404).json({ error: "NotFound", message: "Customer not found" }); return;
+    }
     await Customer.findByIdAndDelete(req.params.id);
     res.json({ message: "Customer deleted successfully" });
   } catch (err) {
