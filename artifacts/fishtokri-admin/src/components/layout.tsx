@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal, FileText, Receipt, Package, History } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal, FileText, Receipt, Package, History, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
 
@@ -160,6 +160,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
     localStorage.setItem("fishtokri_sidebar_open", String(sidebarOpen));
   }, [sidebarOpen]);
 
+  // Mobile drawer (separate state from desktop collapsed/expanded)
+  const [mobileOpen, setMobileOpen] = useState(false);
+  // Track viewport <md so we can force-expand the drawer on mobile
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  // On mobile the drawer should always render in "expanded" mode (with labels)
+  const expanded = isMobile ? true : sidebarOpen;
+  // Close drawer on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location]);
+  // Lock body scroll when drawer is open
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [mobileOpen]);
+
   const handleLogout = () => {
     localStorage.removeItem("fishtokri_token");
     localStorage.removeItem("fishtokri_admin");
@@ -235,15 +260,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const sidebarW = sidebarOpen ? "220px" : "56px";
 
   return (
-    <div className="flex min-h-screen bg-[#F4F6FA]">
-      {/* Sidebar */}
+    <div className="flex min-h-screen bg-[#F4F6FA]" style={{ ["--sidebar-w" as any]: sidebarW }}>
+      {/* Mobile drawer backdrop */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/50 z-30"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar — drawer on mobile, fixed column on md+ */}
       <aside
-        className="fixed inset-y-0 left-0 bg-[#162B4D] text-white flex flex-col z-20 transition-all duration-300 ease-in-out overflow-hidden"
-        style={{ width: sidebarW }}
+        className={`fixed inset-y-0 left-0 bg-[#162B4D] text-white flex flex-col overflow-hidden transition-transform md:transition-all duration-300 ease-in-out z-40 md:z-20 w-[240px] md:w-[var(--sidebar-w)] ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        } md:translate-x-0`}
       >
         {/* Logo */}
-        <div className={`flex items-center border-b border-white/10 transition-all duration-300 ${sidebarOpen ? "justify-center px-4 py-4" : "justify-center px-2 py-3"}`}>
-          {sidebarOpen ? (
+        <div className={`relative flex items-center border-b border-white/10 transition-all duration-300 ${expanded ? "justify-center px-4 py-4" : "justify-center px-2 py-3"}`}>
+          {expanded ? (
             <div className="w-[180px] h-[64px] rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
               <img src="/logo.png" alt="FishTokri" className="w-[164px] h-[56px] object-contain" />
             </div>
@@ -252,10 +287,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <img src="/logo.png" alt="FishTokri" className="w-7 h-7 object-contain" />
             </div>
           )}
+          {/* Mobile close button */}
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="md:hidden absolute right-2 top-2 p-1.5 rounded-md text-white/60 hover:text-white hover:bg-white/10"
+            aria-label="Close menu"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Role Label */}
-        {sidebarOpen && (
+        {expanded && (
           <div className="px-5 pt-5 pb-2">
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">{roleLabel}</p>
           </div>
@@ -282,8 +325,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   childActive={childActive}
                   subItems={children}
                   location={location}
-                  sidebarOpen={sidebarOpen}
-                  sidebarWidth={sidebarOpen ? 220 : 56}
+                  sidebarOpen={expanded}
+                  sidebarWidth={expanded ? (isMobile ? 240 : 220) : 56}
                 />
               );
             }
@@ -293,9 +336,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             return (
               <Link key={href} href={href}>
                 <div
-                  title={!sidebarOpen ? (badgeCount > 0 ? `${label} (${badgeCount} pending)` : label) : undefined}
+                  title={!expanded ? (badgeCount > 0 ? `${label} (${badgeCount} pending)` : label) : undefined}
                   className={`flex items-center cursor-pointer transition-all text-sm font-medium border-l-2 relative ${
-                    sidebarOpen ? "gap-3 px-5 py-2.5" : "justify-center px-0 py-3"
+                    expanded ? "gap-3 px-5 py-2.5" : "justify-center px-0 py-3"
                   } ${
                     isActive
                       ? "bg-white/10 text-white border-amber-400"
@@ -304,11 +347,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 >
                   <div className="relative flex-shrink-0">
                     <Icon className="w-4 h-4" />
-                    {!sidebarOpen && badgeCount > 0 && (
+                    {!expanded && badgeCount > 0 && (
                       <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-[#162B4D]" />
                     )}
                   </div>
-                  {sidebarOpen && (
+                  {expanded && (
                     <>
                       <span className="truncate flex-1">{label}</span>
                       {badgeCount > 0 && (
@@ -325,16 +368,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Footer */}
-        {sidebarOpen && (
+        {expanded && (
           <div className="px-5 py-3 border-t border-white/10">
             <p className="text-[10px] text-white/30 text-center">FishTokri Admin System</p>
           </div>
         )}
 
-        {/* Toggle button at the bottom */}
+        {/* Desktop-only collapse/expand toggle at the bottom */}
         <button
           onClick={() => setSidebarOpen((o) => !o)}
-          className="flex items-center justify-center py-3 border-t border-white/10 hover:bg-white/10 transition-colors text-white/50 hover:text-white w-full"
+          className="hidden md:flex items-center justify-center py-3 border-t border-white/10 hover:bg-white/10 transition-colors text-white/50 hover:text-white w-full"
           title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
         >
           {sidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -342,17 +385,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <main
-        className="flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out"
-        style={{ marginLeft: sidebarW }}
-      >
+      <main className="flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out ml-0 md:ml-[var(--sidebar-w)] w-full min-w-0">
         {/* Header */}
-        <header className="bg-white h-14 border-b border-gray-100 flex items-center justify-end px-8 z-10 sticky top-0 shadow-sm">
-          <div className="flex items-center gap-2">
-            <UserCircle className="w-4 h-4 text-gray-400" />
-            <span className="text-sm font-semibold text-[#162B4D]">{adminName}</span>
+        <header className="bg-white h-14 border-b border-gray-100 flex items-center px-4 md:px-8 z-10 sticky top-0 shadow-sm gap-2">
+          {/* Mobile hamburger */}
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-md text-[#162B4D] hover:bg-gray-100 -ml-1"
+            aria-label="Open menu"
+            data-testid="button-mobile-menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          {/* Mobile inline brand (so the header isn't empty on the left) */}
+          <div className="md:hidden flex items-center gap-2 min-w-0">
+            <span className="text-sm font-bold text-[#162B4D] truncate">{roleLabel}</span>
           </div>
-          <div className="w-px h-6 bg-gray-200 mx-4" />
+
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-2 min-w-0">
+            <UserCircle className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <span className="text-sm font-semibold text-[#162B4D] truncate max-w-[140px] sm:max-w-none">{adminName}</span>
+          </div>
+          <div className="w-px h-6 bg-gray-200 mx-2 md:mx-4" />
           <Button
             variant="ghost"
             size="sm"
@@ -364,7 +421,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Button>
         </header>
 
-        <div className="p-8 flex-1">
+        <div className="p-4 sm:p-6 lg:p-8 flex-1 min-w-0">
           {children}
         </div>
       </main>
