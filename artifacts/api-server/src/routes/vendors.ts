@@ -845,7 +845,9 @@ router.post("/:vendorId/purchases", async (req: ScopedRequest, res) => {
 
 // ─── INVENTORY ROUTES ─────────────────────────────────────────────────────────
 
-router.get("/inventory/all", async (req, res) => {
+// The aggregated vendor inventory has no hub field, so it would leak
+// cross-hub stock totals to non-master users. Lock it to Master Admins.
+router.get("/inventory/all", denyIfNotMaster as any, async (req, res) => {
   try {
     const Inventory = getInventoryModel();
     const { search, sort = "productName_asc" } = req.query as Record<string, string>;

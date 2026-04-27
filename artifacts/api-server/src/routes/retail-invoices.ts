@@ -1,9 +1,15 @@
 import { Router, type IRouter } from "express";
 import { mongoose } from "../db/index.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { denyIfNotMaster, loadScope } from "../middlewares/scope.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
+router.use(loadScope as any);
+// Retail invoices are not hub-tagged today, so we restrict the entire router
+// to Master Admins. Super-hub / sub-hub users only see data scoped to their
+// assigned hubs and must not read or mutate cross-hub retail invoices.
+router.use(denyIfNotMaster as any);
 
 const retailItemSchema = new mongoose.Schema({
   productName: { type: String, required: true },
