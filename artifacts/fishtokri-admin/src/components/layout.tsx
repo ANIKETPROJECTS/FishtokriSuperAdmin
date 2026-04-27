@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal, FileText, Receipt, Package, History, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 const masterAdminNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -102,10 +103,12 @@ function ExpandableNavItem({ href, label, icon: Icon, isActive, childActive, sub
         </div>
       </Link>
 
-      {/* Flyout submenu (renders to right of sidebar) */}
-      {open && coords && (
+      {/* Flyout submenu — rendered into a portal so it escapes the sidebar's
+          overflow-hidden + transform clipping (transformed ancestors capture
+          position: fixed children). */}
+      {open && coords && createPortal(
         <div
-          className="fixed z-50"
+          className="fixed z-[60]"
           style={{ top: coords.top, left: sidebarWidth }}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
@@ -135,7 +138,8 @@ function ExpandableNavItem({ href, label, icon: Icon, isActive, childActive, sub
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
