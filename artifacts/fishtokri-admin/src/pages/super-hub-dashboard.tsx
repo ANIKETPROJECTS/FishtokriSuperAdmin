@@ -39,7 +39,6 @@ const INACTIVE_COLOR = "#F87171";
 const ORDER_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; chart: string; icon: any }> = {
   pending:          { label: "Pending",         color: "text-amber-600",  bg: "bg-amber-50",  chart: "#F59E0B", icon: Clock },
   confirmed:        { label: "Confirmed",        color: "text-blue-600",   bg: "bg-blue-50",   chart: "#1A56DB", icon: CheckCircle2 },
-  preparing:        { label: "Preparing",        color: "text-purple-600", bg: "bg-purple-50", chart: "#8B5CF6", icon: Package },
   out_for_delivery: { label: "Out for Delivery", color: "text-indigo-600", bg: "bg-indigo-50", chart: "#6366F1", icon: Truck },
   delivered:        { label: "Delivered",        color: "text-green-600",  bg: "bg-green-50",  chart: "#10B981", icon: CheckCircle2 },
   cancelled:        { label: "Cancelled",        color: "text-red-500",    bg: "bg-red-50",    chart: "#EF4444", icon: XCircle },
@@ -156,7 +155,7 @@ export default function SuperHubDashboard() {
   const totalPincodes   = allSubHubs.reduce((acc, s) => acc + ((s as any).pincodes?.length || 0), 0);
   const totalOrders     = Object.values(orderStats).reduce((a, b) => a + b, 0);
   const pendingOrders   = orderStats.pending ?? 0;
-  const activeOrders    = (orderStats.pending ?? 0) + (orderStats.confirmed ?? 0) + (orderStats.preparing ?? 0) + (orderStats.out_for_delivery ?? 0);
+  const activeOrders    = (orderStats.pending ?? 0) + (orderStats.confirmed ?? 0) + (orderStats.out_for_delivery ?? 0);
 
   const subHubStatusData = [
     { name: "Active",   value: activeSubHubs },
@@ -386,7 +385,7 @@ export default function SuperHubDashboard() {
               const count = orderStats[key] ?? 0;
               const pct   = totalOrders > 0 ? Math.round((count / totalOrders) * 100) : 0;
               const barColors: Record<string, string> = {
-                pending: "bg-amber-400", confirmed: "bg-blue-500", preparing: "bg-purple-500",
+                pending: "bg-amber-400", confirmed: "bg-blue-500",
                 out_for_delivery: "bg-indigo-500", delivered: "bg-green-500", cancelled: "bg-red-400",
               };
               return (

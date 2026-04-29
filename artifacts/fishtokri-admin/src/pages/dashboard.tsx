@@ -47,7 +47,6 @@ const INACTIVE_COLOR = "#F87171";
 const ORDER_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; chart: string; icon: any }> = {
   pending:          { label: "Pending",         color: "text-amber-600",  bg: "bg-amber-50 border-amber-200",  chart: "#F59E0B", icon: Clock },
   confirmed:        { label: "Confirmed",        color: "text-blue-600",   bg: "bg-blue-50 border-blue-200",    chart: "#1A56DB", icon: CheckCircle2 },
-  preparing:        { label: "Preparing",        color: "text-purple-600", bg: "bg-purple-50 border-purple-200",chart: "#8B5CF6", icon: Package },
   out_for_delivery: { label: "Out for Delivery", color: "text-indigo-600", bg: "bg-indigo-50 border-indigo-200",chart: "#6366F1", icon: Truck },
   delivered:        { label: "Delivered",        color: "text-green-600",  bg: "bg-green-50 border-green-200",  chart: "#10B981", icon: CheckCircle2 },
   cancelled:        { label: "Cancelled",        color: "text-red-500",    bg: "bg-red-50 border-red-200",      chart: "#EF4444", icon: XCircle },
@@ -165,7 +164,7 @@ export default function Dashboard() {
 
   // ── Derived order data ───────────────────────────────────────────────────
   const totalOrders    = Object.values(orderStats).reduce((a, b) => a + b, 0);
-  const activeOrders   = (orderStats.pending ?? 0) + (orderStats.confirmed ?? 0) + (orderStats.preparing ?? 0) + (orderStats.out_for_delivery ?? 0);
+  const activeOrders   = (orderStats.pending ?? 0) + (orderStats.confirmed ?? 0) + (orderStats.out_for_delivery ?? 0);
   const pendingOrders  = orderStats.pending ?? 0;
   const deliveredCount = orderStats.delivered ?? 0;
 
@@ -416,7 +415,6 @@ export default function Dashboard() {
             {[
               { key: "pending",          label: "Pending",         icon: Clock,        color: "text-amber-600",  bg: "bg-amber-50",  bar: "bg-amber-400"  },
               { key: "confirmed",        label: "Confirmed",       icon: CheckCircle2, color: "text-blue-600",   bg: "bg-blue-50",   bar: "bg-blue-500"   },
-              { key: "preparing",        label: "Preparing",       icon: Package,      color: "text-purple-600", bg: "bg-purple-50", bar: "bg-purple-500" },
               { key: "out_for_delivery", label: "Out for Delivery",icon: Truck,        color: "text-indigo-600", bg: "bg-indigo-50", bar: "bg-indigo-500" },
               { key: "delivered",        label: "Delivered",       icon: CheckCircle2, color: "text-green-600",  bg: "bg-green-50",  bar: "bg-green-500"  },
               { key: "cancelled",        label: "Cancelled",       icon: XCircle,      color: "text-red-500",    bg: "bg-red-50",    bar: "bg-red-400"    },
