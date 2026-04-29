@@ -40,7 +40,6 @@ const INACTIVE_COLOR = "#F87171";
 const ORDER_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; chart: string; icon: any }> = {
   pending:          { label: "Pending",          color: "text-amber-600",  bg: "bg-amber-50 border-amber-200",  chart: "#F59E0B", icon: Clock },
   confirmed:        { label: "Confirmed",        color: "text-blue-600",   bg: "bg-blue-50 border-blue-200",    chart: "#1A56DB", icon: CheckCircle2 },
-  preparing:        { label: "Preparing",        color: "text-purple-600", bg: "bg-purple-50 border-purple-200",chart: "#8B5CF6", icon: Package },
   out_for_delivery: { label: "Out for Delivery", color: "text-indigo-600", bg: "bg-indigo-50 border-indigo-200",chart: "#6366F1", icon: Truck },
   delivered:        { label: "Delivered",        color: "text-green-600",  bg: "bg-green-50 border-green-200",  chart: "#10B981", icon: CheckCircle2 },
   cancelled:        { label: "Cancelled",        color: "text-red-500",    bg: "bg-red-50 border-red-200",      chart: "#EF4444", icon: XCircle },
