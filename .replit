@@ -31,12 +31,11 @@ name = "Start application"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "bash scripts/dev.sh"
-waitForPort = 5000
+args = "echo 'Idle: artifact workflow owns ports.'; while true; do sleep 3600; done"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"

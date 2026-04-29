@@ -26,4 +26,12 @@ else
   echo "API server ready."
 fi
 
-cd "$ROOT_DIR/artifacts/fishtokri-admin" && PORT="$WEB_PORT" BASE_PATH=/ pnpm run dev
+if curl -sf "http://localhost:${WEB_PORT}/" > /dev/null 2>&1; then
+  echo "Web server already running on port ${WEB_PORT}. Idling so this workflow stays alive."
+  # Another instance (e.g. the main "Start application" workflow) already serves
+  # the dev site. Don't fight over the port — just stay alive so the workflow
+  # keeps the API child process attached and reports as running.
+  while true; do sleep 3600; done
+else
+  cd "$ROOT_DIR/artifacts/fishtokri-admin" && PORT="$WEB_PORT" BASE_PATH=/ pnpm run dev
+fi
