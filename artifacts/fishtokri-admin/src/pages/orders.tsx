@@ -101,6 +101,20 @@ function orderTotal(items: any[]) {
   return (items ?? []).reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
 }
 
+// Returns the final amount payable for an order, honouring any saved
+// `total` (which already accounts for coupon discounts and slot charges).
+// Falls back to items × qty − discount for legacy orders that don't have
+// `total` persisted.
+function effectiveOrderTotal(o: any): number {
+  const saved = Number(o?.total);
+  if (saved > 0) return saved;
+  const items = Array.isArray(o?.items) ? o.items : [];
+  const subtotal = orderTotal(items);
+  const discount = Number(o?.discount) || 0;
+  const slot = Number(o?.slotCharge) || 0;
+  return Math.max(0, subtotal - discount + slot);
+}
+
 function numberToWords(n: number): string {
   const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
     "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
@@ -123,12 +137,13 @@ function numberToWords(n: number): string {
 
 function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
   const items: any[] = order.items ?? [];
-  const total = orderTotal(items);
+  const subtotal = Number(order.subtotal) > 0 ? Number(order.subtotal) : orderTotal(items);
   const totalQty = items.reduce((s: number, i: any) => s + (Number(i.quantity) || 1), 0);
-  const discount = 0;
-  const grandTotal = total - discount;
-  const paidAmt = Number(order.paidAmount) ?? grandTotal;
-  const dueAmt = Number(order.dueAmount) ?? 0;
+  const discount = Number(order.discount) || 0;
+  const slotCharge = Number(order.slotCharge) || 0;
+  const grandTotal = effectiveOrderTotal(order);
+  const paidAmt = Number(order.paidAmount) || 0;
+  const dueAmt = Number(order.dueAmount) || Math.max(0, grandTotal - paidAmt);
 
   const invoiceNo = "INV-" + String(order._id).slice(-6).toUpperCase();
   const d = new Date(order.createdAt ?? Date.now());
@@ -239,12 +254,20 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
                   <td className="py-1"><b>Total Items: {items.length}</b></td>
                   <td className="py-1 text-right"><b>{totalQty}</b></td>
                   <td></td>
-                  <td className="py-1 text-right"><b>{total.toFixed(2)}</b></td>
+                  <td className="py-1 text-right"><b>{subtotal.toFixed(2)}</b></td>
                 </tr>
                 <tr>
-                  <td className="py-1" colSpan={3}>Discount :</td>
+                  <td className="py-1" colSpan={3}>
+                    Discount{order.couponCode ? ` (${order.couponCode})` : ""} :
+                  </td>
                   <td className="py-1 text-right">- {discount.toFixed(2)}</td>
                 </tr>
+                {slotCharge > 0 && (
+                  <tr>
+                    <td className="py-1" colSpan={3}>Slot Charge :</td>
+                    <td className="py-1 text-right">+ {slotCharge.toFixed(2)}</td>
+                  </tr>
+                )}
               </tbody>
             </table>
 
@@ -1722,7 +1745,7 @@ export default function Orders() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {orders.filter(o => o.status !== "cancelled").map((o, idx) => {
-                    const tot = orderTotal(o.items);
+                    const tot = effectiveOrderTotal(o);
                     const invNo = "INV-" + String(o._id).slice(-6).toUpperCase();
                     return (
                       <tr key={String(o._id)} className="hover:bg-violet-50/30 transition-colors">
@@ -1794,7 +1817,7 @@ export default function Orders() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {orders.map((o) => {
-                  const total = orderTotal(o.items);
+                  const total = effectiveOrderTotal(o);
                   return (
                     <tr key={String(o._id)} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-4 py-3">
@@ -2025,7 +2048,7 @@ export default function Orders() {
                   </p>
                   <p className="text-xs text-gray-500">
                     {Array.isArray(deletingOrder.items) ? deletingOrder.items.length : 0} item(s) ·{" "}
-                    {formatRupees(orderTotal(deletingOrder.items))} ·{" "}
+                    {formatRupees(effectiveOrderTotal(deletingOrder))} ·{" "}
                     <StatusBadge status={deletingOrder.status} deliveryType={deletingOrder.deliveryType} />
                   </p>
                 </div>
@@ -3215,10 +3238,38 @@ export default function Orders() {
                       </div>
                     ))}
                   </div>
-                  <div className="flex justify-between items-center mt-2 px-3 py-2 bg-[#162B4D]/5 rounded-xl">
-                    <span className="text-sm font-semibold text-gray-600">Order Total</span>
-                    <span className="font-bold text-[#162B4D] text-base">{formatRupees(orderTotal(selectedOrder.items))}</span>
-                  </div>
+                  {(() => {
+                    const subtotal = orderTotal(selectedOrder.items);
+                    const discount = Number(selectedOrder.discount) || 0;
+                    const slot = Number(selectedOrder.slotCharge) || 0;
+                    const grand = effectiveOrderTotal(selectedOrder);
+                    return (
+                      <div className="mt-2 px-3 py-2 bg-[#162B4D]/5 rounded-xl space-y-1">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-gray-600">Subtotal</span>
+                          <span className="font-semibold text-[#162B4D]">{formatRupees(subtotal)}</span>
+                        </div>
+                        {discount > 0 && (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-emerald-700">
+                              Coupon Discount{selectedOrder.couponCode ? ` (${selectedOrder.couponCode})` : ""}
+                            </span>
+                            <span className="font-semibold text-emerald-700">− {formatRupees(discount)}</span>
+                          </div>
+                        )}
+                        {slot > 0 && (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-600">Slot Charge</span>
+                            <span className="font-semibold text-[#162B4D]">+ {formatRupees(slot)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center pt-1 border-t border-[#162B4D]/10">
+                          <span className="text-sm font-semibold text-gray-600">Grand Total</span>
+                          <span className="font-bold text-[#162B4D] text-base">{formatRupees(grand)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {selectedOrder.instantDeliveryCharge && (
                     <div className="flex justify-between items-center px-3 py-1.5 text-orange-600 text-sm">
                       <span>Instant Delivery Charge</span>
