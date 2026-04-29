@@ -1137,6 +1137,8 @@ function OrderMeta({ icon: Icon, label, value }: { icon: any; label: string; val
 type AddressDraft = {
   label: string;
   type: string;
+  name: string;
+  phone: string;
   building: string;
   street: string;
   area: string;
@@ -1148,6 +1150,7 @@ type AddressDraft = {
 function emptyAddress(): AddressDraft {
   return {
     label: "Home", type: "house",
+    name: "", phone: "",
     building: "", street: "", area: "",
     pincode: "", instructions: "", isDefault: false,
   };
@@ -1160,6 +1163,8 @@ function addressFromExisting(a: any): AddressDraft {
   return {
     label: a?.label ?? a?.type ?? "Home",
     type: a?.type ?? "house",
+    name: a?.name ?? a?.contactName ?? "",
+    phone: a?.phone ?? a?.contactPhone ?? a?.mobile ?? "",
     building: combinedBuilding,
     street: a?.street ?? a?.streetName ?? a?.road ?? a?.addressLine1 ?? "",
     area: a?.area ?? a?.locality ?? a?.neighbourhood ?? "",
@@ -1248,8 +1253,11 @@ function CustomerModal({
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) e.email = "Invalid email format";
     if (dob.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(dob.trim())) e.dob = "Use YYYY-MM-DD format";
     addresses.forEach((a, i) => {
-      const hasAny = a.building || a.street || a.area || a.pincode;
+      const hasAny = a.name || a.phone || a.building || a.street || a.area || a.pincode;
       if (hasAny) {
+        if (!a.name.trim()) e[`addr_${i}_name`] = "Full name is required";
+        if (!a.phone.trim()) e[`addr_${i}_phone`] = "Phone is required";
+        else if (!/^\d{10}$/.test(a.phone.trim())) e[`addr_${i}_phone`] = "Phone must be 10 digits";
         if (!a.building.trim()) e[`addr_${i}_building`] = "Building / Flat No is required";
         if (!a.area.trim()) e[`addr_${i}_area`] = "Area / Suburb is required";
         if (!a.pincode.trim()) e[`addr_${i}_pincode`] = "Pincode required";
@@ -1400,7 +1408,23 @@ function CustomerModal({
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <Field label="Building / Flat No" required={!!(a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_building`]}>
+                      <Field label="Full Name" required={!!(a.name || a.phone || a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_name`]}>
+                        <Input
+                          value={a.name}
+                          onChange={(e) => updateAddress(i, { name: e.target.value })}
+                          placeholder="Recipient name"
+                          className={errors[`addr_${i}_name`] ? "border-red-400" : ""}
+                        />
+                      </Field>
+                      <Field label="Phone" required={!!(a.name || a.phone || a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_phone`]}>
+                        <Input
+                          value={a.phone}
+                          onChange={(e) => updateAddress(i, { phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
+                          placeholder="10-digit mobile"
+                          className={errors[`addr_${i}_phone`] ? "border-red-400" : ""}
+                        />
+                      </Field>
+                      <Field label="Building / Flat No" required={!!(a.name || a.phone || a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_building`]}>
                         <Input
                           value={a.building}
                           onChange={(e) => updateAddress(i, { building: e.target.value })}
@@ -1411,7 +1435,7 @@ function CustomerModal({
                       <Field label="Street / Locality">
                         <Input value={a.street} onChange={(e) => updateAddress(i, { street: e.target.value })} placeholder="Street name or society" />
                       </Field>
-                      <Field label="Area / Suburb" required={!!(a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_area`]}>
+                      <Field label="Area / Suburb" required={!!(a.name || a.phone || a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_area`]}>
                         <Input
                           value={a.area}
                           onChange={(e) => updateAddress(i, { area: e.target.value })}
@@ -1419,7 +1443,7 @@ function CustomerModal({
                           className={errors[`addr_${i}_area`] ? "border-red-400" : ""}
                         />
                       </Field>
-                      <Field label="Pincode" required={!!(a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_pincode`]}>
+                      <Field label="Pincode" required={!!(a.name || a.phone || a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_pincode`]}>
                         <Input
                           value={a.pincode}
                           onChange={(e) => updateAddress(i, { pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })}
