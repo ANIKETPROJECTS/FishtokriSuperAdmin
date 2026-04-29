@@ -32,6 +32,11 @@ const VALID_ORDER_STATUSES = new Set([
 function scopeOrderFilter(req: ScopedRequest): Record<string, any> | null {
   const scope = req.scope;
   if (!scope || scope.isMaster) return {};
+  if (scope.role === "delivery_person") {
+    const uid = req.admin?.adminId;
+    if (!uid) return null;
+    return { assignedDeliveryPersonId: String(uid) };
+  }
   if (scope.subHubIds.length === 0) return null; // sentinel: match nothing
   return { subHubId: { $in: scope.subHubIds } };
 }
@@ -437,8 +442,13 @@ router.get("/delivery-stats", async (req: ScopedRequest, res) => {
 });
 
 /** Returns true if the order document is in the request user's scope. */
-function isOrderInScope(scope: ScopedRequest["scope"], order: any): boolean {
+function isOrderInScope(scope: ScopedRequest["scope"], order: any, req?: ScopedRequest): boolean {
   if (!scope || scope.isMaster) return true;
+  if (scope.role === "delivery_person") {
+    const uid = req?.admin?.adminId ? String(req.admin.adminId) : "";
+    const assigned = order?.assignedDeliveryPersonId ? String(order.assignedDeliveryPersonId) : "";
+    return !!uid && uid === assigned;
+  }
   const subId = order?.subHubId ? String(order.subHubId) : "";
   return !!subId && scope.subHubIds.includes(subId);
 }
@@ -684,7 +694,7 @@ router.get("/:id", async (req: ScopedRequest, res) => {
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
     const conn = await getOrdersDb();
     const order = await conn.db.collection(COLLECTION).findOne({ _id: oid });
-    if (!order || !isOrderInScope(req.scope, order)) {
+    if (!order || !isOrderInScope(req.scope, order, req)) {
       res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
     }
     res.json({ order });
@@ -791,7 +801,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     }
     const conn = await getOrdersDb();
     const prev = await conn.db.collection(COLLECTION).findOne({ _id: oid });
-    if (!prev || !isOrderInScope(req.scope, prev)) {
+    if (!prev || !isOrderInScope(req.scope, prev, req)) {
       res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
     }
     // Hub admins cannot reassign an order to a sub hub outside their scope.
@@ -897,7 +907,7 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
     const conn = await getOrdersDb();
     req.log.info({ id: req.params.id, oid: oid.toHexString() }, "Attempting to delete order");
     const existing = await conn.db.collection(COLLECTION).findOne({ _id: oid });
-    if (!existing || !isOrderInScope(req.scope, existing)) {
+    if (!existing || !isOrderInScope(req.scope, existing, req)) {
       res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
     }
     const result = await conn.db.collection(COLLECTION).deleteOne({ _id: oid });

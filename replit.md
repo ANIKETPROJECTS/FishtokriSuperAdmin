@@ -269,3 +269,9 @@ PUT|DELETE      /api/sub-hubs/:id/menu/timeslots/:timeslotId
 | Routing | Wouter |
 | Auth | JWT (jsonwebtoken) |
 | Validation | Zod |
+
+---
+
+## Delivery Person Scope (orders endpoint)
+
+`scopeOrderFilter` in `artifacts/api-server/src/routes/orders.ts` now handles `role === "delivery_person"` explicitly: it scopes to `{ assignedDeliveryPersonId: <userId> }` instead of the empty-subHubIds sentinel that would have returned no documents. `isOrderInScope` mirrors this so the delivery person can read/update only their assigned orders. This makes the My Orders page on the delivery panel correctly show Active and History tabs.
