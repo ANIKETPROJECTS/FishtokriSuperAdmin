@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Truck, MapPin, Search, SlidersHorizontal,
-  X, Clock, CheckCircle2, Package, XCircle, Phone, User, RefreshCw,
+  X, Clock, CheckCircle2, XCircle, Phone, User, RefreshCw,
   ShoppingBag, History, CalendarDays, CircleDollarSign, Eye,
+  Mail, Home, Hash, Tag, Wallet, Receipt, FileText, Store,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -34,13 +35,14 @@ async function apiFetch(path: string, opts: RequestInit = {}) {
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any; next?: string[] }> = {
   pending:          { label: "Pending",          color: "text-amber-600",   bg: "bg-amber-50 border-amber-200",   icon: Clock,         next: ["confirmed", "out_for_delivery", "cancelled"] },
-  confirmed:        { label: "Confirmed",        color: "text-blue-600",    bg: "bg-blue-50 border-blue-200",     icon: CheckCircle2,  next: ["out_for_delivery"] },
+  confirmed:        { label: "Confirmed",        color: "text-blue-600",    bg: "bg-blue-50 border-blue-200",     icon: CheckCircle2,  next: ["out_for_delivery", "cancelled"] },
   out_for_delivery: { label: "Out for Delivery", color: "text-indigo-600",  bg: "bg-indigo-50 border-indigo-200", icon: Truck,         next: ["delivered", "cancelled"] },
   delivered:        { label: "Delivered",        color: "text-green-600",   bg: "bg-green-50 border-green-200",   icon: CheckCircle2,  next: [] },
   cancelled:        { label: "Cancelled",        color: "text-red-600",     bg: "bg-red-50 border-red-200",       icon: XCircle,       next: [] },
+  takeaway:         { label: "Takeaway",         color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200", icon: Store,       next: ["delivered", "cancelled"] },
 };
 
-const ACTIVE_STATUSES  = ["pending", "confirmed", "preparing", "out_for_delivery"];
+const ACTIVE_STATUSES  = ["pending", "confirmed", "out_for_delivery"];
 const HISTORY_STATUSES = ["delivered", "cancelled"];
 
 function StatusBadge({ status }: { status: string }) {
@@ -57,58 +59,203 @@ function formatDate(d: any) {
   if (!d) return "—";
   return new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
+function formatDay(d: any) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
 function formatRupees(n: number) { return `₹${Number(n || 0).toLocaleString("en-IN")}`; }
-function orderTotal(o: any) {
-  if (Number(o?.total) > 0) return Number(o.total);
+
+function itemsSubtotal(o: any) {
   return (o?.items ?? []).reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+}
+
+function orderTotal(o: any) {
+  if (o?.total !== undefined && o?.total !== null && !Number.isNaN(Number(o.total))) {
+    return Number(o.total);
+  }
+  const sub = itemsSubtotal(o);
+  const disc = Number(o?.discount || 0);
+  const slot = Number(o?.slotCharge || 0);
+  return Math.max(0, sub - disc + slot);
+}
+
+function buildAddressLines(o: any): string[] {
+  const d = o?.deliveryAddressDetail || {};
+  const lines: string[] = [];
+  const part1 = [d.houseNo, d.building].filter(Boolean).join(", ");
+  if (part1) lines.push(part1);
+  const part2 = [d.street, d.area].filter(Boolean).join(", ");
+  if (part2) lines.push(part2);
+  if (d.landmark) lines.push(`Landmark: ${d.landmark}`);
+  const part3 = [d.city, d.state, d.pincode].filter(Boolean).join(", ");
+  if (part3) lines.push(part3);
+  if (lines.length === 0 && o?.address) lines.push(o.address);
+  if (lines.length === 0 && o?.deliveryArea) lines.push(o.deliveryArea);
+  return lines;
 }
 
 // ─── ORDER DETAIL DIALOG ──────────────────────────────────────────────────────
 
-function OrderDetailDialog({ order, onClose }: { order: any; onClose: () => void; }) {
+function OrderDetailDialog({
+  order,
+  onClose,
+  onUpdateStatus,
+}: {
+  order: any;
+  onClose: () => void;
+  onUpdateStatus?: (o: any) => void;
+}) {
   if (!order) return null;
+  const sub = itemsSubtotal(order);
+  const discount = Number(order?.discount || 0);
+  const slot = Number(order?.slotCharge || 0);
   const total = orderTotal(order);
   const paid = Number(order.paidAmount || 0);
   const due = Math.max(0, total - paid);
+  const addressLines = buildAddressLines(order);
+  const d = order?.deliveryAddressDetail || {};
+  const recipientName = d.name || d.contactName || "";
+  const recipientPhone = d.phone || d.contactPhone || "";
+  const couponCode =
+    order?.couponCode ||
+    (Array.isArray(order?.coupons) && order.coupons[0]?.code) ||
+    "";
+  const isTakeaway = order?.deliveryType === "takeaway" || order?.status === "takeaway";
+  const nextStatuses = (STATUS_CONFIG[order.status]?.next ?? []).filter((s) => STATUS_CONFIG[s]);
+
   return (
     <Dialog open={!!order} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-[#162B4D] flex items-center gap-2">
             <ShoppingBag className="w-4 h-4 text-orange-500" /> Order #{String(order._id).slice(-6).toUpperCase()}
           </DialogTitle>
         </DialogHeader>
+
         <div className="space-y-3 pt-1 text-sm">
-          <div className="flex items-center justify-between">
-            <StatusBadge status={order.status} />
-            <span className="text-[10px] text-gray-400">{formatDate(order.createdAt)}</span>
+          {/* Header strip */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <StatusBadge status={order.status} />
+              {isTakeaway && order.status !== "takeaway" && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border text-emerald-600 bg-emerald-50 border-emerald-200">
+                  <Store className="w-3 h-3" /> Takeaway
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-gray-400">Created {formatDate(order.createdAt)}</span>
           </div>
+
+          {/* Customer */}
           <div className="bg-gray-50 rounded-xl p-3 space-y-1">
-            <div className="flex items-center gap-2"><User className="w-4 h-4 text-gray-400" /><span className="font-semibold text-[#162B4D]">{order.customerName}</span></div>
-            {order.phone && <div className="flex items-center gap-2 text-xs text-gray-500"><Phone className="w-3.5 h-3.5 text-gray-400" />{order.phone}</div>}
-            {order.address && <div className="flex items-start gap-2 text-xs text-gray-500"><MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />{order.address}{order.deliveryArea ? `, ${order.deliveryArea}` : ""}</div>}
-            {order.timeslotLabel && <div className="text-xs text-indigo-600 font-medium">Slot: {order.timeslotLabel}</div>}
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Customer</p>
+            <div className="flex items-center gap-2"><User className="w-4 h-4 text-gray-400" /><span className="font-semibold text-[#162B4D]">{order.customerName || "—"}</span></div>
+            {order.phone && <div className="flex items-center gap-2 text-xs text-gray-600"><Phone className="w-3.5 h-3.5 text-gray-400" /><a href={`tel:${order.phone}`} className="hover:underline">{order.phone}</a></div>}
+            {order.email && <div className="flex items-center gap-2 text-xs text-gray-600"><Mail className="w-3.5 h-3.5 text-gray-400" />{order.email}</div>}
           </div>
+
+          {/* Delivery / Pickup */}
+          {isTakeaway ? (
+            <div className="bg-emerald-50/50 rounded-xl p-3 space-y-1 border border-emerald-100">
+              <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide flex items-center gap-1"><Store className="w-3 h-3" /> Pickup from Hub</p>
+              <p className="text-xs text-[#162B4D] font-semibold">{order.subHubName || order.pickupLocation || "—"}</p>
+              {order.superHubName && <p className="text-[11px] text-gray-500">{order.superHubName}</p>}
+            </div>
+          ) : (
+            <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1"><Home className="w-3 h-3" /> Delivery Address {d.label && <span className="text-gray-500 normal-case font-medium">· {d.label}</span>}</p>
+              {(recipientName || recipientPhone) && (
+                <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-700">
+                  {recipientName && <span className="flex items-center gap-1"><User className="w-3 h-3 text-gray-400" /><span className="font-medium">{recipientName}</span></span>}
+                  {recipientPhone && <a href={`tel:${recipientPhone}`} className="flex items-center gap-1 hover:underline"><Phone className="w-3 h-3 text-gray-400" />{recipientPhone}</a>}
+                </div>
+              )}
+              {addressLines.length > 0 ? (
+                <div className="flex items-start gap-2 text-xs text-gray-600">
+                  <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                  <div className="space-y-0.5">
+                    {addressLines.map((ln, i) => <p key={i}>{ln}</p>)}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No delivery address on file</p>
+              )}
+              {d.instructions && <p className="text-[11px] text-amber-700 italic border-l-2 border-amber-200 pl-2">Note: {d.instructions}</p>}
+            </div>
+          )}
+
+          {/* Schedule */}
+          {(order.timeslotLabel || order.scheduledDate || order.deliveryDate) && (
+            <div className="bg-indigo-50/40 rounded-xl p-3 border border-indigo-100 flex items-center gap-2">
+              <CalendarDays className="w-4 h-4 text-indigo-500" />
+              <div className="text-xs">
+                {(order.scheduledDate || order.deliveryDate) && <p className="text-[#162B4D] font-semibold">{formatDay(order.scheduledDate || order.deliveryDate)}</p>}
+                {order.timeslotLabel && <p className="text-indigo-600">{order.timeslotLabel}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Items */}
           <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Items</p>
-            <div className="space-y-1">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Items ({(order.items ?? []).length})</p>
+            <div className="space-y-1 border border-gray-100 rounded-xl p-2">
               {(order.items ?? []).map((i: any, idx: number) => (
                 <div key={idx} className="flex items-center justify-between text-xs border-b border-gray-100 last:border-0 py-1.5">
-                  <span className="text-[#162B4D]">{i.name} <span className="text-gray-400">× {i.quantity}{i.unit ? ` ${i.unit}` : ""}</span></span>
-                  <span className="font-semibold">{formatRupees(Number(i.price || 0) * Number(i.quantity || 1))}</span>
+                  <div className="min-w-0">
+                    <p className="text-[#162B4D] truncate">{i.name}</p>
+                    <p className="text-[10px] text-gray-400">{formatRupees(Number(i.price || 0))} × {i.quantity}{i.unit ? ` ${i.unit}` : ""}</p>
+                  </div>
+                  <span className="font-semibold text-[#162B4D]">{formatRupees(Number(i.price || 0) * Number(i.quantity || 1))}</span>
                 </div>
               ))}
+              {(!order.items || order.items.length === 0) && <p className="text-xs text-gray-400 text-center py-2">No items</p>}
             </div>
           </div>
-          <div className="border-t border-gray-100 pt-2.5 space-y-1">
-            <div className="flex justify-between text-xs"><span className="text-gray-500">Total</span><span className="font-bold text-[#162B4D]">{formatRupees(total)}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-gray-500">Paid</span><span className="font-semibold text-green-600">{formatRupees(paid)}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-gray-500">Due</span><span className={`font-semibold ${due > 0 ? "text-amber-600" : "text-gray-500"}`}>{formatRupees(due)}</span></div>
+
+          {/* Totals */}
+          <div className="border border-gray-100 rounded-xl p-3 space-y-1">
+            <div className="flex justify-between text-xs"><span className="text-gray-500">Subtotal</span><span className="text-[#162B4D]">{formatRupees(sub)}</span></div>
+            {discount > 0 && (
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500 inline-flex items-center gap-1"><Tag className="w-3 h-3 text-emerald-500" />Coupon Discount{couponCode ? ` (${couponCode})` : ""}</span>
+                <span className="text-emerald-600">-{formatRupees(discount)}</span>
+              </div>
+            )}
+            {slot > 0 && (
+              <div className="flex justify-between text-xs"><span className="text-gray-500">Slot Charge</span><span className="text-[#162B4D]">{formatRupees(slot)}</span></div>
+            )}
+            <div className="flex justify-between text-sm border-t border-gray-100 pt-1.5 mt-1.5"><span className="font-bold text-[#162B4D]">Grand Total</span><span className="font-bold text-[#162B4D]">{formatRupees(total)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-gray-500 inline-flex items-center gap-1"><Wallet className="w-3 h-3" />Paid</span><span className="font-semibold text-green-600">{formatRupees(paid)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-gray-500 inline-flex items-center gap-1"><Receipt className="w-3 h-3" />Due</span><span className={`font-semibold ${due > 0 ? "text-amber-600" : "text-gray-400"}`}>{formatRupees(due)}</span></div>
+            {order.paymentStatus && (
+              <div className="flex justify-between text-[11px] pt-1"><span className="text-gray-400">Payment Status</span><span className="font-semibold uppercase tracking-wide text-gray-600">{order.paymentStatus}</span></div>
+            )}
           </div>
-          {order.notes && <p className="text-[11px] text-gray-500 italic border-l-2 border-gray-200 pl-2">{order.notes}</p>}
+
+          {/* Hub */}
+          {(order.superHubName || order.subHubName) && (
+            <div className="text-[11px] text-gray-500 inline-flex items-center gap-1.5"><Hash className="w-3 h-3 text-gray-400" />{[order.superHubName, order.subHubName].filter(Boolean).join(" → ")}</div>
+          )}
+
+          {/* Notes */}
+          {order.notes && (
+            <div className="border-l-2 border-amber-200 bg-amber-50/40 pl-2 py-1.5 pr-2 rounded-r">
+              <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1"><FileText className="w-3 h-3" />Order Notes</p>
+              <p className="text-[11px] text-gray-700">{order.notes}</p>
+            </div>
+          )}
         </div>
-        <DialogFooter>
+
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} className="h-9">Close</Button>
+          {nextStatuses.length > 0 && onUpdateStatus && (
+            <Button
+              onClick={() => { onUpdateStatus(order); onClose(); }}
+              className="bg-[#1A56DB] hover:bg-[#1447B4] h-9"
+            >
+              <Truck className="w-3.5 h-3.5 mr-1" /> Update Status
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -194,7 +341,7 @@ function OrdersList({ mode }: { mode: "active" | "history" }) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="_all">All {mode === "active" ? "active" : "history"}</SelectItem>
-            {allowedStatuses.map((s) => <SelectItem key={s} value={s}>{STATUS_CONFIG[s].label}</SelectItem>)}
+            {allowedStatuses.filter((s) => STATUS_CONFIG[s]).map((s) => <SelectItem key={s} value={s}>{STATUS_CONFIG[s].label}</SelectItem>)}
           </SelectContent>
         </Select>
         <Button variant="outline" size="sm" onClick={loadOrders} className="h-9 gap-1.5 text-gray-500">
@@ -359,7 +506,11 @@ function OrdersList({ mode }: { mode: "active" | "history" }) {
         </DialogContent>
       </Dialog>
 
-      <OrderDetailDialog order={detail} onClose={() => setDetail(null)} />
+      <OrderDetailDialog
+        order={detail}
+        onClose={() => setDetail(null)}
+        onUpdateStatus={(o) => { setSelectedOrder(o); setEditStatus(o.status); }}
+      />
     </div>
   );
 }
