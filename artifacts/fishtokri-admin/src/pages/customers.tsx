@@ -1137,15 +1137,9 @@ function OrderMeta({ icon: Icon, label, value }: { icon: any; label: string; val
 type AddressDraft = {
   label: string;
   type: string;
-  name: string;
-  phone: string;
-  houseNo: string;
   building: string;
   street: string;
   area: string;
-  landmark: string;
-  city: string;
-  state: string;
   pincode: string;
   instructions: string;
   isDefault: boolean;
@@ -1153,25 +1147,22 @@ type AddressDraft = {
 
 function emptyAddress(): AddressDraft {
   return {
-    label: "Home", type: "house", name: "", phone: "",
-    houseNo: "", building: "", street: "", area: "", landmark: "",
-    city: "", state: "", pincode: "", instructions: "", isDefault: false,
+    label: "Home", type: "house",
+    building: "", street: "", area: "",
+    pincode: "", instructions: "", isDefault: false,
   };
 }
 
 function addressFromExisting(a: any): AddressDraft {
+  const existingHouse = a?.houseNo ?? a?.flatNo ?? a?.house ?? a?.apartment ?? "";
+  const existingBuilding = a?.building ?? a?.buildingName ?? a?.society ?? "";
+  const combinedBuilding = [existingHouse, existingBuilding].filter(Boolean).join(", ");
   return {
     label: a?.label ?? a?.type ?? "Home",
     type: a?.type ?? "house",
-    name: a?.name ?? a?.contactName ?? "",
-    phone: a?.phone ?? a?.contactPhone ?? a?.mobile ?? "",
-    houseNo: a?.houseNo ?? a?.flatNo ?? a?.house ?? a?.apartment ?? "",
-    building: a?.building ?? a?.buildingName ?? a?.society ?? "",
+    building: combinedBuilding,
     street: a?.street ?? a?.streetName ?? a?.road ?? a?.addressLine1 ?? "",
     area: a?.area ?? a?.locality ?? a?.neighbourhood ?? "",
-    landmark: a?.landmark ?? "",
-    city: a?.city ?? "",
-    state: a?.state ?? "",
     pincode: a?.pincode ?? a?.zipCode ?? a?.zip ?? "",
     instructions: a?.instructions ?? a?.deliveryInstructions ?? "",
     isDefault: !!a?.isDefault,
@@ -1192,7 +1183,6 @@ function CustomerModal({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [altPhone, setAltPhone] = useState("");
   const [dob, setDob] = useState("");
   const [gender, setGender] = useState("");
   const [notes, setNotes] = useState("");
@@ -1203,7 +1193,6 @@ function CustomerModal({
     setName(customer?.name ?? "");
     setEmail(customer?.email ?? "");
     setPhone(customer?.phone ?? "");
-    setAltPhone(customer?.alternatePhone ?? "");
     setDob(customer?.dateOfBirth ?? "");
     setGender(customer?.gender ?? "");
     setNotes(customer?.notes ?? "");
@@ -1257,14 +1246,14 @@ function CustomerModal({
     if (!phone.trim()) e.phone = "Phone is required";
     else if (!/^\d{10}$/.test(phone.trim())) e.phone = "Phone must be exactly 10 digits";
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) e.email = "Invalid email format";
-    if (altPhone.trim() && !/^\d{10}$/.test(altPhone.trim())) e.altPhone = "Alternate phone must be 10 digits";
     if (dob.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(dob.trim())) e.dob = "Use YYYY-MM-DD format";
     addresses.forEach((a, i) => {
-      const hasAny = a.houseNo || a.building || a.street || a.area || a.city || a.state || a.pincode;
+      const hasAny = a.building || a.street || a.area || a.pincode;
       if (hasAny) {
+        if (!a.building.trim()) e[`addr_${i}_building`] = "Building / Flat No is required";
+        if (!a.area.trim()) e[`addr_${i}_area`] = "Area / Suburb is required";
         if (!a.pincode.trim()) e[`addr_${i}_pincode`] = "Pincode required";
         else if (!/^\d{6}$/.test(a.pincode.trim())) e[`addr_${i}_pincode`] = "Pincode must be 6 digits";
-        if (a.phone.trim() && !/^\d{10}$/.test(a.phone.trim())) e[`addr_${i}_phone`] = "Phone must be 10 digits";
       }
     });
     return e;
@@ -1293,7 +1282,6 @@ function CustomerModal({
       name: name.trim(),
       email: email.trim(),
       phone: phone.trim(),
-      alternatePhone: altPhone.trim(),
       dateOfBirth: dob.trim(),
       gender: gender.trim(),
       notes: notes.trim(),
@@ -1329,9 +1317,6 @@ function CustomerModal({
               </Field>
               <Field label="Email" error={errors.email}>
                 <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" className={errors.email ? "border-red-400" : ""} />
-              </Field>
-              <Field label="Alternate phone" error={errors.altPhone}>
-                <Input value={altPhone} onChange={(e) => setAltPhone(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="Optional 10-digit number" className={errors.altPhone ? "border-red-400" : ""} />
               </Field>
               <Field label="Date of birth" error={errors.dob}>
                 <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className={errors.dob ? "border-red-400" : ""} />
@@ -1415,49 +1400,26 @@ function CustomerModal({
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <Field label="Label">
-                        <Select value={a.label || "Home"} onValueChange={(v) => updateAddress(i, { label: v, type: v.toLowerCase() })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Home">Home</SelectItem>
-                            <SelectItem value="Work">Work</SelectItem>
-                            <SelectItem value="Other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                      <Field label="Contact name at this address">
-                        <Input value={a.name} onChange={(e) => updateAddress(i, { name: e.target.value })} placeholder="Recipient name" />
-                      </Field>
-                      <Field label="Contact phone" error={errors[`addr_${i}_phone`]}>
+                      <Field label="Building / Flat No" required={!!(a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_building`]}>
                         <Input
-                          value={a.phone}
-                          onChange={(e) => updateAddress(i, { phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
-                          placeholder="10-digit number"
-                          className={errors[`addr_${i}_phone`] ? "border-red-400" : ""}
+                          value={a.building}
+                          onChange={(e) => updateAddress(i, { building: e.target.value })}
+                          placeholder="Wing A, Flat 302, Building Name"
+                          className={errors[`addr_${i}_building`] ? "border-red-400" : ""}
                         />
                       </Field>
-                      <Field label="House / Flat no.">
-                        <Input value={a.houseNo} onChange={(e) => updateAddress(i, { houseNo: e.target.value })} placeholder="A-101" />
+                      <Field label="Street / Locality">
+                        <Input value={a.street} onChange={(e) => updateAddress(i, { street: e.target.value })} placeholder="Street name or society" />
                       </Field>
-                      <Field label="Building / Society">
-                        <Input value={a.building} onChange={(e) => updateAddress(i, { building: e.target.value })} placeholder="Building or society name" />
+                      <Field label="Area / Suburb" required={!!(a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_area`]}>
+                        <Input
+                          value={a.area}
+                          onChange={(e) => updateAddress(i, { area: e.target.value })}
+                          placeholder="e.g. Thane West"
+                          className={errors[`addr_${i}_area`] ? "border-red-400" : ""}
+                        />
                       </Field>
-                      <Field label="Street / Road">
-                        <Input value={a.street} onChange={(e) => updateAddress(i, { street: e.target.value })} placeholder="Street name" />
-                      </Field>
-                      <Field label="Area / Locality">
-                        <Input value={a.area} onChange={(e) => updateAddress(i, { area: e.target.value })} placeholder="Locality" />
-                      </Field>
-                      <Field label="Landmark">
-                        <Input value={a.landmark} onChange={(e) => updateAddress(i, { landmark: e.target.value })} placeholder="Near..." />
-                      </Field>
-                      <Field label="City">
-                        <Input value={a.city} onChange={(e) => updateAddress(i, { city: e.target.value })} placeholder="City" />
-                      </Field>
-                      <Field label="State">
-                        <Input value={a.state} onChange={(e) => updateAddress(i, { state: e.target.value })} placeholder="State" />
-                      </Field>
-                      <Field label="Pincode" required={!!(a.houseNo || a.building || a.street || a.area || a.city || a.state)} error={errors[`addr_${i}_pincode`]}>
+                      <Field label="Pincode" required={!!(a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_pincode`]}>
                         <Input
                           value={a.pincode}
                           onChange={(e) => updateAddress(i, { pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })}
@@ -1466,8 +1428,20 @@ function CustomerModal({
                         />
                       </Field>
                       <div className="md:col-span-2">
-                        <Field label="Delivery instructions">
-                          <Input value={a.instructions} onChange={(e) => updateAddress(i, { instructions: e.target.value })} placeholder="e.g. Ring the bell twice, leave at the door, etc." />
+                        <Field label="Address Type">
+                          <Select value={a.label || "Home"} onValueChange={(v) => updateAddress(i, { label: v, type: v.toLowerCase() })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Home">Home</SelectItem>
+                              <SelectItem value="Work">Work</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      </div>
+                      <div className="md:col-span-2">
+                        <Field label="Delivery Instructions">
+                          <Input value={a.instructions} onChange={(e) => updateAddress(i, { instructions: e.target.value })} placeholder="Leave at door, ring bell twice, etc." />
                         </Field>
                       </div>
                     </div>
