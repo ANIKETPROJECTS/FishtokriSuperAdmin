@@ -1189,8 +1189,6 @@ function CustomerModal({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [dob, setDob] = useState("");
-  const [gender, setGender] = useState("");
-  const [notes, setNotes] = useState("");
   const [addresses, setAddresses] = useState<AddressDraft[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -1199,8 +1197,6 @@ function CustomerModal({
     setEmail(customer?.email ?? "");
     setPhone(customer?.phone ?? "");
     setDob(customer?.dateOfBirth ?? "");
-    setGender(customer?.gender ?? "");
-    setNotes(customer?.notes ?? "");
     setAddresses(
       Array.isArray(customer?.addresses) && customer!.addresses.length
         ? customer!.addresses.map(addressFromExisting)
@@ -1291,8 +1287,6 @@ function CustomerModal({
       email: email.trim(),
       phone: phone.trim(),
       dateOfBirth: dob.trim(),
-      gender: gender.trim(),
-      notes: notes.trim(),
       addresses: cleanAddresses,
     };
     if (isEditing) updateMutation.mutate(payload);
@@ -1329,28 +1323,6 @@ function CustomerModal({
               <Field label="Date of birth" error={errors.dob}>
                 <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className={errors.dob ? "border-red-400" : ""} />
               </Field>
-              <Field label="Gender">
-                <Select value={gender || "unspecified"} onValueChange={(v) => setGender(v === "unspecified" ? "" : v)}>
-                  <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unspecified">Prefer not to say</SelectItem>
-                    <SelectItem value="male">Male</SelectItem>
-                    <SelectItem value="female">Female</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <div className="md:col-span-2">
-                <Field label="Internal notes">
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={2}
-                    placeholder="Anything the team should know about this customer (preferences, allergies, VIP, etc.)"
-                    className="w-full text-sm rounded-md border border-gray-200 bg-white px-3 py-2 outline-none focus:ring-1 focus:ring-[#1A56DB] focus:border-[#1A56DB]"
-                  />
-                </Field>
-              </div>
             </div>
           </section>
 
