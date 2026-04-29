@@ -3456,7 +3456,7 @@ export default function Orders() {
                       !isTakeaway && !hasAssignee && (s === "out_for_delivery" || s === "delivered");
                     const statusOptions = isTakeaway
                       ? ["takeaway", "cancelled"]
-                      : ALL_STATUSES.filter((s) => s !== "takeaway");
+                      : ALL_STATUSES.filter((s) => s !== "takeaway" && s !== "preparing");
                     const blocked = requiresAssignee(editStatus);
                     return (
                       <>
