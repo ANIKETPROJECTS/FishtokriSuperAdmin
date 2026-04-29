@@ -596,15 +596,14 @@ export default function Orders() {
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [chosenCustomer, setChosenCustomer] = useState<any>(null);
-  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "", alternatePhone: "", dateOfBirth: "", gender: "", notes: "" });
+  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "", dateOfBirth: "" });
   const [orderItems, setOrderItems] = useState<{ name: string; price: string; quantity: string; unit: string }[]>([]);
   const [orderDeliveryType, setOrderDeliveryType] = useState<"delivery" | "takeaway">("delivery");
   const [orderAddressMode, setOrderAddressMode] = useState<"saved" | "new">("saved");
   const [selectedAddressIdx, setSelectedAddressIdx] = useState<number | null>(null);
   const [newAddress, setNewAddress] = useState({
-    label: "Home", contactName: "", phone: "",
-    houseNo: "", building: "", street: "", area: "", landmark: "",
-    city: "", state: "", pincode: "", instructions: "",
+    label: "Home", name: "", phone: "",
+    building: "", street: "", area: "", pincode: "",
   });
   const [orderNotes, setOrderNotes] = useState("");
 
@@ -642,14 +641,13 @@ export default function Orders() {
   const resetCreateForm = useCallback(() => {
     setCustomerMode("existing");
     setCustomerSearch(""); setChosenCustomer(null); setCustomerDropdownOpen(false);
-    setNewCustomer({ name: "", phone: "", email: "", alternatePhone: "", dateOfBirth: "", gender: "", notes: "" });
+    setNewCustomer({ name: "", phone: "", email: "", dateOfBirth: "" });
     setOrderItems([]);
     setOrderDeliveryType("delivery");
     setOrderAddressMode("saved"); setSelectedAddressIdx(null);
     setNewAddress({
-      label: "Home", contactName: "", phone: "",
-      houseNo: "", building: "", street: "", area: "", landmark: "",
-      city: "", state: "", pincode: "", instructions: "",
+      label: "Home", name: "", phone: "",
+      building: "", street: "", area: "", pincode: "",
     });
     setOrderNotes("");
     setSelectedSuperHubId(""); setSelectedSubHubId("");
@@ -998,17 +996,38 @@ export default function Orders() {
         deliveryAddressDetail = a;
       } else {
         const f = newAddress;
+        if (!f.name.trim()) {
+          toast({ title: "Recipient name required", description: "Enter the full name for the delivery address.", variant: "destructive" });
+          return;
+        }
+        if (!f.phone || !/^\d{10}$/.test(f.phone)) {
+          toast({ title: "Phone required", description: "Enter a valid 10-digit phone for the delivery address.", variant: "destructive" });
+          return;
+        }
+        if (!f.building.trim()) {
+          toast({ title: "Building / Flat No required", description: "Enter the building or flat number for the delivery address.", variant: "destructive" });
+          return;
+        }
+        if (!f.area.trim()) {
+          toast({ title: "Area / Suburb required", description: "Enter the area or suburb for the delivery address.", variant: "destructive" });
+          return;
+        }
         if (!f.pincode || !/^\d{6}$/.test(f.pincode)) {
           toast({ title: "Pincode required", description: "Enter a valid 6-digit pincode for the delivery address.", variant: "destructive" });
           return;
         }
-        if (!f.city) {
-          toast({ title: "City required", description: "Enter a city for the delivery address.", variant: "destructive" });
-          return;
-        }
         address = formatAddressOneLine(f);
-        deliveryArea = f.area || f.city || "";
-        deliveryAddressDetail = { ...f };
+        deliveryArea = f.area || "";
+        deliveryAddressDetail = {
+          label: f.label,
+          type: (f.label || "Home").toLowerCase(),
+          name: f.name.trim(),
+          phone: f.phone.trim(),
+          building: f.building.trim(),
+          street: f.street.trim(),
+          area: f.area.trim(),
+          pincode: f.pincode.trim(),
+        };
       }
       if (!address) {
         toast({ title: "Delivery address required", variant: "destructive" });
@@ -1066,10 +1085,7 @@ export default function Orders() {
         status: orderDeliveryType === "takeaway" ? "takeaway" : "pending",
         createCustomerIfMissing: customerMode === "new",
         newCustomerExtras: customerMode === "new" ? {
-          alternatePhone: newCustomer.alternatePhone.trim(),
           dateOfBirth: newCustomer.dateOfBirth.trim(),
-          gender: newCustomer.gender.trim(),
-          notes: newCustomer.notes.trim(),
         } : undefined,
         // Pricing breakdown
         subtotal: itemsSubtotal,
@@ -1385,10 +1401,7 @@ export default function Orders() {
         name: o.customerName ?? "",
         phone: o.phone ?? "",
         email: o.email ?? "",
-        alternatePhone: "",
         dateOfBirth: "",
-        gender: "",
-        notes: "",
       });
     }
     // Hub — flag the effects to preserve our pre-populated sub-hub / products / coupons.
@@ -1433,17 +1446,12 @@ export default function Orders() {
       setSelectedAddressIdx(null);
       setNewAddress({
         label: d.label ?? "Home",
-        contactName: d.contactName ?? "",
+        name: d.name ?? d.contactName ?? "",
         phone: d.phone ?? o.phone ?? "",
-        houseNo: d.houseNo ?? "",
-        building: d.building ?? "",
+        building: [d.houseNo, d.building].filter(Boolean).join(", ") || d.building || "",
         street: d.street ?? "",
         area: d.area ?? o.deliveryArea ?? "",
-        landmark: d.landmark ?? "",
-        city: d.city ?? "",
-        state: d.state ?? "",
         pincode: d.pincode ?? "",
-        instructions: d.instructions ?? "",
       });
     }
     setOrderNotes(o.notes ?? "");
@@ -2311,9 +2319,9 @@ export default function Orders() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2 space-y-1.5">
-                    <Label className="text-xs font-semibold text-gray-500">Name *</Label>
-                    <Input value={newCustomer.name} onChange={(e) => setNewCustomer((n) => ({ ...n, name: e.target.value }))} className="h-9 text-sm" placeholder="Customer name" />
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-500">Full name *</Label>
+                    <Input value={newCustomer.name} onChange={(e) => setNewCustomer((n) => ({ ...n, name: e.target.value }))} className="h-9 text-sm" placeholder="Full name" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-gray-500">Phone *</Label>
@@ -2321,58 +2329,23 @@ export default function Orders() {
                       value={newCustomer.phone}
                       onChange={(e) => setNewCustomer((n) => ({ ...n, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
                       className="h-9 text-sm"
-                      placeholder="10-digit phone"
+                      placeholder="10-digit number"
                       inputMode="numeric"
                       maxLength={10}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-gray-500">Alternate Phone</Label>
-                    <Input
-                      value={newCustomer.alternatePhone}
-                      onChange={(e) => setNewCustomer((n) => ({ ...n, alternatePhone: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
-                      className="h-9 text-sm"
-                      placeholder="Optional"
-                      inputMode="numeric"
-                      maxLength={10}
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-1.5">
                     <Label className="text-xs font-semibold text-gray-500">Email</Label>
                     <Input value={newCustomer.email} onChange={(e) => setNewCustomer((n) => ({ ...n, email: e.target.value }))} className="h-9 text-sm" placeholder="email@example.com" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-gray-500">Date of Birth</Label>
+                    <Label className="text-xs font-semibold text-gray-500">Date of birth</Label>
                     <Input
                       type="date"
                       value={newCustomer.dateOfBirth}
                       onChange={(e) => setNewCustomer((n) => ({ ...n, dateOfBirth: e.target.value }))}
                       max={new Date().toISOString().slice(0, 10)}
                       className="h-9 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-gray-500">Gender</Label>
-                    <Select
-                      value={newCustomer.gender || "unspecified"}
-                      onValueChange={(v) => setNewCustomer((n) => ({ ...n, gender: v === "unspecified" ? "" : v }))}
-                    >
-                      <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select gender" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="unspecified">Prefer not to say</SelectItem>
-                        <SelectItem value="male">Male</SelectItem>
-                        <SelectItem value="female">Female</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-2 space-y-1.5">
-                    <Label className="text-xs font-semibold text-gray-500">Internal Notes</Label>
-                    <Textarea
-                      value={newCustomer.notes}
-                      onChange={(e) => setNewCustomer((n) => ({ ...n, notes: e.target.value }))}
-                      placeholder="Anything to remember about this customer (optional)"
-                      className="text-sm min-h-[60px]"
                     />
                   </div>
                   <p className="col-span-2 text-[11px] text-gray-400">Customer will be saved automatically. The delivery address you enter below becomes their first saved address.</p>
@@ -2466,27 +2439,58 @@ export default function Orders() {
                     })}
                   </div>
                 ) : (
-                  <div className="space-y-2 p-3 bg-gray-50/60 border border-gray-100 rounded-xl">
-                    <div className="grid grid-cols-3 gap-2">
-                      <Input value={newAddress.label} onChange={(e) => setNewAddress((a) => ({ ...a, label: e.target.value }))} placeholder="Label (Home/Work)" className="h-9 text-sm" />
-                      <Input value={newAddress.contactName} onChange={(e) => setNewAddress((a) => ({ ...a, contactName: e.target.value }))} placeholder="Contact name" className="h-9 text-sm" />
-                      <Input value={newAddress.phone} onChange={(e) => setNewAddress((a) => ({ ...a, phone: e.target.value }))} placeholder="Contact phone" className="h-9 text-sm" />
+                  <div className="space-y-3 p-3 bg-gray-50/60 border border-gray-100 rounded-xl">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-gray-500">Full Name *</Label>
+                        <Input value={newAddress.name} onChange={(e) => setNewAddress((a) => ({ ...a, name: e.target.value }))} placeholder="Recipient name" className="h-9 text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-gray-500">Phone *</Label>
+                        <Input
+                          value={newAddress.phone}
+                          onChange={(e) => setNewAddress((a) => ({ ...a, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
+                          placeholder="10-digit mobile"
+                          className="h-9 text-sm"
+                          inputMode="numeric"
+                          maxLength={10}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-gray-500">Building / Flat No *</Label>
+                        <Input value={newAddress.building} onChange={(e) => setNewAddress((a) => ({ ...a, building: e.target.value }))} placeholder="Wing A, Flat 302, Building Name" className="h-9 text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-gray-500">Street / Locality</Label>
+                        <Input value={newAddress.street} onChange={(e) => setNewAddress((a) => ({ ...a, street: e.target.value }))} placeholder="Street name or society" className="h-9 text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-gray-500">Area / Suburb *</Label>
+                        <Input value={newAddress.area} onChange={(e) => setNewAddress((a) => ({ ...a, area: e.target.value }))} placeholder="e.g. Thane West" className="h-9 text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-gray-500">Pincode *</Label>
+                        <Input
+                          value={newAddress.pincode}
+                          onChange={(e) => setNewAddress((a) => ({ ...a, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
+                          placeholder="6-digit pincode"
+                          className="h-9 text-sm"
+                          inputMode="numeric"
+                          maxLength={6}
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1.5">
+                        <Label className="text-xs font-semibold text-gray-500">Address Type</Label>
+                        <Select value={newAddress.label || "Home"} onValueChange={(v) => setNewAddress((a) => ({ ...a, label: v }))}>
+                          <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Home">Home</SelectItem>
+                            <SelectItem value="Work">Work</SelectItem>
+                            <SelectItem value="Other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input value={newAddress.houseNo} onChange={(e) => setNewAddress((a) => ({ ...a, houseNo: e.target.value }))} placeholder="House / Flat no." className="h-9 text-sm" />
-                      <Input value={newAddress.building} onChange={(e) => setNewAddress((a) => ({ ...a, building: e.target.value }))} placeholder="Building / Society" className="h-9 text-sm" />
-                    </div>
-                    <Input value={newAddress.street} onChange={(e) => setNewAddress((a) => ({ ...a, street: e.target.value }))} placeholder="Street / Road" className="h-9 text-sm" />
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input value={newAddress.area} onChange={(e) => setNewAddress((a) => ({ ...a, area: e.target.value }))} placeholder="Area / Locality" className="h-9 text-sm" />
-                      <Input value={newAddress.landmark} onChange={(e) => setNewAddress((a) => ({ ...a, landmark: e.target.value }))} placeholder="Landmark" className="h-9 text-sm" />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <Input value={newAddress.city} onChange={(e) => setNewAddress((a) => ({ ...a, city: e.target.value }))} placeholder="City *" className="h-9 text-sm" />
-                      <Input value={newAddress.state} onChange={(e) => setNewAddress((a) => ({ ...a, state: e.target.value }))} placeholder="State" className="h-9 text-sm" />
-                      <Input value={newAddress.pincode} onChange={(e) => setNewAddress((a) => ({ ...a, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="Pincode *" className="h-9 text-sm" />
-                    </div>
-                    <Input value={newAddress.instructions} onChange={(e) => setNewAddress((a) => ({ ...a, instructions: e.target.value }))} placeholder="Delivery instructions (optional)" className="h-9 text-sm" />
                   </div>
                 )}
               </div>
