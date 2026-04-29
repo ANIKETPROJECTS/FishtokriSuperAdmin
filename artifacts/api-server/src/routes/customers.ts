@@ -76,7 +76,7 @@ function isCustomerInScope(
   return false;
 }
 
-const ACTIVE_ORDER_STATUSES = new Set(["pending", "confirmed", "preparing", "out_for_delivery"]);
+const ACTIVE_ORDER_STATUSES = new Set(["pending", "confirmed", "out_for_delivery"]);
 
 const customerSchema = new mongoose.Schema(
   {

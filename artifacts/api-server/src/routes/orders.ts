@@ -15,6 +15,15 @@ const router = Router();
 router.use(requireAuth as any);
 router.use(loadScope as any);
 
+const VALID_ORDER_STATUSES = new Set([
+  "pending",
+  "confirmed",
+  "out_for_delivery",
+  "delivered",
+  "cancelled",
+  "takeaway",
+]);
+
 /**
  * Returns a filter clause to scope orders to the user's hub set.
  * Master admins get an empty clause (no filtering). Non-master users without
@@ -118,7 +127,7 @@ router.get("/", async (req: ScopedRequest, res) => {
     // Tab semantics: takeaway-deliveryType orders are always treated as completed (History).
     // - "current": active statuses AND deliveryType != takeaway
     // - "history": history statuses OR deliveryType == takeaway
-    const ACTIVE = ["pending", "confirmed", "preparing", "out_for_delivery"];
+    const ACTIVE = ["pending", "confirmed", "out_for_delivery"];
     const HISTORY = ["delivered", "cancelled"];
 
     const statusList = status
@@ -194,7 +203,7 @@ router.get("/stats", async (req: ScopedRequest, res) => {
     pipeline.push({ $group: { _id: { status: "$status", deliveryType: "$deliveryType" }, count: { $sum: 1 } } });
     const agg = await conn.db.collection(COLLECTION).aggregate(pipeline).toArray();
 
-    const ACTIVE = ["pending", "confirmed", "preparing", "out_for_delivery"];
+    const ACTIVE = ["pending", "confirmed", "out_for_delivery"];
     const HISTORY = ["delivered", "cancelled"];
 
     // Raw per-status counts (used by some legacy callers).
@@ -255,7 +264,7 @@ router.get("/delivery-stats", async (req: ScopedRequest, res) => {
     if (scope && !scope.isMaster && scope.role !== "delivery_person") {
       if (scope.subHubIds.length === 0) {
         res.json({
-          statusCounts: { pending: 0, confirmed: 0, preparing: 0, out_for_delivery: 0, delivered: 0, cancelled: 0 },
+          statusCounts: { pending: 0, confirmed: 0, out_for_delivery: 0, delivered: 0, cancelled: 0 },
           totalAssigned: 0, activeCount: 0,
           today: { count: 0, revenue: 0, total: 0 }, week: { count: 0, revenue: 0, total: 0 },
           month: { count: 0, revenue: 0, total: 0 }, allTime: { count: 0, revenue: 0, total: 0 },
@@ -365,7 +374,7 @@ router.get("/delivery-stats", async (req: ScopedRequest, res) => {
     ]);
 
     const statusCounts: Record<string, number> = {
-      pending: 0, confirmed: 0, preparing: 0, out_for_delivery: 0, delivered: 0, cancelled: 0,
+      pending: 0, confirmed: 0, out_for_delivery: 0, delivered: 0, cancelled: 0,
     };
     for (const row of statusAgg) {
       const k = String((row as any)._id ?? "unknown");
@@ -374,7 +383,7 @@ router.get("/delivery-stats", async (req: ScopedRequest, res) => {
     const totalAssigned = Object.values(statusCounts).reduce((a, b) => a + b, 0);
     const activeCount =
       statusCounts.pending + statusCounts.confirmed +
-      statusCounts.preparing + statusCounts.out_for_delivery;
+      statusCounts.out_for_delivery;
 
     function pickAgg(rows: any[]) {
       const r = rows[0] ?? {};
@@ -501,6 +510,11 @@ router.post("/", async (req: ScopedRequest, res) => {
 
     if (cleanItems.length === 0) {
       res.status(400).json({ error: "ValidationError", message: "Items must have a name" });
+      return;
+    }
+
+    if (status !== undefined && status !== null && status !== "" && !VALID_ORDER_STATUSES.has(String(status))) {
+      res.status(400).json({ error: "ValidationError", message: `Invalid order status: ${status}` });
       return;
     }
 
@@ -696,6 +710,10 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       couponId, couponCode, couponTitle, couponIds, couponCodes, coupons,
       subtotal, discount, slotCharge, total,
     } = req.body;
+    if (status !== undefined && !VALID_ORDER_STATUSES.has(String(status))) {
+      res.status(400).json({ error: "ValidationError", message: `Invalid order status: ${status}` });
+      return;
+    }
     const update: any = { updatedAt: new Date() };
     if (status !== undefined) update.status = status;
     if (notes !== undefined) update.notes = notes;
